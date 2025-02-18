@@ -2,11 +2,12 @@ from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from .views import (UserProfileViewSet, UserCreateViewSet, VerifyEmailView, GoogleLoginView,
                     CustomTokenCreateView, PasswordResetRequestView, PasswordResetConfirmView, CustomUserViewSet,
-                    UpdateProfileView, ChangePasswordView,)
+                    UpdateProfileView, ChangePasswordView, UserAssignmentViewSet)
 
 router = DefaultRouter()
 router.register(r'users', UserCreateViewSet, basename='user')
 router.register(r'userprofiles', UserProfileViewSet, basename='userprofile')
+router.register(r'assign', UserAssignmentViewSet, basename='user-assignment')
 
 
 urlpatterns = [

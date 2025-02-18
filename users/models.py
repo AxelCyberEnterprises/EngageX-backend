@@ -18,7 +18,6 @@ from django.utils.translation import gettext_lazy as _
 
 class CustomUser(AbstractBaseUser, PermissionsMixin):
     email = models.EmailField(unique=True)
-    phone_number = models.CharField(max_length=15, blank=True, null=True)
     username = models.CharField(max_length=30, null=True, blank=True)
     first_name = models.CharField(max_length=30, blank=True, null=True)  # Optional
     last_name = models.CharField(max_length=30, blank=True, null=True)   # Optional
@@ -74,13 +73,31 @@ class UserProfile(models.Model):
         ],
         help_text=_("Upload a JPG, JPEG, or PNG image.")
     )
-    role = models.CharField(max_length=50, default='patient', choices=[
-        ('admin', 'Admin'),
-        ('doctor', 'Doctor'),
-        ('nurse', 'Nurse'),
-        ('patient', 'Patient'),
-        ('caretaker', 'Caretaker'),
-    ])
+
+    ADMIN = 'admin'
+    PRESENTER = 'presenter'
+    COACH = 'coach'
+
+    ROLE_CHOICES = [
+        (ADMIN, 'Admin'),
+        (PRESENTER, 'Presenter'),
+        (COACH, 'Coach'),
+    ]
+
+    role = models.CharField(
+        max_length=20,
+        choices=ROLE_CHOICES,
+        default=PRESENTER
+    )
+
+    def is_admin(self):
+        return self.role == self.ADMIN
+
+    def is_presenter(self):
+        return self.role == self.PRESENTER
+
+    def is_coach(self):
+        return self.role == self.COACH
 
     # New Fields
     phone_number = models.CharField(max_length=15, null=True, blank=True, help_text=_("User's phone number"))
@@ -88,3 +105,15 @@ class UserProfile(models.Model):
 
     def __str__(self):
         return f"{self.user.email} - {self.role}"
+
+
+class UserAssignment(models.Model):
+    coach = models.ForeignKey(CustomUser, on_delete=models.CASCADE, related_name='assigned_presenters')
+    presenter = models.ForeignKey(CustomUser, on_delete=models.CASCADE, related_name='assigned_to')
+    assigned_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('coach', 'presenter')
+
+    def __str__(self):
+        return f"{self.coach.email} -> {self.presenter.email}"

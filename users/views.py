@@ -1,4 +1,4 @@
-from django.shortcuts import render
+from django.shortcuts import render, get_object_or_404
 from django.core.exceptions import ValidationError
 from djoser.views import UserViewSet, TokenCreateView
 from django.core.cache import cache
@@ -11,12 +11,14 @@ from rest_framework import viewsets, status, permissions
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.views import APIView
 from rest_framework.response import Response
+from rest_framework.decorators import action
 
 from .serializers import (
     UserSerializer,  UserProfileSerializer,
-    CustomTokenCreateSerializer, UpdateProfileSerializer, ChangePasswordSerializer,
+    CustomTokenCreateSerializer, UpdateProfileSerializer, ChangePasswordSerializer, UserAssignmentSerializer
 )
-from .models import (UserProfile, CustomUser)
+from .models import (UserProfile, CustomUser, UserAssignment)
+from .permissions import IsAdmin
 
 import random, tempfile, os
 
@@ -354,14 +356,29 @@ class CustomUserViewSet(UserViewSet):
 
 class UserProfileViewSet(viewsets.ModelViewSet):
     """
-    Returns the profile of the user making the request
+    Returns the user profile based on the roles.
     """
-    permission_classes = [IsAuthenticated]
     serializer_class = UserProfileSerializer
+    permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        # Return only the authenticated user's profile
-        return UserProfile.objects.filter(user=self.request.user)
+        user = self.request.user
+
+        if user.userprofile.is_admin():
+            # Admins can see everything
+            return UserProfile.objects.all()
+
+        if user.userprofile.is_presenter():
+            # Presenters can only see their own profile
+            return UserProfile.objects.filter(user=user)
+
+        if user.userprofile.is_coach():
+            # Coaches can see assigned users
+            assigned_users = UserAssignment.objects.filter(coach=user).values_list('presenter', flat=True)
+            return UserProfile.objects.filter(user_id__in=assigned_users)
+
+        # Default: Return an empty queryset
+        return UserProfile.objects.none()
 
 
 
@@ -525,3 +542,101 @@ class GoogleLoginView(APIView):
         except ValueError as e:
             print(f"Invalid Google token: {str(e)}")
             return Response({"message": "Invalid Google token."}, status=status.HTTP_400_BAD_REQUEST)
+        
+
+class UserAssignmentViewSet(viewsets.ModelViewSet):
+    queryset = UserAssignment.objects.select_related('coach', 'presenter').all()
+    serializer_class = UserAssignmentSerializer  
+    permission_classes = [IsAuthenticated]
+
+    @action(detail=False, methods=['post'])
+    def assign_presenter(self, request):
+        """
+        Assign a presenter to a coach.
+        """
+        print(f"Incoming request data: {request.data}")
+
+        coach_email = request.data.get('coach_email')
+        presenter_email = request.data.get('presenter_email')
+
+        if not coach_email or not presenter_email:
+            print
+            ("Missing coach_email or presenter_email in request.")
+            return Response({'error': 'Both coach_email and presenter_email are required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Validate the coach
+        coach = get_object_or_404(CustomUser, email=coach_email)
+        print(f"Coach found: {coach.email} (ID: {coach.id})")
+
+        coach_profile = getattr(coach, 'userprofile', None)
+        if not coach_profile or coach_profile.role != 'coach':
+            print
+            (f"Invalid coach role for email: {coach.email}")
+            return Response({'error': 'Invalid coach email or user is not a coach.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Validate the presenter
+        presenter = get_object_or_404(CustomUser, email=presenter_email)
+        print(f"Presenter found: {presenter.email} (ID: {presenter.id})")
+
+        presenter_profile = getattr(presenter, 'userprofile', None)
+        if not presenter_profile or presenter_profile.role != 'presenter':
+            print
+            (f"Invalid presenter role for email: {presenter.email}")
+            return Response({'error': 'Invalid presenter email or user is not a presenter.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Prevent assigning the same user as both coach and presenter
+        if coach == presenter:
+            print
+            ("Attempted to assign a user as their own coach.")
+            return Response({'error': 'A user cannot be both coach and presenter in an assignment.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Assign presenter to coach
+        assignment, created = UserAssignment.objects.get_or_create(coach=coach, presenter=presenter)
+
+        if created:
+            print(f"New assignment created: {coach.email} -> {presenter.email}")
+            return Response(
+                {'message': 'Presenter assigned successfully.', 'assignment': UserAssignmentSerializer(assignment).data},
+                status=status.HTTP_201_CREATED
+            )
+
+        print(f"Presenter {presenter.email} is already assigned to Coach {coach.email}.")
+        return Response({'message': 'Presenter already assigned.'}, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=['get'])
+    def coach_presenters(self, request):
+        """
+        Retrieve all coaches and their assigned presenters.
+        """
+        print("Fetching all coach-presenter assignments.")
+
+        assignments = UserAssignment.objects.select_related('coach', 'presenter').all()
+        data = {}
+
+        for assignment in assignments:
+            coach_email = assignment.coach.email
+            presenter_email = assignment.presenter.email
+            data.setdefault(coach_email, []).append(presenter_email)
+
+        print(f"Returning {len(assignments)} assignments.")
+        return Response(data, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=['get'])
+    def presenter_coach(self, request):
+        """
+        Retrieve the coach for a specific presenter.
+        """
+        presenter_email = request.query_params.get('presenter_email')
+        if not presenter_email:
+            print
+            ("Missing presenter_email in request.")
+            return Response({'error': 'Presenter email is required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            assignment = UserAssignment.objects.select_related('coach').get(presenter__email=presenter_email)
+            print(f"Coach found for presenter {presenter_email}: {assignment.coach.email}")
+            return Response({'coach_email': assignment.coach.email}, status=status.HTTP_200_OK)
+        except UserAssignment.DoesNotExist:
+            print
+            (f"No coach found for presenter: {presenter_email}")
+            return Response({'error': 'No coach assigned for this presenter.'}, status=status.HTTP_404_NOT_FOUND)

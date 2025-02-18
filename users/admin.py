@@ -1,6 +1,6 @@
 from django.contrib import admin
 from django.contrib.auth.models import User
-from .models import (UserProfile, CustomUser,)
+from .models import (UserProfile, CustomUser, UserAssignment)
 from django.contrib.auth.admin import UserAdmin as DefaultUserAdmin
 from django import forms
 
@@ -12,7 +12,7 @@ class UserCreationForm(forms.ModelForm):
 
     class Meta:
         model = CustomUser
-        fields = ('username', 'email', 'first_name', 'last_name', 'phone_number')
+        fields = ('username', 'email', 'first_name', 'last_name',)
 
     def clean_password2(self):
         password1 = self.cleaned_data.get("password1")
@@ -47,6 +47,15 @@ class CustomUserAdmin(admin.ModelAdmin):
 
 @admin.register(UserProfile)
 class UserProfileAdmin(admin.ModelAdmin):
-    list_display = ('user', 'age', 'gender',)
-    search_fields = ('user__username', 'gender', )
-    list_filter = ('gender',)
+    list_display = ('user', 'age', 'gender', 'phone_number')
+    search_fields = ('user__username', 'gender',  'phone_number')
+    list_filter = ('gender', 'phone_number')
+
+
+
+class UserAssignmentAdmin(admin.ModelAdmin):
+    list_display = ('coach', 'presenter')
+    search_fields = ('coach__username', 'presenter__username')
+    list_filter = ('coach__userprofile__role', 'presenter__userprofile__role')
+
+admin.site.register(UserAssignment, UserAssignmentAdmin)

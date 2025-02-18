@@ -1,6 +1,6 @@
 from django.contrib.auth import authenticate
 from rest_framework import serializers
-from .models import (UserProfile, CustomUser)
+from .models import (UserProfile, CustomUser, UserAssignment)
 
 from djoser.serializers import TokenCreateSerializer
 from rest_framework.authtoken.models import Token
@@ -69,49 +69,6 @@ class UserSerializer(serializers.ModelSerializer):
         return user
 
 
-# class UserSerializer(serializers.ModelSerializer):
-#     class Meta:
-#         model = CustomUser
-#         fields = ['email', 'password', 'first_name', 'last_name']
-#         extra_kwargs = {
-#             'password': {'write_only': True, 'required': False},  # Make password optional
-#             # 'email': {'validators': []},  # Disable the default UniqueValidator
-#         }
-
-#     def validate_email(self, email):
-#         """
-#         Custom email validation to handle existing inactive users.
-#         """
-#         existing_user = CustomUser.objects.filter(email=email).first()
-
-#         if existing_user:
-#             if not existing_user.is_active and hasattr(existing_user, 'userprofile') and existing_user.userprofile.organization:
-#                 # Instead of raising a ValidationError, return context to the view
-#                 self.context['inactive_user'] = {
-#                     "status": "inactive_user",
-#                     "message": "This email is already linked to an organization. Please set your password to activate your account.",
-#                     "data": {
-#                         "email": existing_user.email,
-#                         "linked_organization": existing_user.userprofile.organization.name,
-#                     }
-#                 }
-#             else:
-#                 raise serializers.ValidationError("A user with this email already exists.")
-
-#         return email
-
-#     def create(self, validated_data):
-#         """
-#         Custom create method to handle password hashing.
-#         """
-#         password = validated_data.pop('password', None)
-#         user = CustomUser(**validated_data)
-#         if password:
-#             user.set_password(password)  # Hash the password
-#         user.save()
-#         return user
-
-
 class UpdateProfileSerializer(serializers.ModelSerializer):
     class Meta:
         model = CustomUser
@@ -157,3 +114,12 @@ class ChangePasswordSerializer(serializers.Serializer):
         user = self.context['request'].user
         user.set_password(self.validated_data['new_password'])
         user.save()
+
+
+class UserAssignmentSerializer(serializers.ModelSerializer):
+    coach_email = serializers.EmailField(source='coach.email', read_only=True)
+    presenter_email = serializers.EmailField(source='presenter.email', read_only=True)
+
+    class Meta:
+        model = UserAssignment
+        fields = ['id', 'coach_email', 'presenter_email', 'assigned_at']
