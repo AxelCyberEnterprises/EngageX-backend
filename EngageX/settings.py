@@ -41,8 +41,11 @@ INSTALLED_APPS = [
     # Apps I installed
     'rest_framework',
     'corsheaders',
-    'users'
+    'users',
 
+    # Apps for authentication
+    'djoser',
+    'rest_framework.authtoken',
 ]
 
 MIDDLEWARE = [
@@ -74,6 +77,23 @@ REST_FRAMEWORK = {
         'rest_framework.parsers.MultiPartParser',
     ),
 }
+
+DJOSER = {
+    'LOGIN_FIELD': 'email',
+    'USER_CREATE_PASSWORD_RETYPE': True,
+    'SEND_ACTIVATION_EMAIL': True,  # Make sure this is enabled
+    'SEND_CONFIRMATION_EMAIL': False,
+    'PASSWORD_RESET_CONFIRM_URL': 'password/reset/confirm/{uid}/{token}',
+    'ACTIVATION_URL': 'activate/{uid}/{token}',  # Activation link URL
+    'SERIALIZERS': {
+        'user_create': 'users.serializers.UserSerializer',
+        'user': 'users.serializers.UserSerializer',
+        'token_create': 'users.serializers.CustomTokenCreateSerializer',
+    },
+}
+
+
+AUTH_USER_MODEL = 'users.CustomUser'
 
 
 ROOT_URLCONF = 'EngageX.urls'
@@ -124,6 +144,10 @@ AUTH_PASSWORD_VALIDATORS = [
     {
         'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator',
     },
+]
+
+AUTHENTICATION_BACKENDS = [
+    'django.contrib.auth.backends.ModelBackend',  # Default authentication
 ]
 
 
