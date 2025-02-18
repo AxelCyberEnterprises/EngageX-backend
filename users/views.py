@@ -48,6 +48,7 @@ class UserCreateViewSet(viewsets.ModelViewSet):
             print(user.verification_code)  # Debug: print the verification code
             user.save()
 
+            # Not sending email for now since we haven't set up the email sending backend
             # Send the verification email
             # email = EmailMessage(
             #     subject='Verify your account',
@@ -83,7 +84,7 @@ class UserCreateViewSet(viewsets.ModelViewSet):
             return Response(response_data, status=status.HTTP_400_BAD_REQUEST)
 
         except Exception as e:
-            import traceback
+            # import traceback
             print(f"Error sending email: {e}")
             
             response_data = {
@@ -156,6 +157,9 @@ class VerifyEmailView(APIView):
         
 
 class CustomTokenCreateView(TokenCreateView):
+    """
+    Logs user in and provides authentication Token that would be used for other endpoints requiring authentication
+    """
     serializer_class = CustomTokenCreateSerializer
 
     def post(self, request, *args, **kwargs):
@@ -315,6 +319,9 @@ class PasswordResetConfirmView(APIView):
         
 
 class CustomUserViewSet(UserViewSet):
+    """
+    Sets a password for a user without one
+    """
     def set_password(self, request, *args, **kwargs):
         user = request.user
 
@@ -346,16 +353,22 @@ class CustomUserViewSet(UserViewSet):
 
 
 class UserProfileViewSet(viewsets.ModelViewSet):
+    """
+    Returns the profile of the user making the request
+    """
     permission_classes = [IsAuthenticated]
     serializer_class = UserProfileSerializer
 
     def get_queryset(self):
-        # Access the user's profile to get the organization
-        user_profile = self.request.user.userprofile
-        return UserProfile.objects.filter(organization=user_profile.organization)
+        # Return only the authenticated user's profile
+        return UserProfile.objects.filter(user=self.request.user)
+
 
 
 class UpdateProfileView(APIView):
+    """
+    Allows users to update their profiles, fully or partially.
+    """
     permission_classes = [permissions.IsAuthenticated]
 
     def put(self, request, *args, **kwargs):
@@ -389,6 +402,9 @@ class UpdateProfileView(APIView):
     
 
 class ChangePasswordView(APIView):
+    """
+    Change password of the user making the request
+    """
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request, *args, **kwargs):
@@ -409,6 +425,9 @@ class ChangePasswordView(APIView):
     
 
 class GoogleLoginView(APIView):
+    """
+    Google login using OAUTH2
+    """
     permission_classes = [AllowAny]
 
     def post(self, request, *args, **kwargs):
