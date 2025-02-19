@@ -545,98 +545,91 @@ class GoogleLoginView(APIView):
         
 
 class UserAssignmentViewSet(viewsets.ModelViewSet):
-    queryset = UserAssignment.objects.select_related('coach', 'presenter').all()
+    queryset = UserAssignment.objects.select_related('admin', 'user').all()
     serializer_class = UserAssignmentSerializer  
     permission_classes = [IsAuthenticated]
 
     @action(detail=False, methods=['post'])
-    def assign_presenter(self, request):
+    def assign_user(self, request):
         """
-        Assign a presenter to a coach.
+        Assign a user to an admin.
+        Expected request JSON:
+        {
+            "admin_email": "admin@example.com",
+            "user_email": "user@example.com"
+        }
         """
         print(f"Incoming request data: {request.data}")
 
-        coach_email = request.data.get('coach_email')
-        presenter_email = request.data.get('presenter_email')
+        admin_email = request.data.get('admin_email')
+        user_email = request.data.get('user_email')
 
-        if not coach_email or not presenter_email:
-            print
-            ("Missing coach_email or presenter_email in request.")
-            return Response({'error': 'Both coach_email and presenter_email are required.'}, status=status.HTTP_400_BAD_REQUEST)
+        if not admin_email or not user_email:
+            print("Missing admin_email or user_email in request.")
+            return Response({'error': 'Both admin_email and user_email are required.'}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Validate the coach
-        coach = get_object_or_404(CustomUser, email=coach_email)
-        print(f"Coach found: {coach.email} (ID: {coach.id})")
+        # Validate the admin
+        admin = get_object_or_404(CustomUser, email=admin_email)
+        print(f"Admin found: {admin.email} (ID: {admin.id})")
+        admin_profile = getattr(admin, 'userprofile', None)
+        if not admin_profile or admin_profile.role != 'admin':
+            print(f"Invalid admin role for email: {admin.email}")
+            return Response({'error': 'Invalid admin email or user is not an admin.'}, status=status.HTTP_400_BAD_REQUEST)
 
-        coach_profile = getattr(coach, 'userprofile', None)
-        if not coach_profile or coach_profile.role != 'coach':
-            print
-            (f"Invalid coach role for email: {coach.email}")
-            return Response({'error': 'Invalid coach email or user is not a coach.'}, status=status.HTTP_400_BAD_REQUEST)
+        # Validate the user
+        user = get_object_or_404(CustomUser, email=user_email)
+        print(f"User found: {user.email} (ID: {user.id})")
+        user_profile = getattr(user, 'userprofile', None)
+        if not user_profile or user_profile.role != 'user':
+            print(f"Invalid user role for email: {user.email}")
+            return Response({'error': 'Invalid user email or user is not a normal user.'}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Validate the presenter
-        presenter = get_object_or_404(CustomUser, email=presenter_email)
-        print(f"Presenter found: {presenter.email} (ID: {presenter.id})")
+        # Prevent self-assignment
+        if admin == user:
+            print("Attempted to assign a user to themselves.")
+            return Response({'error': 'A user cannot be assigned to themselves.'}, status=status.HTTP_400_BAD_REQUEST)
 
-        presenter_profile = getattr(presenter, 'userprofile', None)
-        if not presenter_profile or presenter_profile.role != 'presenter':
-            print
-            (f"Invalid presenter role for email: {presenter.email}")
-            return Response({'error': 'Invalid presenter email or user is not a presenter.'}, status=status.HTTP_400_BAD_REQUEST)
-
-        # Prevent assigning the same user as both coach and presenter
-        if coach == presenter:
-            print
-            ("Attempted to assign a user as their own coach.")
-            return Response({'error': 'A user cannot be both coach and presenter in an assignment.'}, status=status.HTTP_400_BAD_REQUEST)
-
-        # Assign presenter to coach
-        assignment, created = UserAssignment.objects.get_or_create(coach=coach, presenter=presenter)
-
+        # Create assignment
+        assignment, created = UserAssignment.objects.get_or_create(admin=admin, user=user)
         if created:
-            print(f"New assignment created: {coach.email} -> {presenter.email}")
+            print(f"New assignment created: {admin.email} -> {user.email}")
             return Response(
-                {'message': 'Presenter assigned successfully.', 'assignment': UserAssignmentSerializer(assignment).data},
+                {'message': 'User assigned successfully.', 'assignment': UserAssignmentSerializer(assignment).data},
                 status=status.HTTP_201_CREATED
             )
-
-        print(f"Presenter {presenter.email} is already assigned to Coach {coach.email}.")
-        return Response({'message': 'Presenter already assigned.'}, status=status.HTTP_200_OK)
+        print(f"User {user.email} is already assigned to Admin {admin.email}.")
+        return Response({'message': 'User already assigned.'}, status=status.HTTP_200_OK)
 
     @action(detail=False, methods=['get'])
-    def coach_presenters(self, request):
+    def admin_users(self, request):
         """
-        Retrieve all coaches and their assigned presenters.
+        Retrieve all admins and their assigned users.
+        Returns a dictionary where keys are admin emails and values are lists of user emails.
         """
-        print("Fetching all coach-presenter assignments.")
-
-        assignments = UserAssignment.objects.select_related('coach', 'presenter').all()
+        print("Fetching all admin-user assignments.")
+        assignments = UserAssignment.objects.select_related('admin', 'user').all()
         data = {}
-
         for assignment in assignments:
-            coach_email = assignment.coach.email
-            presenter_email = assignment.presenter.email
-            data.setdefault(coach_email, []).append(presenter_email)
-
+            admin_email = assignment.admin.email
+            user_email = assignment.user.email
+            data.setdefault(admin_email, []).append(user_email)
         print(f"Returning {len(assignments)} assignments.")
         return Response(data, status=status.HTTP_200_OK)
 
     @action(detail=False, methods=['get'])
-    def presenter_coach(self, request):
+    def user_admin(self, request):
         """
-        Retrieve the coach for a specific presenter.
+        Retrieve the admin for a specific user.
+        Expects a query parameter: ?user_email=user@example.com
         """
-        presenter_email = request.query_params.get('presenter_email')
-        if not presenter_email:
-            print
-            ("Missing presenter_email in request.")
-            return Response({'error': 'Presenter email is required.'}, status=status.HTTP_400_BAD_REQUEST)
-
+        user_email = request.query_params.get('user_email')
+        if not user_email:
+            print("Missing user_email in request.")
+            return Response({'error': 'User email is required.'}, status=status.HTTP_400_BAD_REQUEST)
         try:
-            assignment = UserAssignment.objects.select_related('coach').get(presenter__email=presenter_email)
-            print(f"Coach found for presenter {presenter_email}: {assignment.coach.email}")
-            return Response({'coach_email': assignment.coach.email}, status=status.HTTP_200_OK)
+            assignment = UserAssignment.objects.select_related('admin').get(user__email=user_email)
+            print(f"Admin found for user {user_email}: {assignment.admin.email}")
+            return Response({'admin_email': assignment.admin.email}, status=status.HTTP_200_OK)
         except UserAssignment.DoesNotExist:
-            print
-            (f"No coach found for presenter: {presenter_email}")
-            return Response({'error': 'No coach assigned for this presenter.'}, status=status.HTTP_404_NOT_FOUND)
+            print(f"No admin assigned for user: {user_email}")
+            return Response({'error': 'No admin assigned for this user.'}, status=status.HTTP_404_NOT_FOUND)

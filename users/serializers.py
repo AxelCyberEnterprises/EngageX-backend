@@ -117,9 +117,9 @@ class ChangePasswordSerializer(serializers.Serializer):
 
 
 class UserAssignmentSerializer(serializers.ModelSerializer):
-    coach_email = serializers.EmailField(source='coach.email', read_only=True)
-    presenter_email = serializers.EmailField(source='presenter.email', read_only=True)
+    admin_email = serializers.EmailField(source='admin.email', read_only=True)
+    user_email = serializers.EmailField(source='user.email', read_only=True)
 
     class Meta:
         model = UserAssignment
-        fields = ['id', 'coach_email', 'presenter_email', 'assigned_at']
+        fields = ['id', 'admin_email', 'user_email', 'assigned_at']

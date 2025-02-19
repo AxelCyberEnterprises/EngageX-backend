@@ -54,8 +54,8 @@ class UserProfileAdmin(admin.ModelAdmin):
 
 
 class UserAssignmentAdmin(admin.ModelAdmin):
-    list_display = ('coach', 'presenter')
-    search_fields = ('coach__username', 'presenter__username')
-    list_filter = ('coach__userprofile__role', 'presenter__userprofile__role')
+    list_display = ('admin', 'user')
+    search_fields = ('admin__username', 'user__username')
+    list_filter = ('admin__userprofile__role', 'user__userprofile__role')
 
 admin.site.register(UserAssignment, UserAssignmentAdmin)
