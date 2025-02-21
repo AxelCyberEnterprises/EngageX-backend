@@ -70,15 +70,13 @@ class UserProfile(models.Model):
         help_text="Upload a JPG, JPEG, or PNG image."
     )
 
-    # New two-role configuration
+    # Role configuration: Only two roles.
     ADMIN = 'admin'
     USER = 'user'
-
     ROLE_CHOICES = [
         (ADMIN, 'Admin'),
         (USER, 'User'),
     ]
-
     role = models.CharField(
         max_length=20,
         choices=ROLE_CHOICES,
@@ -91,7 +89,57 @@ class UserProfile(models.Model):
     def is_user(self):
         return self.role == self.USER
 
-    phone_number = models.CharField(max_length=15, null=True, blank=True, help_text="User's phone number")
+    # New signup field: user intent, now as a choice field.
+    INTENT_CHOICES = [
+        ('early', 'Early Career Professional'),
+        ('mid', 'Mid Level Professional'),
+        ('executive', 'Executive'),
+        ('c_suite', 'C-Suite'),
+        ('athlete', 'Athlete'),
+        ('entrepreneur', 'Entrepreneur'),
+    ]
+    user_intent = models.CharField(
+        max_length=50,
+        choices=INTENT_CHOICES,
+        blank=True,
+        null=True,
+        help_text="Select your career/intention level at sign up."
+    )
+
+    # Dashboard field: available credits.
+    available_credits = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=0.00,
+        help_text="Available credits on the user dashboard."
+    )
+
+    # Additional profile fields.
+    country = models.CharField(
+        max_length=100,
+        blank=True,
+        null=True,
+        help_text="Country of the user."
+    )
+    timezone = models.CharField(
+        max_length=50,
+        blank=True,
+        null=True,
+        help_text="User's timezone."
+    )
+    company = models.CharField(
+        max_length=100,
+        blank=True,
+        null=True,
+        help_text="Company name."
+    )
+
+    phone_number = models.CharField(
+        max_length=15,
+        null=True,
+        blank=True,
+        help_text="User's phone number"
+    )
 
     def __str__(self):
         return f"{self.user.email} - {self.role}"
@@ -102,6 +150,8 @@ class UserAssignment(models.Model):
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
         related_name='assigned_users',
+        blank=True,
+        null=True
     )
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
