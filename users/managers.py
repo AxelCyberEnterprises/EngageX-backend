@@ -19,4 +19,12 @@ class CustomUserManager(BaseUserManager):
         if extra_fields.get('is_superuser') is not True:
             raise ValueError('Superuser must have is_superuser=True.')
 
-        return self.create_user(email, password, username, **extra_fields)
+        # Create the user (the post_save signal should create the UserProfile)
+        user = self.create_user(email, password, username, **extra_fields)
+        
+        # Update the related UserProfile role to 'admin'
+        user.userprofile.role = 'admin'
+        user.userprofile.save()
+        
+        return user
+

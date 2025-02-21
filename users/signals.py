@@ -6,7 +6,9 @@ from .models import UserProfile, CustomUser
 @receiver(post_save, sender=CustomUser)
 def create_user_profile(sender, instance, created, **kwargs):
     if created:
-        UserProfile.objects.create(user=instance)
+        role = 'admin' if instance.is_superuser else 'user'
+        UserProfile.objects.create(user=instance, role=role)
+
 
 # Save the UserProfile when a User is saved (if the UserProfile exists)
 @receiver(post_save, sender=CustomUser)
