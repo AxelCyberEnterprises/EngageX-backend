@@ -7,6 +7,6 @@ class PaymentTransactionSerializer(serializers.ModelSerializer):
     class Meta:
         model = PaymentTransaction
         fields = [
-            'id', 'user_email', 'transaction_id', 'amount', 
+            'id', 'user_email', 'transaction_id', 
             'credits', 'status', 'gateway_response', 'created_at', 'updated_at'
         ]

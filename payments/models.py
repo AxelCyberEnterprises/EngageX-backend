@@ -17,7 +17,7 @@ class PaymentTransaction(models.Model):
         related_name='payment_transactions'
     )
     transaction_id = models.CharField(max_length=100, blank=True, null=True)
-    amount = models.DecimalField(max_digits=10, decimal_places=2)
+    # amount = models.DecimalField(max_digits=10, decimal_places=2)
     credits = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
     status = models.CharField(max_length=10, choices=STATUS_CHOICES, default=STATUS_PENDING)
     gateway_response = models.JSONField(blank=True, null=True)
