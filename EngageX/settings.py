@@ -50,6 +50,9 @@ INSTALLED_APPS = [
     # Apps for authentication
     'djoser',
     'rest_framework.authtoken',
+
+    # API Documentation
+    'drf_yasg',
 ]
 
 MIDDLEWARE = [
