@@ -37,12 +37,11 @@ EngageX is an AI-powered application that helps users improve their speaking, pr
 ## Installation
 
 1. **Clone the Repository:**
-   git clone https://github.com/your_org/engagex-backend.git
-   cd engagex-backend
+   git clone https://github.com/AxelCyberEnterprises/EngageX-backend.git
 
 2. Create a Virtual Environment:
 python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
+source venv/bin/activate  # On Windows: venv/Scripts/activate
 
 3. Install Dependencies:
 pip install -r requirements.txt
