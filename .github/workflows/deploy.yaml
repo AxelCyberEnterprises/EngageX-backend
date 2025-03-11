@@ -16,7 +16,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: 3.10  # Change this to your app's Python version
+          python-version: "3.11"  # Change this to your app's Python version
 
       - name: Install AWS CLI
         run: |
