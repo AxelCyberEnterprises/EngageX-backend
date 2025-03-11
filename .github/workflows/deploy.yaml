@@ -38,6 +38,5 @@ jobs:
           EB_APPLICATION_NAME: ${{ secrets.EB_APPLICATION_NAME }}
           EB_ENVIRONMENT_NAME: ${{ secrets.EB_ENVIRONMENT_NAME }}
         run: |
-          eb init $EB_APPLICATION_NAME --platform "Python 3.13" --region $AWS_REGION
           eb use $EB_ENVIRONMENT_NAME
           eb deploy
