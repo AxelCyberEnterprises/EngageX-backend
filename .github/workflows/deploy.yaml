@@ -38,5 +38,5 @@ jobs:
           EB_APPLICATION_NAME: ${{ secrets.EB_APPLICATION_NAME }}
           EB_ENVIRONMENT_NAME: ${{ secrets.EB_ENVIRONMENT_NAME }}
         run: |
-          eb use $EB_ENVIRONMENT_NAME
-          eb deploy
+         eb use $EB_ENVIRONMENT_NAME --region $AWS_REGION
+         eb deploy --region $AWS_REGION
