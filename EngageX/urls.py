@@ -20,7 +20,7 @@ schema_view = get_schema_view(
 )
 
 def home(request):
-    return JsonResponse({"message": "Welcome to EngageX API v2"})
+    return JsonResponse({"message": "Welcome to EngageX API deploying from Github actions ...."})
 
 
 urlpatterns = [
