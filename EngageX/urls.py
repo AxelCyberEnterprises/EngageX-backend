@@ -1,6 +1,10 @@
 from django.contrib import admin
 from django.urls import path, include, re_path
+<<<<<<< HEAD
 
+=======
+from django.http import JsonResponse
+>>>>>>> deploy
 from rest_framework import permissions
 
 from drf_yasg.views import get_schema_view
@@ -19,6 +23,13 @@ schema_view = get_schema_view(
     permission_classes=[permissions.AllowAny],
 )
 
+<<<<<<< HEAD
+=======
+def home(request):
+    return JsonResponse({"message": "Welcome to EngageX API V2 (Update from github v3...)"})
+
+
+>>>>>>> deploy
 urlpatterns = [
 
     # URL config for Swagger
@@ -26,6 +37,10 @@ urlpatterns = [
     path('swagger/', schema_view.with_ui('swagger', cache_timeout=0), name='schema-swagger-ui'),
     path('redoc/', schema_view.with_ui('redoc', cache_timeout=0), name='schema-redoc'),
 
+<<<<<<< HEAD
+=======
+    path("", home, name="home"),
+>>>>>>> deploy
     path('admin/', admin.site.urls),
     path('users/', include('users.urls')),
     path('payments/', include('payments.urls')),

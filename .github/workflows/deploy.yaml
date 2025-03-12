@@ -1,0 +1,43 @@
+name: Deploy to AWS Elastic Beanstalk
+
+on:
+  push:
+    branches:
+      - deploy  # Change if your deployment branch is different
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"  # Change this to your app's Python version
+
+      - name: Install AWS CLI
+        run: |
+          curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+          unzip -o awscliv2.zip
+          sudo ./aws/install --update
+          aws --version  # Verify installation
+
+      - name: Install Elastic Beanstalk CLI
+        run: |
+          pip install --upgrade awsebcli
+          eb --version  # Verify installation
+
+      - name: Deploy to Elastic Beanstalk
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: ${{ secrets.AWS_REGION }}
+          EB_APPLICATION_NAME: Exchange-v2  #${{ secrets.EB_APPLICATION_NAME }}
+          EB_ENVIRONMENT_NAME: Exchange-v2-env  #${{ secrets.EB_ENVIRONMENT_NAME }}
+        run: | 
+         eb init $EB_APPLICATION_NAME --platform "Python 3.13" --region $AWS_REGION
+         eb use $EB_ENVIRONMENT_NAME --region $AWS_REGION 
+         eb deploy --region $AWS_REGION

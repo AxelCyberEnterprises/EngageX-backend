@@ -27,7 +27,7 @@ SECRET_KEY = 'django-insecure-wfl*mho^tyaghxhwx4p^2u8)yl#gw+^ub&(=!m#=!x3rrqo1og
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = ['.elasticbeanstalk.com', '*']
 
 
 # Application definition
@@ -137,20 +137,47 @@ WSGI_APPLICATION = 'EngageX.wsgi.application'
 # }
 
 
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': config('POSTGRESQL_DATABASE_NAME'),
-        'USER': config('POSTGRESQL_USERNAME'),
-        'PASSWORD': config('POSTGRESQL_PASSWORD'),
-        'HOST': config('POSTGRESQL_SERVER_NAME'),
-        'PORT': config('PORT', default='5432'),
-        'OPTIONS': {
-            'sslmode': 'require',
-        },
-    }
-}
+# DATABASES = {
+#     'default': {
+#         'ENGINE': 'django.db.backends.postgresql',
+#         'NAME': config('POSTGRESQL_DATABASE_NAME'),
+#         'USER': config('POSTGRESQL_USERNAME'),
+#         'PASSWORD': config('POSTGRESQL_PASSWORD'),
+#         'HOST': config('POSTGRESQL_SERVER_NAME'),
+#         'PORT': config('PORT', default='5432'),
+#         'OPTIONS': {
+#             'sslmode': 'require',
+#         },
+#     }
+# }
 
+if 'RDS_HOSTNAME' in os.environ:
+    # Production settings (AWS RDS MySQL)
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.postgresql',
+            'NAME': os.environ['POSTGRESQL_DATABASE_NAME'],
+            'USER': os.environ['POSTGRESQL_USERNAME'],
+            'PASSWORD': os.environ['POSTGRESQL_PASSWORD'],
+            'HOST': os.environ['POSTGRESQL_SERVER_NAME'],
+            'PORT': os.environ.get('POSTGRESS_PORT', default='5432'),
+        }
+    }
+else:
+    # Local development settings (PostgreSQL)
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.postgresql',
+            'NAME': config('POSTGRESQL_DATABASE_NAME'),
+            'USER': config('POSTGRESQL_USERNAME'),
+            'PASSWORD': config('POSTGRESQL_PASSWORD'),
+            'HOST': config('POSTGRESQL_SERVER_NAME'),
+            'PORT': config('PORT', default='5432'),
+            'OPTIONS': {
+                'sslmode': 'require',
+            },
+        }
+    }
 
 
 # Password validation
@@ -192,6 +219,7 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/4.2/howto/static-files/
 
 STATIC_URL = 'static/'
+STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/4.2/ref/settings/#default-auto-field

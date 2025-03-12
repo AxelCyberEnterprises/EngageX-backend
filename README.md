@@ -49,10 +49,17 @@ pip install -r requirements.txt
 4. Configure Environment Variables: Create a .env file in the project root (the same directory as manage.py) with content similar to:
 #PostgreSQL Config
 POSTGRESQL_DATABASE_NAME=database1
+<<<<<<< HEAD
 POSTGRESQL_USERNAME=postgres
 POSTGRESQL_PASSWORD=Engage_x001
 POSTGRESQL_SERVER_NAME=engage-x-db1.c9u4wo0i8p8q.eu-north-1.rds.amazonaws.com
 PORT=5432
+=======
+export POSTGRESQL_USERNAME=postgres
+export POSTGRESQL_PASSWORD=Engage_x001
+export POSTGRESQL_SERVER_NAME=engage-x-db1.c9u4wo0i8p8q.eu-north-1.rds.amazonaws.com
+export PORT=5432
+>>>>>>> deploy
 
 5. Run Migrations:
 python manage.py makemigrations
