@@ -21,6 +21,17 @@ class PracticeSession(models.Model):
     date = models.DateTimeField(auto_now_add=True)
     duration = models.DurationField(help_text="Duration of the session")
     note = models.TextField(blank=True, null=True, help_text="Optional note (for users)")
+    pauses = models.IntegerField(default=0)
+    emotional_expression = models.TextField(blank=True, null=True)
+    tone = models.TextField(blank=True, null=True)
+    pronunciation = models.TextField(blank=True, null=True)
+    content_organization = models.TextField(blank=True, null=True)
+    emotional_impact = models.TextField(blank=True, null=True)
+    audience_engagement = models.TextField(blank=True, null=True)
+    transformative_potential = models.TextField(blank=True, null=True)
+    visual_communication = models.TextField(blank=True, null=True)
+    total_time_saved = models.IntegerField(default=0)
+    slide_specific_timing = models.JSONField(default=dict)
 
     def __str__(self):
         return f"{self.session_name} by {self.user.email}"

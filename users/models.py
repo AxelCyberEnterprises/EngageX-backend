@@ -73,9 +73,11 @@ class UserProfile(models.Model):
     # Role configuration: Only two roles.
     ADMIN = 'admin'
     USER = 'user'
+    COACH = 'coach'
     ROLE_CHOICES = [
         (ADMIN, 'Admin'),
         (USER, 'User'),
+        (COACH, 'Coach'),
     ]
     role = models.CharField(
         max_length=20,
@@ -88,6 +90,9 @@ class UserProfile(models.Model):
 
     def is_user(self):
         return self.role == self.USER
+
+    def is_coach(self):
+        return self.role == self.COACH
 
     # New signup field: user intent, now as a choice field.
     INTENT_CHOICES = [

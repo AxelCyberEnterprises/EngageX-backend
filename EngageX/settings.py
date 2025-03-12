@@ -46,6 +46,7 @@ INSTALLED_APPS = [
     'users',
     'payments',
     'practice_sessions',
+    'streaming',
 
     # Apps for authentication
     'djoser',
@@ -124,6 +125,14 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = 'EngageX.wsgi.application'
+
+ASGI_APPLICATION = 'EngageX.asgi.application'
+
+# Socket.IO settings
+SOCKETIO = {
+    'CORS_ALLOWED_ORIGINS': '*',  # Configure this appropriately in production
+    'ASYNC_MODE': 'asgi',
+}
 
 
 # Database

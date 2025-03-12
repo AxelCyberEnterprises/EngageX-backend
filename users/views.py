@@ -5,6 +5,7 @@ from django.core.cache import cache
 from django.core.mail import EmailMessage
 from django.conf import settings
 from django.contrib.auth import get_user_model, authenticate
+from django.utils import timezone
 
 from rest_framework.authtoken.models import Token
 from rest_framework import viewsets, status, permissions
@@ -12,6 +13,7 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.decorators import action
+from rest_framework.parsers import MultiPartParser, FormParser
 
 from .serializers import (
     UserSerializer,  UserProfileSerializer,
@@ -24,6 +26,7 @@ import random, tempfile, os
 
 from google.oauth2 import id_token
 from google.auth.transport import requests
+import boto3
 
 # Authentication
 
@@ -41,6 +44,10 @@ class UserCreateViewSet(viewsets.ModelViewSet):
 
     def create(self, request, *args, **kwargs):
         try:
+            # Check for existing user with the same email
+            if CustomUser.objects.filter(email=request.data.get('email')).exists():
+                raise ValidationError("User with this email already exists.")
+
             serializer = self.get_serializer(data=request.data)
             serializer.is_valid(raise_exception=True)
 
@@ -80,7 +87,7 @@ class UserCreateViewSet(viewsets.ModelViewSet):
             # Handle validation errors (e.g., user already exists)
             response_data = {
                 "status": "fail",
-                "message": "User with this email already exists.",
+                "message": str(e),
                 "data": {}
             }
             return Response(response_data, status=status.HTTP_400_BAD_REQUEST)
@@ -282,9 +289,13 @@ class PasswordResetConfirmView(APIView):
         otp = request.data.get("otp")
         new_password = request.data.get("new_password")
 
+        # Log the incoming request data
+        print(f"Password reset request received. Email: {email}, OTP: {otp}, New Password: {new_password}")
+
         # Validate required fields
         if not email or not otp or not new_password:
             missing_fields = [field for field in ["email", "otp", "new_password"] if not request.data.get(field)]
+            print(f"Missing required fields: {', '.join(missing_fields)}")
             return Response(
                 {"status": "error", "message": f"Missing required fields: {', '.join(missing_fields)}"},
                 status=status.HTTP_400_BAD_REQUEST
@@ -293,32 +304,63 @@ class PasswordResetConfirmView(APIView):
         try:
             # Retrieve user by email
             user = CustomUser.objects.get(email=email)
+            print(f"User found: {user.email}")
             
             # Retrieve cached OTP
             cached_otp = cache.get(f"password_reset_otp_{user.id}")
+            print(f"Cached OTP: {cached_otp}")
 
             # Check if OTP is expired or invalid
             if cached_otp is None:
+                print("OTP expired or invalid")
                 return Response({"status": "error", "message": "OTP expired or invalid"}, status=status.HTTP_400_BAD_REQUEST)
 
             # Check if OTP is correct
             if str(cached_otp) != str(otp):
+                print("OTP is incorrect")
                 return Response({"status": "error", "message": "OTP is incorrect"}, status=status.HTTP_400_BAD_REQUEST)
+
+            # Log user existence before setting the password
+            print(f"User exists: {user.email}")
+
+            # Log the password being set (length only for security reasons)
+            print(f"Setting new password of length: {len(new_password)}")
 
             # Set new password
             user.set_password(new_password)
             user.save()
+            print("Password reset successfully")
             
             # Clear OTP from cache after successful reset
             cache.delete(f"password_reset_otp_{user.id}")
+
+            # Invalidate user sessions after password reset
+            from django.contrib.sessions.models import Session
+            sessions = Session.objects.filter(expire_date__gte=timezone.now())
+            for session in sessions:
+                data = session.get_decoded()
+                if user.id == data.get('_auth_user_id'):
+                    session.delete()
+            print("User sessions invalidated")
+
+            # Log the password hash for verification
+            print(f"Password hash: {user.password}")
 
             # Success response
             return Response({"status": "success", "message": "Password reset successfully"}, status=status.HTTP_200_OK)
         
         except CustomUser.DoesNotExist:
-            # Error response if user is not found
+            print("User with this email does not exist")
             return Response({"status": "error", "message": "User with this email does not exist"}, status=status.HTTP_404_NOT_FOUND)
         
+        except Exception as e:
+            # Log unexpected errors
+            print("An unexpected error occurred during password reset:", str(e))
+            return Response({
+                "status": "error",
+                "message": "An unexpected error occurred. Please try again later."
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
 
 class CustomUserViewSet(UserViewSet):
     """
@@ -353,7 +395,6 @@ class CustomUserViewSet(UserViewSet):
         }, status=status.HTTP_200_OK)
 
 
-
 class UserProfileViewSet(viewsets.ModelViewSet):
     """
     Returns the user profile based on the roles.
@@ -379,7 +420,6 @@ class UserProfileViewSet(viewsets.ModelViewSet):
 
         # Default: Return an empty queryset
         return UserProfile.objects.none()
-
 
 
 class UpdateProfileView(APIView):
@@ -633,3 +673,15 @@ class UserAssignmentViewSet(viewsets.ModelViewSet):
         except UserAssignment.DoesNotExist:
             print(f"No admin assigned for user: {user_email}")
             return Response({'error': 'No admin assigned for this user.'}, status=status.HTTP_404_NOT_FOUND)
+
+
+class SlideUploadView(APIView):
+    parser_classes = (MultiPartParser, FormParser)
+
+    def post(self, request, *args, **kwargs):
+        file_obj = request.data['file']
+        # Save the file to your storage solution
+        # For example, using S3:
+        s3 = boto3.client('s3')
+        s3.upload_fileobj(file_obj, 'mybucket', file_obj.name)
+        return Response(status=status.HTTP_201_CREATED)

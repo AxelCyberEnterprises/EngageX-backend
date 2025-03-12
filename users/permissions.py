@@ -21,11 +21,11 @@ class IsAdmin(BasePermission):
 #         return obj.user == request.user
 
 
-# class IsCoach(BasePermission):
-#     """Coaches can access users assigned to them."""
-#     def has_permission(self, request, view):
-#         return request.user.is_authenticated and request.user.userprofile.is_coach()
+class IsCoach(BasePermission):
+    """Coaches can access users assigned to them."""
+    def has_permission(self, request, view):
+        return request.user.is_authenticated and request.user.userprofile.role == 'coach'
 
-#     def has_object_permission(self, request, view, obj):
-#         # Coaches can only access presenters they are assigned to
-#         return obj.user in request.user.assigned_presenters.all()
+    def has_object_permission(self, request, view, obj):
+        # Coaches can only access presenters they are assigned to
+        return obj.user in request.user.assigned_presenters.all()

@@ -11,14 +11,17 @@ class CustomTokenCreateSerializer(TokenCreateSerializer):
     def validate(self, attrs):
         email = attrs.get('email')
         password = attrs.get('password')
-        print(f"Attempting to authenticate user with email: {email}")
+        print(f"Authentication attempt for email: {email}")
+        
+        # Log the password length for debugging purposes (do not log the actual password)
+        print(f"Password length: {len(password) if password else 'No password provided'}")
 
         # Authenticate using the email as the username
         user = authenticate(username=email, password=password)
 
         # Check if the authentication failed
         if user is None:
-            print("Authentication failed.")
+            print("Authentication failed: No user found or incorrect password.")
             raise ValidationError({
                 "message": "Invalid credentials.",
                 "email": ["No user found with this email address or password is incorrect."]
@@ -26,6 +29,7 @@ class CustomTokenCreateSerializer(TokenCreateSerializer):
 
         # Check if the user is inactive
         if not user.is_active:
+            print("Authentication failed: User account is inactive.")
             raise ValidationError({
                 "message": "Account inactive.",
                 "email": ["Your account has not been verified. Please check your email for the verification link."]
@@ -78,7 +82,7 @@ class UpdateProfileSerializer(serializers.ModelSerializer):
 class UserProfileSerializer(serializers.ModelSerializer):
     class Meta:
         model = UserProfile
-        fields = ['date_of_birth', 'gender', 'profile_picture']
+        fields = ['date_of_birth', 'gender', 'profile_picture', 'country']
 
 
 class ChangePasswordSerializer(serializers.Serializer):
