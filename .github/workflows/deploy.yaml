@@ -3,7 +3,7 @@ name: Deploy to AWS Elastic Beanstalk
 on:
   push:
     branches:
-      - deploy  # Change if your deployment branch is different
+      - main  # Change if your deployment branch is different
 
 jobs:
   deploy:
