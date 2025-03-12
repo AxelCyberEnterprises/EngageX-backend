@@ -37,12 +37,11 @@ EngageX is an AI-powered application that helps users improve their speaking, pr
 ## Installation
 
 1. **Clone the Repository:**
-   git clone https://github.com/your_org/engagex-backend.git
-   cd engagex-backend
+   git clone https://github.com/AxelCyberEnterprises/EngageX-backend.git
 
 2. Create a Virtual Environment:
 python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
+source venv/bin/activate  # On Windows: venv/Scripts/activate
 
 3. Install Dependencies:
 pip install -r requirements.txt
@@ -50,10 +49,17 @@ pip install -r requirements.txt
 4. Configure Environment Variables: Create a .env file in the project root (the same directory as manage.py) with content similar to:
 #PostgreSQL Config
 POSTGRESQL_DATABASE_NAME=database1
+<<<<<<< HEAD
 POSTGRESQL_USERNAME=postgres
 POSTGRESQL_PASSWORD=Engage_x001
 POSTGRESQL_SERVER_NAME=engage-x-db1.c9u4wo0i8p8q.eu-north-1.rds.amazonaws.com
 PORT=5432
+=======
+export POSTGRESQL_USERNAME=postgres
+export POSTGRESQL_PASSWORD=Engage_x001
+export POSTGRESQL_SERVER_NAME=engage-x-db1.c9u4wo0i8p8q.eu-north-1.rds.amazonaws.com
+export PORT=5432
+>>>>>>> deploy
 
 5. Run Migrations:
 python manage.py makemigrations
