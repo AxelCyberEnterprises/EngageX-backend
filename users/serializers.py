@@ -74,9 +74,11 @@ class UserSerializer(serializers.ModelSerializer):
 
 
 class UpdateProfileSerializer(serializers.ModelSerializer):
+    profile_picture = serializers.ImageField(required=False)  # Explicitly define as ImageField, optional
+
     class Meta:
-        model = CustomUser
-        fields = ['first_name', 'last_name', 'email']
+        model = UserProfile  # Target UserProfile model
+        fields = ['profile_picture', 'gender']
 
 
 class UserProfileSerializer(serializers.ModelSerializer):

@@ -24,3 +24,11 @@ class PracticeSessionSerializer(serializers.ModelSerializer):
         if details_data:
             SessionDetail.objects.create(session=session, **details_data)
         return session
+
+
+class PracticeSessionSlidesSerializer(serializers.ModelSerializer):
+    slides = serializers.FileField(required=False) # Make slides field optional in serializer
+
+    class Meta:
+        model = PracticeSession
+        fields = ['slides'] # Only include the slides field

@@ -405,26 +405,30 @@ class UserProfileViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         user = self.request.user
 
-        if user.userprofile.is_admin():
-            # Admins can see everything
-            return UserProfile.objects.all()
+        if getattr(self, 'swagger_fake_view', False) or user.is_anonymous:
+            return UserProfile.objects.none() # Return empty queryset for schema generation or anonymous users
 
-        if user.userprofile.is_presenter():
-            # Presenters can only see their own profile
-            return UserProfile.objects.filter(user=user)
+        if hasattr(user, 'userprofile'): # Check if userprofile exists before accessing it
+            if user.userprofile.is_admin():
+                # Admins can see everything
+                return UserProfile.objects.all()
 
-        if user.userprofile.is_coach():
-            # Coaches can see assigned users
-            assigned_users = UserAssignment.objects.filter(coach=user).values_list('presenter', flat=True)
-            return UserProfile.objects.filter(user_id__in=assigned_users)
+            elif user.userprofile.is_presenter():
+                # Presenters can only see their own profile
+                return UserProfile.objects.filter(user=user)
 
-        # Default: Return an empty queryset
+            elif user.userprofile.is_coach():
+                # Coaches can see assigned users
+                assigned_users = UserAssignment.objects.filter(coach=user).values_list('presenter', flat=True)
+                return UserProfile.objects.filter(user_id__in=assigned_users)
+
+        # Default: Return an empty queryset for non-admin, non-presenter, non-coach and users without userprofile
         return UserProfile.objects.none()
 
 
 class UpdateProfileView(APIView):
     """
-    Allows users to update their profiles, fully or partially.
+    Allows users to update their profiles (UserProfile), including profile picture, fully or partially.
     """
     permission_classes = [permissions.IsAuthenticated]
 
@@ -432,19 +436,16 @@ class UpdateProfileView(APIView):
         user = request.user
         profile = user.userprofile  # Assuming a OneToOne relationship
 
-        # Update user fields
-        user_serializer = UpdateProfileSerializer(user, data=request.data, partial=True)
-        profile_serializer = UserProfileSerializer(profile, data=request.data, partial=True)
+        # Use UpdateProfileSerializer for UserProfile
+        profile_serializer = UpdateProfileSerializer(profile, data=request.data, partial=True)
 
-        if user_serializer.is_valid() and profile_serializer.is_valid():
-            user_serializer.save()
-            profile_serializer.save()
+        if profile_serializer.is_valid(): # Only validate profile_serializer
+            profile_serializer.save() # Only save profile_serializer
             return Response({
                 "status": "success",
                 "message": "Profile updated successfully.",
                 "data": {
-                    "user": user_serializer.data,
-                    "profile": profile_serializer.data
+                    "profile": profile_serializer.data # Return only profile data as we are only updating profile now in this endpoint.
                 }
             }, status=status.HTTP_200_OK)
 
@@ -452,8 +453,7 @@ class UpdateProfileView(APIView):
             "status": "fail",
             "message": "Profile update failed.",
             "errors": {
-                "user": user_serializer.errors,
-                "profile": profile_serializer.errors
+                "profile": profile_serializer.errors # Only return profile serializer errors
             }
         }, status=status.HTTP_400_BAD_REQUEST)
     
@@ -673,15 +673,3 @@ class UserAssignmentViewSet(viewsets.ModelViewSet):
         except UserAssignment.DoesNotExist:
             print(f"No admin assigned for user: {user_email}")
             return Response({'error': 'No admin assigned for this user.'}, status=status.HTTP_404_NOT_FOUND)
-
-
-class SlideUploadView(APIView):
-    parser_classes = (MultiPartParser, FormParser)
-
-    def post(self, request, *args, **kwargs):
-        file_obj = request.data['file']
-        # Save the file to your storage solution
-        # For example, using S3:
-        s3 = boto3.client('s3')
-        s3.upload_fileobj(file_obj, 'mybucket', file_obj.name)
-        return Response(status=status.HTTP_201_CREATED)

@@ -31,7 +31,10 @@ class PracticeSession(models.Model):
     transformative_potential = models.TextField(blank=True, null=True)
     visual_communication = models.TextField(blank=True, null=True)
     total_time_saved = models.IntegerField(default=0)
-    slide_specific_timing = models.JSONField(default=dict)
+    slide_specific_timing = models.JSONField(default=dict, null=True, blank=True)
+
+    # Add this field for slides upload
+    slides = models.FileField(upload_to='session_slides/%Y/%m/%d/', blank=True, null=True, help_text="Optional slides for the session")
 
     def __str__(self):
         return f"{self.session_name} by {self.user.email}"
