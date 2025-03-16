@@ -24,7 +24,7 @@ schema_view = get_schema_view(
 )
 
 def home(request):
-    return JsonResponse({"message": "Welcome to EngageX API V2 (Update from github v4....)"})
+    return JsonResponse({"message": "Welcome to EngageX API V2 (Update from github v5 triggred by yusuf....)"})
 
 def send_plain_email(request):
     ses_client = boto3.client(
