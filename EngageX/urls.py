@@ -35,13 +35,13 @@ def send_plain_email(request):
 
     response = ses_client.send_email(
         Destination={
-            "ToAddresses": ["lukheebalo@gmail.com"],  # Change this
+            "ToAddresses": ["engagex@axelcyber.com"],  # Change this
         },
         Message={
             "Body": {
                 "Text": {
                     "Charset": CHARSET,
-                    "Data": "Hello, world!",
+                    "Data": "Hello, axel cyber test!",
                 }
             },
             "Subject": {
