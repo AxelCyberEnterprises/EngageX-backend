@@ -2,7 +2,7 @@
 
 ## 1. Introduction
 
-This document outlines the deployment process for a Python API to AWS Elastic Beanstalk, including Continuous Integration/Continuous Deployment (CI/CD) via GitHub Actions, secure resource access to Amazon Simple Email Service (SES) and Amazon Simple Storage Service (S3), integration with an Amazon Relational Database Service (RDS) instance, budget alerts, and future production improvements.
+This document outlines the deployment process for a Python (EngageX App) API to AWS Elastic Beanstalk, including Continuous Integration/Continuous Deployment (CI/CD) via GitHub Actions, secure resource access to Amazon Simple Email Service (SES) and Amazon Simple Storage Service (S3), integration with an Amazon Relational Database Service (RDS) instance, budget alerts, and future production improvements.
 
 ## 2. Architecture Overview
 
