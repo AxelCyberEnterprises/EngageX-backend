@@ -680,7 +680,14 @@ def analyze_sentiment(video_path, transcript, metrics):
     )
 
     response = completion.choices[0].message.content
-    return response
+    try:
+        parsed_response = json.loads(response)
+        print(f"DATA TYPE OF RESPONSE:  {type(parsed_response)}")
+    except json.JSONDecoder:
+        print("Invalid JSON format in response.")
+        return None
+    
+    return parsed_response
 
 
 def analyze_results(video_path, audio_output_path):
