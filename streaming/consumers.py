@@ -7,6 +7,7 @@ import random  # Mock sentiment analysis (for demonstration)
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.files import File
+from sentiment_analysis import analyze_results
 
 # Initialize Socket.IO ASGI server, allowing CORS for development.
 sio = socketio.AsyncServer(async_mode='asgi', cors_allowed_origins='*')
@@ -133,6 +134,9 @@ async def perform_video_sentiment_analysis(sid):
     session = client_sessions[sid]
     video_data_for_analysis = session['accumulated_video_data'] # Get accumulated video data
 
+    # save to temp file
+    audio_data_for_analysis = session['accumulated_audio_data'] # Path for extarcted audio
+
     if not video_data_for_analysis:
         print(f"No video data to analyze for session {sid} in this interval.") # Log if no data
         return # No data to analyze in this interval
@@ -141,7 +145,9 @@ async def perform_video_sentiment_analysis(sid):
 
 
     # *** REPLACE THIS MOCK ANALYSIS WITH YOUR ACTUAL VIDEO SENTIMENT ANALYSIS LOGIC ***
-    analysis_result = await mock_video_sentiment_analysis(video_data_for_analysis)  # Placeholder analysis
+    # analysis_result = await mock_video_sentiment_analysis(video_data_for_analysis, audio_data_for_analysis)  # Placeholder analysis
+
+    analysis_result = await analyze_results(video_path=video_data_for_analysis, audio_output_path=audio_data_for_analysis)
 
     # Emit sentiment analysis result back to the specific client
     await sio.emit('video_analysis_result', {
@@ -187,30 +193,32 @@ async def end_stream(sid, data):
         del client_sessions[sid]  # Clean up session data
 
 
-async def mock_video_sentiment_analysis(video_frame_data):
-    """
-    Placeholder for AI-powered video sentiment analysis.
-    REPLACE THIS ENTIRE FUNCTION with your actual video sentiment analysis implementation.
+# async def mock_video_sentiment_analysis(video_frame_data):
+#     """
+#     Placeholder for AI-powered video sentiment analysis.
+#     REPLACE THIS ENTIRE FUNCTION with your actual video sentiment analysis implementation.
 
-    This mock function simulates analyzing video frame data (which would ideally be
-    processed to extract relevant features like facial landmarks, body pose, etc.).
+#     This mock function simulates analyzing video frame data (which would ideally be
+#     processed to extract relevant features like facial landmarks, body pose, etc.).
 
-    Args:
-        video_frame_data (bytes): Encoded video frame data (or features extracted from video).
+#     Args:
+#         video_frame_data (bytes): Encoded video frame data (or features extracted from video).
 
-    Returns:
-        dict: Mock video sentiment analysis result.
-              Structure of this dict should reflect the output of your actual AI model.
-              Example: {'overall_sentiment': 'neutral', 'facial_expression': 'happy', 'body_language': 'confident'}.
-    """
-    await asyncio.sleep(0.02)  # Simulate processing time for video analysis (could be longer in reality)
-    sentiments = ['positive', 'neutral', 'negative']
-    emotions = ['happy', 'sad', 'angry', 'neutral', 'surprised'] # Example facial expressions
+#     Returns:
+#         dict: Mock video sentiment analysis result.
+#               Structure of this dict should reflect the output of your actual AI model.
+#               Example: {'overall_sentiment': 'neutral', 'facial_expression': 'happy', 'body_language': 'confident'}.
+#     """
 
-    return {
-        'overall_sentiment': random.choice(sentiments),
-        'facial_expression': random.choice(emotions),
-        'body_language': random.choice(['confident', 'hesitant', 'engaged', 'disengaged']), # Example body language
-        'confidence_score': random.uniform(0.6, 0.95), # Example confidence score
-        'processing_time_ms': random.randint(20, 150) # Mock processing time in milliseconds
-    }
+
+#     await asyncio.sleep(0.02)  # Simulate processing time for video analysis (could be longer in reality)
+#     sentiments = ['positive', 'neutral', 'negative']
+#     emotions = ['happy', 'sad', 'angry', 'neutral', 'surprised'] # Example facial expressions
+
+#     return {
+#         'overall_sentiment': random.choice(sentiments),
+#         'facial_expression': random.choice(emotions),
+#         'body_language': random.choice(['confident', 'hesitant', 'engaged', 'disengaged']), # Example body language
+#         'confidence_score': random.uniform(0.6, 0.95), # Example confidence score
+#         'processing_time_ms': random.randint(20, 150) # Mock processing time in milliseconds
+#     }
