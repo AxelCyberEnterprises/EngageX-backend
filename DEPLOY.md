@@ -15,6 +15,8 @@ This document outlines the deployment process for a Python (EngageX App) API to 
 * **IAM Roles:** AWS Identity and Access Management roles for granting permissions.
 * **AWS Budgets:** Cost monitoring and alerting.
 
+  ![EngageX Infra](infra.jpeg)
+
 ## 3. Prerequisites
 
 * An AWS account with appropriate permissions.
