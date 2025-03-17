@@ -1,4 +1,4 @@
-# Python API Deployment to AWS Elastic Beanstalk with CI/CD and Secure Resource Access
+# EngageX API Deployment to AWS Elastic Beanstalk with CI/CD and Secure Resource Access
 
 ## 1. Introduction
 
@@ -6,7 +6,7 @@ This document outlines the deployment process for a Python (EngageX App) API to 
 
 ## 2. Architecture Overview
 
-* **Python API:** The backend API developed in Python.
+* **Engage API:** The backend API developed in Python.
 * **AWS Elastic Beanstalk:** Platform as a Service (PaaS) for deploying and managing the API.
 * **GitHub Actions:** CI/CD pipeline for automated deployments.
 * **Amazon RDS:** Relational database service for data persistence.
