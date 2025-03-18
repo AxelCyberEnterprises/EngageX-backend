@@ -391,12 +391,20 @@ def analyze_posture(video_path):
         back_feedback = results_data["back_feedback"]
         neck_feedback = results_data["neck_feedback"]
 
-        # calculate normalized time
-        good_back_time = (gb_time / (gb_time + bb_time)) * video_duration
-        bad_back_time = (bb_time /(gb_time+ bb_time)) * video_duration
 
-        good_neck_time = (gn_time / (gn_time + bn_time)) * video_duration
-        bad_neck_time = (bn_time / (gn_time + bn_time)) * video_duration
+        if (gb_time + bb_time) > 0:
+            good_back_time = (gb_time / (gb_time + bb_time)) * video_duration
+            bad_back_time = (bb_time / (gb_time + bb_time)) * video_duration
+        else:
+            good_back_time = 0
+            bad_back_time = 0
+
+        if (gn_time + bn_time) > 0:
+            good_neck_time = (gn_time / (gn_time + bn_time)) * video_duration
+            bad_neck_time = (bn_time / (gn_time + bn_time)) * video_duration
+        else:
+            good_back_time = 0
+            bad_back_time = 0
         
     # return results in dictionary format
     return {
