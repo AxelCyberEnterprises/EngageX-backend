@@ -57,7 +57,7 @@ PORT=5432
 =======
 export POSTGRESQL_USERNAME=postgres
 export POSTGRESQL_PASSWORD=Engage_x001
-export POSTGRESQL_SERVER_NAME=engage-x-db1.c9u4wo0i8p8q.eu-north-1.rds.amazonaws.com
+export POSTGRESQL_SERVER_NAME=engage-x-db-backup.czamkg8gifje.us-west-1.rds.amazonaws.com
 export PORT=5432
 >>>>>>> deploy
 
