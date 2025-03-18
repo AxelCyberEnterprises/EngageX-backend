@@ -1,6 +1,7 @@
 from django.contrib import admin
 from django.urls import path, include, re_path
 from django.http import JsonResponse
+import boto3
 from django.conf import settings
 from django.conf.urls.static import static
 
@@ -23,7 +24,36 @@ schema_view = get_schema_view(
 )
 
 def home(request):
-    return JsonResponse({"message": "Welcome to EngageX API V2 (Update from github v3...)"})
+    return JsonResponse({"message": "Welcome to EngageX API V2 (Update from github v5 triggred by yusuf....)"})
+
+def send_plain_email(request):
+    ses_client = boto3.client(
+        "ses",
+        region_name="us-west-1",
+    )
+    CHARSET = "UTF-8"
+
+    response = ses_client.send_email(
+        Destination={
+            "ToAddresses": ["engagex@axelcyber.com"],  # Change this
+        },
+        Message={
+            "Body": {
+                "Text": {
+                    "Charset": CHARSET,
+                    "Data": "Hello, axel cyber test!",
+                }
+            },
+            "Subject": {
+                "Charset": CHARSET,
+                "Data": "Test Email from EngageX",
+            },
+        },
+        Source="lukheebalo@gmail.com",  # Change this to an SES verified email
+    )
+
+    return JsonResponse({"message": "Email sent successfully!", "response": response})
+
 
 
 urlpatterns = [
@@ -34,6 +64,7 @@ urlpatterns = [
     path('redoc/', schema_view.with_ui('redoc', cache_timeout=0), name='schema-redoc'),
 
     path("", home, name="home"),
+    path("send-email/", send_plain_email),  # New endpoint
     path('admin/', admin.site.urls),
     path('users/', include('users.urls')),
     path('payments/', include('payments.urls')),
