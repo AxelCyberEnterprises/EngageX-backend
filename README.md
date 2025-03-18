@@ -52,7 +52,7 @@ POSTGRESQL_DATABASE_NAME=database1
 <<<<<<< HEAD
 POSTGRESQL_USERNAME=postgres
 POSTGRESQL_PASSWORD=Engage_x001
-POSTGRESQL_SERVER_NAME=engage-x-db1.c9u4wo0i8p8q.eu-north-1.rds.amazonaws.com
+POSTGRESQL_SERVER_NAME=engage-x-db-backup.czamkg8gifje.us-west-1.rds.amazonaws.com
 PORT=5432
 =======
 export POSTGRESQL_USERNAME=postgres
