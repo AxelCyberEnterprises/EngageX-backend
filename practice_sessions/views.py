@@ -11,7 +11,7 @@ from django.shortcuts import get_object_or_404
 
 from datetime import timedelta
 
-from .models import (PracticeSession, SessionDetail)
+from .models import (PracticeSession)
 from .serializers import (PracticeSessionSerializer, PracticeSessionSlidesSerializer)
 
 
@@ -38,7 +38,7 @@ class PracticeSessionViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['get'])
     def report(self, request, pk=None):
         """
-        Retrieve the full session report (with details) for the given session.
+        Retrieve the full session report for the given session.
         Admins can view any session; regular users can view only their own.
         """
         session = self.get_object()
@@ -49,19 +49,19 @@ class PracticeSessionViewSet(viewsets.ModelViewSet):
 class SessionDashboardView(APIView):
     """
     Dashboard endpoint that returns different aggregated data depending on user role.
-    
+
     For admin users:
       - Total sessions
       - Breakdown of sessions by type (pitch, public speaking, presentation)
       - Sessions over time (for graphing purposes)
       - Recent sessions
-      
+
     For regular users:
-      - Latest session score (derived from session details)
-      - Average performance analytics (e.g. pitch variation, volume control, articulation)
+      - Latest session aggregated data (pauses, tone, emotional_impact, audience_engagement)
+      - Average aggregated data across all their sessions
     """
     permission_classes = [IsAuthenticated]
-    
+
     def get(self, request):
         user = request.user
         data = {}
@@ -71,10 +71,10 @@ class SessionDashboardView(APIView):
             breakdown = sessions.values('session_type').annotate(count=Count('id'))
             last_30_days = now() - timedelta(days=30)
             sessions_over_time = (sessions.filter(date__gte=last_30_days)
-                                  .extra(select={'day': "date(date)"})
-                                  .values('day')
-                                  .annotate(count=Count('id'))
-                                  .order_by('day'))
+                                    .extra(select={'day': "date(date)"})
+                                    .values('day')
+                                    .annotate(count=Count('id'))
+                                    .order_by('day'))
             recent_sessions = sessions.order_by('-date')[:5].values('session_name', 'session_type', 'date')
             data = {
                 "total_sessions": total_sessions,
@@ -84,23 +84,27 @@ class SessionDashboardView(APIView):
             }
         else:
             latest_session = PracticeSession.objects.filter(user=user).order_by('-date').first()
-            if latest_session and hasattr(latest_session, 'details'):
-                details = latest_session.details
-                latest_score = {
-                    "pitch_variation": details.pitch_variation,
-                    "volume_control": details.volume_control,
-                    "articulation": details.articulation,
+            latest_aggregated_data = {}
+            if latest_session:
+                latest_aggregated_data = {
+                    "pauses": latest_session.pauses,
+                    "tone": latest_session.tone,
+                    "emotional_impact": latest_session.emotional_impact,
+                    "audience_engagement": latest_session.audience_engagement,
+                    # Add other relevant aggregated fields here
                 }
-            else:
-                latest_score = {}
-            analytics = SessionDetail.objects.filter(session__user=user).aggregate(
-                avg_pitch=Avg('pitch_variation'),
-                avg_volume=Avg('volume_control'),
-                avg_articulation=Avg('articulation')
+
+            # Calculate averages of the aggregated fields across all user sessions
+            aggregated_averages = PracticeSession.objects.filter(user=user).aggregate(
+                avg_pauses=Avg('pauses'),
+                avg_emotional_impact=Avg('emotional_impact'),
+                avg_audience_engagement=Avg('audience_engagement'),
+                # Add averages for other relevant aggregated fields
             )
+
             data = {
-                "latest_session_score": latest_score,
-                "performance_analytics": analytics,
+                "latest_session_data": latest_aggregated_data,
+                "average_performance": aggregated_averages,
             }
         return Response(data, status=status.HTTP_200_OK)
 
