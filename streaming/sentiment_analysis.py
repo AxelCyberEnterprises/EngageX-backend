@@ -106,13 +106,9 @@ def score_pauses(appropriate_pauses, long_pauses):
     score = scale_to_score(appropriate_pauses, 12, 30)
 
     # apply penalty for long pauses: each long pause beyond 3 reduces the score by 1.
-
-    for long_pauses in range(3):
-        score -= 10
-        long_pauses -= 1
-    
-
     if long_pauses > 3:
+        penalty = (long_pauses -3) * 10
+        score = max(0, score - penalty)
         rationale += f", with {long_pauses} long pauses (>2s) penalizing flow"
     return score, rationale
 
@@ -131,18 +127,18 @@ def score_speaking_rate(speaking_rate):
 
 def score_pv(pitch_variability):
     """scores pitch variability with a peak at 50-60."""
-    if 60 <= pitch_variability <= 80:
-        rationale = "Optimal pitch variability; dynamic yet controlled expressiveness."
+    if 60 <= pitch_variability <= 85:
+        rationale = "Optimal pitch variability, with dynamic yet controlled expressiveness, promoting engagement and emotional impact"
     elif 45 <= pitch_variability < 60:
-        rationale = "Slightly low pitch variability; could benefit from more variation for expressiveness."
+        rationale = "Fair pitch variability; could benefit from more variation for expressiveness."
     elif 30 <= pitch_variability < 45:
-        rationale = "Fair pitch variability; the delivery sounds somewhat monotone."
+        rationale = "Slightly low pitch variability; the delivery sounds somewhat monotone."
     elif 15 <= pitch_variability < 30:
         rationale = "Extremely low pitch variability; speech is overly monotone and lacks expressiveness."
     else:
         rationale = "Slightly excessive pitch variability; the delivery may seem erratic."
 
-    score = scale_to_score(pitch_variability, 50, 80)
+    score = scale_to_score(pitch_variability, 50, 85)
 
     return score, rationale
 
@@ -320,8 +316,7 @@ def capture_frames(video_path):
 
 # Processing Thread
 def process_frames():
-    back_threshold = 10
-    neck_threshold = 10
+    posture_threshold = 5
 
     while not stop_flag.is_set() or not frame_queue.empty():
         if not frame_queue.empty():
@@ -336,31 +331,24 @@ def process_frames():
                     results_data["back_angles"].append(angles['back_inclination'])
                     results_data["neck_angles"].append(angles['neck_inclination'])
 
-                if angles["back_inclination"] > back_threshold:
+                if angles["back_inclination"] > posture_threshold:
                     with lock:
                         results_data["bad_back_frames"] += 1
                         results_data["back_feedback"] = "Bad back posture"
-                elif 5 <= angles["back_inclination"] < 10:
+                else:
                     with lock:
                         results_data["good_back_frames"] += 1
                         results_data["back_feedback"] = "Good back posture"
-                else:
-                    with lock:
-                        results_data["bad_back_frames"] += 1
-                        results_data["back_feedback"] = "Stiff back postute"
 
-                if angles["neck_inclination"] > neck_threshold:
+
+                if angles["neck_inclination"] > posture_threshold:
                     with lock:
                         results_data["bad_neck_frames"] += 1
                         results_data["neck_feedback"] = "Bad neck posture"
-                elif 5 <= angles["neck_inclination"] < 10:
-                    with lock:
-                        results_data["good_neck_frames"] += 1
-                        results_data["neck_feedback"] = "Good neck posture"
                 else:
                     with lock:
                         results_data["good_neck_frames"] += 1
-                        results_data["neck_feedback"] = "Stiff neck posture"
+                        results_data["neck_feedback"] = "Good neck posture"
 
                 mp.solutions.drawing_utils.draw_landmarks(frame, results.pose_landmarks, mp_pose.POSE_CONNECTIONS)
 
@@ -595,30 +583,30 @@ def analyze_sentiment(video_path, transcript, metrics):
 
 def analyze_results(video_path, audio_output_path):
     start_time = time.time()
-    # audio_output_path = "test.mp3"
-    # video_path = "video_3.mp4"
 
-    # add try-excepts
+    try:
+        extracted_audio_path = extract_audio(video_path, audio_output_path)
+
+        if not extracted_audio_path:
+            print("Audio extraction failed. Exiting...")
+            return
     
-    extracted_audio_path = extract_audio(video_path, audio_output_path)
+        # run transcription and audio analysis in parallel
+        with ThreadPoolExecutor() as executor:
+            future_transcription = executor.submit(transcribe_audio, extracted_audio_path)
+            future_audio_analysis = executor.submit(process_audio, extracted_audio_path, future_transcription.result())
 
-    if not extracted_audio_path:
-        print("Audio extraction failed. Exiting...")
-        return
+        transcript = future_transcription.result()
+        metrics = future_audio_analysis.result()
 
-    # run transcription and audio analysis in parallel
-    with ThreadPoolExecutor() as executor:
-        future_transcription = executor.submit(transcribe_audio, extracted_audio_path)
-        future_audio_analysis = executor.submit(process_audio, extracted_audio_path, future_transcription.result())
+        sentiment_analysis = analyze_sentiment(video_path, transcript, metrics)
+        
 
-    transcript = future_transcription.result()
-    metrics = future_audio_analysis.result()
+        print(f"\nSentiment Analysis for {audio_output_path}:\n\n", sentiment_analysis)
+        elapsed_time = time.time() - start_time
+        print(f"\nElapsed time for everything: {elapsed_time:.2f} seconds")
 
-    sentiment_analysis = analyze_sentiment(video_path, transcript, metrics)
-    
-
-    print(f"\nSentiment Analysis for {audio_output_path}:\n\n", sentiment_analysis)
-    elapsed_time = time.time() - start_time
-    print(f"\nElapsed time for everything: {elapsed_time:.2f} seconds")
+    except Exception as e:
+        print(f"Error during audio extraction: {e}")
 
     return sentiment_analysis
