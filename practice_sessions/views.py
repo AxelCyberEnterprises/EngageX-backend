@@ -11,8 +11,31 @@ from django.shortcuts import get_object_or_404
 
 from datetime import timedelta
 
-from .models import (PracticeSession)
-from .serializers import (PracticeSessionSerializer, PracticeSessionSlidesSerializer)
+from .models import (PracticeSession, PracticeSequence)
+from .serializers import (PracticeSessionSerializer, PracticeSessionSlidesSerializer, PracticeSequenceSerializer)
+
+
+class PracticeSequenceViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for handling practice session sequences.
+    Regular users can manage their own sequences; admin users can manage all.
+    """
+    serializer_class = PracticeSequenceSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        user = self.request.user
+
+        if getattr(self, 'swagger_fake_view', False) or user.is_anonymous:
+            return PracticeSequence.objects.none()
+
+        if hasattr(user, 'userprofile') and user.userprofile.is_admin():
+            return PracticeSequence.objects.all().order_by('-sequence_name')
+
+        return PracticeSequence.objects.filter(user=user).order_by('-sequence_name')
+
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)
 
 
 class PracticeSessionViewSet(viewsets.ModelViewSet):

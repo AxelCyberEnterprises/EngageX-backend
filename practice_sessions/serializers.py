@@ -1,9 +1,19 @@
 from rest_framework import serializers
-from .models import PracticeSession
+from .models import PracticeSession, PracticeSequence
+
+
+class PracticeSequenceSerializer(serializers.ModelSerializer):
+    user_email = serializers.EmailField(source='user.email', read_only=True)
+
+    class Meta:
+        model = PracticeSequence
+        fields = ['sequence_id', 'sequence_name', 'description', 'user_email']
+        read_only_fields = ['sequence_id', 'user_email']
 
 
 class PracticeSessionSerializer(serializers.ModelSerializer):
     user_email = serializers.EmailField(source='user.email', read_only=True)
+    sequence = serializers.PrimaryKeyRelatedField(queryset=PracticeSequence.objects.all(), allow_null=True, required=False)
 
     class Meta:
         model = PracticeSession
@@ -19,6 +29,8 @@ class PracticeSessionSerializer(serializers.ModelSerializer):
             'tone',
             'emotional_impact',
             'audience_engagement',
+            'sequence',
+            'allow_ai_questions',
             # Add other aggregated fields here if you have them in your PracticeSession model
         ]
         read_only_fields = ['id', 'date', 'duration', 'user_email', 'pauses', 'tone', 'emotional_impact', 'audience_engagement'] # These are populated by the backend
@@ -32,6 +44,8 @@ class PracticeSessionSerializer(serializers.ModelSerializer):
         instance.session_name = validated_data.get('session_name', instance.session_name)
         instance.session_type = validated_data.get('session_type', instance.session_type)
         instance.note = validated_data.get('note', instance.note)
+        instance.sequence = validated_data.get('sequence', instance.sequence)
+        instance.allow_ai_questions = validated_data.get('allow_ai_questions', instance.allow_ai_questions)
         instance.save()
         return instance
 
