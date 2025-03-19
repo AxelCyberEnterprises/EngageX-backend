@@ -207,6 +207,7 @@ class CustomTokenCreateView(TokenCreateView):
                     "email": email,
                     "first_name": user.first_name,
                     "last_name": user.last_name,
+                    "is_admin": user.is_superuser
                 }
             }
             return Response(response_data, status=status.HTTP_200_OK)
