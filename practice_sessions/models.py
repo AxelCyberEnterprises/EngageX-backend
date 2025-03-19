@@ -3,6 +3,23 @@ from django.db import models
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.utils import timezone
 from datetime import timedelta
+import uuid  # For generating unique sequence IDs
+
+
+class PracticeSequence(models.Model):
+    """Represents a sequence of practice sessions for improvement."""
+    sequence_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    sequence_name = models.CharField(max_length=100)
+    description = models.TextField(blank=True, null=True)
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="practice_sequences"
+    )
+
+    def __str__(self):
+        return f"{self.sequence_name} by {self.user.email}"
+
 
 class PracticeSession(models.Model):
     SESSION_TYPE_CHOICES = [
@@ -21,47 +38,92 @@ class PracticeSession(models.Model):
     date = models.DateTimeField(auto_now_add=True)
     duration = models.DurationField(help_text="Duration of the session")
     note = models.TextField(blank=True, null=True, help_text="Optional note (for users)")
-    pauses = models.IntegerField(default=0)
-    emotional_expression = models.TextField(blank=True, null=True)
-    tone = models.TextField(blank=True, null=True)
-    pronunciation = models.TextField(blank=True, null=True)
-    content_organization = models.TextField(blank=True, null=True)
-    emotional_impact = models.TextField(blank=True, null=True)
-    audience_engagement = models.TextField(blank=True, null=True)
-    transformative_potential = models.TextField(blank=True, null=True)
-    visual_communication = models.TextField(blank=True, null=True)
-    total_time_saved = models.IntegerField(default=0)
+    pauses = models.IntegerField(default=0) # Aggregated
+    emotional_expression = models.TextField(blank=True, null=True) # Aggregated
+    tone = models.TextField(blank=True, null=True) # Aggregated
+    pronunciation = models.TextField(blank=True, null=True) # Aggregated
+    content_organization = models.TextField(blank=True, null=True) # Aggregated
+    emotional_impact = models.TextField(blank=True, null=True) # Aggregated
+    audience_engagement = models.TextField(blank=True, null=True) # Aggregated
+    transformative_potential = models.TextField(blank=True, null=True) # Aggregated
+    visual_communication = models.TextField(blank=True, null=True) # Aggregated
+    total_time_saved = models.IntegerField(default=0) # Aggregated
     slide_specific_timing = models.JSONField(default=dict, null=True, blank=True)
-
-    # Add this field for slides upload
     slides = models.FileField(upload_to='session_slides/%Y/%m/%d/', blank=True, null=True, help_text="Optional slides for the session")
+    sequence = models.ForeignKey(
+        PracticeSequence,
+        on_delete=models.SET_NULL, # If a sequence is deleted, keep the sessions but disassociate
+        related_name="sessions",
+        null=True,
+        blank=True,
+        help_text="Optional sequence this session belongs to"
+    )
+    allow_ai_questions = models.BooleanField(default=False, help_text="Allow AI to ask random questions during the session")
 
     def __str__(self):
         return f"{self.session_name} by {self.user.email}"
 
-class SessionDetail(models.Model):
-    session = models.OneToOneField(
-        PracticeSession, on_delete=models.CASCADE, related_name="details"
+
+class SessionChunk(models.Model):
+    session = models.ForeignKey(
+        PracticeSession, on_delete=models.CASCADE, related_name="chunks"
     )
-    # Audience Reactions (scale 0-100)
-    engagement = models.PositiveIntegerField(default=0, validators=[MinValueValidator(0), MaxValueValidator(100)], help_text="Engagement score")
-    emotional_connection = models.PositiveIntegerField(default=0, validators=[MinValueValidator(0), MaxValueValidator(100)], help_text="Emotional connection score")
-    energy = models.PositiveIntegerField(default=0, validators=[MinValueValidator(0), MaxValueValidator(100)], help_text="Energy score")
-    
-    # Vocal Variety Analysis (scale 0-100)
-    pitch_variation = models.PositiveIntegerField(default=0, validators=[MinValueValidator(0), MaxValueValidator(100)])
-    volume_control = models.PositiveIntegerField(default=0, validators=[MinValueValidator(0), MaxValueValidator(100)])
-    speech_rate = models.PositiveIntegerField(default=0, validators=[MinValueValidator(0), MaxValueValidator(100)])
-    articulation = models.PositiveIntegerField(default=0, validators=[MinValueValidator(0), MaxValueValidator(100)])
-    
-    # Content Delivery Evaluation (scale 0-100)
-    structure = models.PositiveIntegerField(default=0, validators=[MinValueValidator(0), MaxValueValidator(100)])
-    impact = models.PositiveIntegerField(default=0, validators=[MinValueValidator(0), MaxValueValidator(100)])
-    content_engagement = models.PositiveIntegerField(default=0, validators=[MinValueValidator(0), MaxValueValidator(100)])
-    
-    # Highlights and Areas for Improvement (JSON lists)
-    strengths = models.JSONField(blank=True, null=True, help_text="List of strengths")
-    areas_for_improvement = models.JSONField(blank=True, null=True, help_text="List of areas for improvement")
-    
+    start_time = models.FloatField(help_text="Start time of the chunk in the session (in seconds)")
+    end_time = models.FloatField(help_text="End time of the chunk in the session (in seconds)")
+    video_file = models.FileField(upload_to='session_chunks/%Y/%m/%d/', blank=True, null=True, help_text="Video file for this chunk")
+    # Add more fields if you need to store specific information about the chunk itself
+
     def __str__(self):
-        return f"Details for {self.session.session_name}"
+        return f"Chunk {self.start_time}-{self.end_time} for {self.session.session_name}"
+
+
+class ChunkSentimentAnalysis(models.Model):
+    chunk = models.OneToOneField(
+        SessionChunk, on_delete=models.CASCADE, related_name="sentiment_analysis"
+    )
+    # Scores from OpenAI's GPT model
+    engagement = models.PositiveIntegerField(default=0, validators=[MinValueValidator(0), MaxValueValidator(100)], help_text="Engagement score")
+    confidence = models.PositiveIntegerField(default=0, validators=[MinValueValidator(0), MaxValueValidator(100)], help_text="Confidence score")
+    volume_score = models.PositiveIntegerField(default=0, validators=[MinValueValidator(0), MaxValueValidator(100)], help_text="Volume score")
+    pitch_variability_score = models.PositiveIntegerField(default=0, validators=[MinValueValidator(0), MaxValueValidator(100)], help_text="Pitch variability score")
+    speech_rate_score = models.PositiveIntegerField(default=0, validators=[MinValueValidator(0), MaxValueValidator(100)], help_text="Speech rate score")
+    pauses_score = models.PositiveIntegerField(default=0, validators=[MinValueValidator(0), MaxValueValidator(100)], help_text="Pauses score")
+    tone = models.CharField(max_length=50, blank=True, null=True, help_text="Tone of the speech")
+    curiosity = models.PositiveIntegerField(default=0, validators=[MinValueValidator(0), MaxValueValidator(100)], help_text="Curiosity score")
+    empathy = models.PositiveIntegerField(default=0, validators=[MinValueValidator(0), MaxValueValidator(100)], help_text="Empathy score")
+    convictions = models.PositiveIntegerField(default=0, validators=[MinValueValidator(0), MaxValueValidator(100)], help_text="Convictions score")
+    clarity = models.PositiveIntegerField(default=0, validators=[MinValueValidator(0), MaxValueValidator(100)], help_text="Clarity score")
+    emotional_impact = models.PositiveIntegerField(default=0, validators=[MinValueValidator(0), MaxValueValidator(100)], help_text="Emotional impact score")
+    authenticity = models.PositiveIntegerField(default=0, validators=[MinValueValidator(0), MaxValueValidator(100)], help_text="Authenticity score")
+    dynamism = models.PositiveIntegerField(default=0, validators=[MinValueValidator(0), MaxValueValidator(100)], help_text="Dynamism score")
+    pacing = models.PositiveIntegerField(default=0, validators=[MinValueValidator(0), MaxValueValidator(100)], help_text="Pacing score")
+    filler_words = models.PositiveIntegerField(default=0, validators=[MinValueValidator(0), MaxValueValidator(100)], help_text="Filler words score")
+    gestures = models.PositiveIntegerField(default=0, validators=[MinValueValidator(0), MaxValueValidator(100)], help_text="Gestures score")
+    eye_contact = models.PositiveIntegerField(default=0, validators=[MinValueValidator(0), MaxValueValidator(100)], help_text="Eye contact score")
+    body_language = models.PositiveIntegerField(default=0, validators=[MinValueValidator(0), MaxValueValidator(100)], help_text="Body language score")
+    overall_score = models.PositiveIntegerField(default=0, validators=[MinValueValidator(0), MaxValueValidator(100)], help_text="Overall score")
+
+    # Metrics from audio analysis
+    volume = models.FloatField(null=True, blank=True, help_text="Average volume (dB)")
+    pitch_variability = models.FloatField(null=True, blank=True, help_text="Pitch variability")
+    speaking_rate = models.FloatField(null=True, blank=True, help_text="Speaking rate (words/sec)")
+    appropriate_pauses = models.IntegerField(default=0, help_text="Number of appropriate pauses")
+    long_pauses = models.IntegerField(default=0, help_text="Number of long pauses")
+    pitch_variability_rationale = models.TextField(blank=True, null=True)
+    speaking_rate_rationale = models.TextField(blank=True, null=True)
+    pause_metric_rationale = models.TextField(blank=True, null=True)
+
+    # Feedback from posture analysis
+    mean_back_inclination = models.FloatField(null=True, blank=True, help_text="Mean back inclination angle")
+    range_back_inclination = models.FloatField(null=True, blank=True, help_text="Range of back inclination angles")
+    mean_neck_inclination = models.FloatField(null=True, blank=True, help_text="Mean neck inclination angle")
+    range_neck_inclination = models.FloatField(null=True, blank=True, help_text="Range of neck inclination angles")
+    back_feedback = models.CharField(max_length=255, blank=True, null=True, help_text="Back posture feedback")
+    neck_feedback = models.CharField(max_length=255, blank=True, null=True, help_text="Neck posture feedback")
+    good_back_time = models.FloatField(null=True, blank=True, help_text="Time spent in good back posture (seconds)")
+    bad_back_time = models.FloatField(null=True, blank=True, help_text="Time spent in bad back posture (seconds)")
+    good_neck_time = models.FloatField(null=True, blank=True, help_text="Time spent in good neck posture (seconds)")
+    bad_neck_time = models.FloatField(null=True, blank=True, help_text="Time spent in bad neck posture (seconds)")
+
+    def __str__(self):
+        return f"Sentiment Analysis for Chunk {self.chunk.start_time}-{self.chunk.end_time} of {self.chunk.session.session_name}"

@@ -1,29 +1,53 @@
 from rest_framework import serializers
-from .models import PracticeSession, SessionDetail
+from .models import PracticeSession, PracticeSequence
 
-class SessionDetailSerializer(serializers.ModelSerializer):
+
+class PracticeSequenceSerializer(serializers.ModelSerializer):
+    user_email = serializers.EmailField(source='user.email', read_only=True)
+
     class Meta:
-        model = SessionDetail
-        fields = [
-            'engagement', 'emotional_connection', 'energy',
-            'pitch_variation', 'volume_control', 'speech_rate', 'articulation',
-            'structure', 'impact', 'content_engagement', 'strengths', 'areas_for_improvement'
-        ]
+        model = PracticeSequence
+        fields = ['sequence_id', 'sequence_name', 'description', 'user_email']
+        read_only_fields = ['sequence_id', 'user_email']
+
 
 class PracticeSessionSerializer(serializers.ModelSerializer):
-    details = SessionDetailSerializer(required=False)
     user_email = serializers.EmailField(source='user.email', read_only=True)
-    
+    sequence = serializers.PrimaryKeyRelatedField(queryset=PracticeSequence.objects.all(), allow_null=True, required=False)
+
     class Meta:
         model = PracticeSession
-        fields = ['id', 'session_name', 'session_type', 'date', 'duration', 'note', 'user_email', 'details']
-    
+        fields = [
+            'id',
+            'session_name',
+            'session_type',
+            'date',
+            'duration',
+            'note',
+            'user_email',
+            'pauses',
+            'tone',
+            'emotional_impact',
+            'audience_engagement',
+            'sequence',
+            'allow_ai_questions',
+            # Add other aggregated fields here if you have them in your PracticeSession model
+        ]
+        read_only_fields = ['id', 'date', 'duration', 'user_email', 'pauses', 'tone', 'emotional_impact', 'audience_engagement'] # These are populated by the backend
+
     def create(self, validated_data):
-        details_data = validated_data.pop('details', None)
-        session = PracticeSession.objects.create(**validated_data)
-        if details_data:
-            SessionDetail.objects.create(session=session, **details_data)
-        return session
+        # We are no longer creating SessionDetail here
+        return PracticeSession.objects.create(**validated_data)
+
+    def update(self, instance, validated_data):
+        # Allow updates to basic fields like session_name and note
+        instance.session_name = validated_data.get('session_name', instance.session_name)
+        instance.session_type = validated_data.get('session_type', instance.session_type)
+        instance.note = validated_data.get('note', instance.note)
+        instance.sequence = validated_data.get('sequence', instance.sequence)
+        instance.allow_ai_questions = validated_data.get('allow_ai_questions', instance.allow_ai_questions)
+        instance.save()
+        return instance
 
 
 class PracticeSessionSlidesSerializer(serializers.ModelSerializer):
