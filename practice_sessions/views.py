@@ -9,9 +9,13 @@ from django.db.models import Count, Avg
 from django.utils.timezone import now
 from django.shortcuts import get_object_or_404
 
+import os
 from datetime import timedelta
+from collections import Counter
+from openai import OpenAI
 
-from .models import (PracticeSession, PracticeSequence)
+
+from .models import (PracticeSession, PracticeSequence, ChunkSentimentAnalysis)
 from .serializers import (PracticeSessionSerializer, PracticeSessionSlidesSerializer, PracticeSequenceSerializer)
 
 
@@ -164,3 +168,112 @@ class UploadSessionSlidesView(APIView):
                 "message": "Slide upload failed.",
                 "errors": serializer.errors
             }, status=status.HTTP_400_BAD_REQUEST)
+
+
+class ChunkSentimentAnalysisView(APIView):
+    """
+    Calculates Averages of Scores and generate summary
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def get_most_common_tones(self, session_id):
+        tones = ChunkSentimentAnalysis.objects.filter(
+            chunk__session__id=session_id
+        ).values_list('tone', flat=True)
+
+        valid_tones = [
+            "Authoritative", "Persuasive", "Conversational", "Inspirational",
+            "Empathetic", "Enthusiastic", "Serious", "Humorous", "Reflective", "Urgent"
+        ]
+
+        filtered_tones = [
+            t.strip() for tone in tones if tone
+            for t in tone.strip().split(',') if t.strip() in valid_tones
+        ]
+
+        if not filtered_tones:
+            return "N/A"
+
+        top_tones = Counter(filtered_tones).most_common(2)
+        return ', '.join([tone[0] for tone in top_tones])
+
+    def generate_full_summary(self, session_id):
+        """Creates a cohesive summary for Strengths, Improvements, and Feedback."""
+        client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
+        strengths = ChunkSentimentAnalysis.objects.filter(
+            chunk__session__id=session_id
+        ).values_list('strengths', flat=True)
+
+        areas_of_improvements = ChunkSentimentAnalysis.objects.filter(
+            chunk__session__id=session_id
+        ).values_list('areas_of_improvements', flat=True)
+
+        general_feedback_summary = ChunkSentimentAnalysis.objects.filter(
+            chunk__session__id=session_id
+        ).values_list('general_feedback_summary', flat=True)
+
+        combined_strengths = " ".join([s for s in strengths if s])
+        combined_improvements = " ".join([a for a in areas_of_improvements if a])
+        combined_feedback = " ".join([g for g in general_feedback_summary if g])
+
+        full_summary = f"""
+        Strengths: {combined_strengths}
+
+        Areas for Improvement: {combined_improvements}
+
+        General Feedback: {combined_feedback}
+        """
+
+        prompt = f"""
+        Summarize the following presentation evaluation data into a clear and concise summary, highlighting key strengths, actionable improvements, and overall feedback. Ensure the summary is structured, engaging, and helpful.
+
+        {full_summary}
+
+        The summary should be clear, informative, and highlight both positive and constructive points.
+        """
+
+        try:
+            completion = client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[{
+                    "role": "user", "content": prompt
+                }]
+            )
+
+            refined_summary = completion.choices[0].message.content
+
+        except Exception as e:
+            print(f"Error generating GPT summary: {e}")
+            refined_summary = full_summary
+
+        return refined_summary
+
+    
+    def get(self, request, session_id):
+        session = get_object_or_404(PracticeSession, id=session_id, user=request.user)
+
+        averages = ChunkSentimentAnalysis.objects.filter(chunk__session=session).aggregate(
+            avg_engagement=Avg('engagement'),
+            avg_confidence=Avg('confidence'),
+            # avg_volume=Avg('volume_score'),
+            # avg_pause=Avg('pauses_score'),
+            # avg_pitch=Avg('pitch_variability_score'),
+            avg_body_posture=Avg('body_posture'),
+            avg_curiosity=Avg('curiosity'),
+            avg_empathy=Avg('empathy'),
+            avg_conviction=Avg('convictions'),
+            avg_clarity=Avg('clarity'),
+            avg_impact=Avg('emotional_impact'),
+            avg_transformative=Avg('transformative_potential'),        
+        )
+
+        averages['tone'] = self.get_most_common_tones(session_id)
+
+        full_summary = self.generate_full_summary(session_id)
+
+        return Response({
+            'average_scores': averages,
+            'full_summary': full_summary
+        }, status=status.HTTP_200_OK)
