@@ -9,7 +9,7 @@ import logging
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.files import File
-from sentiment_analysis import analyze_results
+from .sentiment_analysis import analyze_results
 from practice_sessions.models import PracticeSession, SessionChunk, ChunkSentimentAnalysis
 from django.utils import timezone
 from datetime import timedelta
