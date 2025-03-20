@@ -77,7 +77,9 @@ class UserCreateViewSet(viewsets.ModelViewSet):
                         "username": user.first_name,
                         "otp": user.verification_code,
                         "first_name": user.first_name,
-                        "last_name": user.last_name
+                        "last_name": user.last_name,
+                        # "role": user.user_profile.role,
+                        # "career_stage": user.user_profile.user_intent
                     }
                 }
             }
