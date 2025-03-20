@@ -114,10 +114,11 @@ class SessionDashboardView(APIView):
             latest_aggregated_data = {}
             if latest_session:
                 latest_aggregated_data = {
-                    "pauses": latest_session.pauses,
-                    "tone": latest_session.tone,
-                    "emotional_impact": latest_session.emotional_impact,
-                    "audience_engagement": latest_session.audience_engagement,
+                    "volume": latest_session.volume,
+                    "pace": latest_session.pace_score,
+                    "clarity": latest_session.clarity,
+                    "impact": latest_session.impact,
+                    "engagement": latest_session.audience_engagement,
                     # Add other relevant aggregated fields here
                 }
 
@@ -255,18 +256,11 @@ class ChunkSentimentAnalysisView(APIView):
         session = get_object_or_404(PracticeSession, id=session_id, user=request.user)
 
         averages = ChunkSentimentAnalysis.objects.filter(chunk__session=session).aggregate(
-            avg_engagement=Avg('engagement'),
-            avg_confidence=Avg('confidence'),
-            # avg_volume=Avg('volume_score'),
-            # avg_pause=Avg('pauses_score'),
-            # avg_pitch=Avg('pitch_variability_score'),
-            avg_body_posture=Avg('body_posture'),
-            avg_curiosity=Avg('curiosity'),
-            avg_empathy=Avg('empathy'),
-            avg_conviction=Avg('convictions'),
+            avg_impact=Avg('impact'),
+            avg_volume=Avg('volume'),
+            avg_pitch=Avg('pitch_variability_score'),
+            avg_body_posture=Avg('pace'),
             avg_clarity=Avg('clarity'),
-            avg_impact=Avg('emotional_impact'),
-            avg_transformative=Avg('transformative_potential'),        
         )
 
         averages['tone'] = self.get_most_common_tones(session_id)

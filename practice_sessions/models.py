@@ -81,41 +81,31 @@ class ChunkSentimentAnalysis(models.Model):
     chunk = models.OneToOneField(
         SessionChunk, on_delete=models.CASCADE, related_name="sentiment_analysis"
     )
+    
     # Scores from OpenAI's GPT model
-    engagement = models.PositiveIntegerField(default=0, validators=[MinValueValidator(0), MaxValueValidator(100)], help_text="Engagement score")
+    engagement = models.PositiveIntegerField(default=0, validators=[MinValueValidator(0), MaxValueValidator(100)], help_text="Engagement Heatmap")
     confidence = models.PositiveIntegerField(default=0, validators=[MinValueValidator(0), MaxValueValidator(100)], help_text="Confidence score")
     volume_score = models.PositiveIntegerField(default=0, validators=[MinValueValidator(0), MaxValueValidator(100)], help_text="Volume score")
     pitch_variability_score = models.PositiveIntegerField(default=0, validators=[MinValueValidator(0), MaxValueValidator(100)], help_text="Pitch variability score")
-    speech_rate_score = models.PositiveIntegerField(default=0, validators=[MinValueValidator(0), MaxValueValidator(100)], help_text="Speech rate score")
-    pauses_score = models.PositiveIntegerField(default=0, validators=[MinValueValidator(0), MaxValueValidator(100)], help_text="Pauses score")
+    pace_score = models.PositiveIntegerField(default=0, validators=[MinValueValidator(0), MaxValueValidator(100)], help_text="pace score")
+    pauses = models.PositiveIntegerField(default=0, validators=[MinValueValidator(0), MaxValueValidator(100)], help_text="Pauses score")
     tone = models.CharField(max_length=50, blank=True, null=True, help_text="Tone of the speech")
     curiosity = models.PositiveIntegerField(default=0, validators=[MinValueValidator(0), MaxValueValidator(100)], help_text="Curiosity score")
     empathy = models.PositiveIntegerField(default=0, validators=[MinValueValidator(0), MaxValueValidator(100)], help_text="Empathy score")
     conviction = models.PositiveIntegerField(default=0, validators=[MinValueValidator(0), MaxValueValidator(100)], help_text="Convictions score")
     clarity = models.PositiveIntegerField(default=0, validators=[MinValueValidator(0), MaxValueValidator(100)], help_text="Clarity score")
-    impact = models.PositiveIntegerField(default=0, validators=[MinValueValidator(0), MaxValueValidator(100)], help_text="impact score")
-    authenticity = models.PositiveIntegerField(default=0, validators=[MinValueValidator(0), MaxValueValidator(100)], help_text="Authenticity score")
-    dynamism = models.PositiveIntegerField(default=0, validators=[MinValueValidator(0), MaxValueValidator(100)], help_text="Dynamism score")
-    pacing = models.PositiveIntegerField(default=0, validators=[MinValueValidator(0), MaxValueValidator(100)], help_text="Pacing score")
-    filler_words = models.PositiveIntegerField(default=0, validators=[MinValueValidator(0), MaxValueValidator(100)], help_text="Filler words score")
-    gestures = models.PositiveIntegerField(default=0, validators=[MinValueValidator(0), MaxValueValidator(100)], help_text="Gestures score")
-    eye_contact = models.PositiveIntegerField(default=0, validators=[MinValueValidator(0), MaxValueValidator(100)], help_text="Eye contact score")
+    impact = models.PositiveIntegerField(default=0, validators=[MinValueValidator(0), MaxValueValidator(100)], help_text="overall performance")
     body_posture = models.PositiveIntegerField(default=0, validators=[MinValueValidator(0), MaxValueValidator(100)], help_text="Body language score")
     strengths = models.TextField(blank=True, null=True)
     area_of_improvement = models.TextField(blank=True, null=True)
     general_feedback = models.TextField(blank=True, null=True)
-    overall_score = models.PositiveIntegerField(default=0, validators=[MinValueValidator(0), MaxValueValidator(100)], help_text="Overall score")
 
 
     # Metrics from audio analysis
     volume = models.FloatField(null=True, blank=True, help_text="Average volume (dB)")
     pitch_variability = models.FloatField(null=True, blank=True, help_text="Pitch variability")
-    speaking_rate = models.FloatField(null=True, blank=True, help_text="Speaking rate (words/sec)")
-    appropriate_pauses = models.IntegerField(default=0, help_text="Number of appropriate pauses")
-    long_pauses = models.IntegerField(default=0, help_text="Number of long pauses")
-    pitch_variability_rationale = models.TextField(blank=True, null=True)
-    speaking_rate_rationale = models.TextField(blank=True, null=True)
-    pause_metric_rationale = models.TextField(blank=True, null=True)
+    pace = models.FloatField(null=True, blank=True, help_text="Speaking rate (words/sec)")
+    chunk_transcript = models.TextField(blank=True, null=True, help_text="Transcript")
 
     # Feedback from posture analysis
     mean_back_inclination = models.FloatField(null=True, blank=True, help_text="Mean back inclination angle")
