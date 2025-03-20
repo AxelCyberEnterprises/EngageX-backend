@@ -114,10 +114,10 @@ class SessionDashboardView(APIView):
             latest_aggregated_data = {}
             if latest_session:
                 latest_aggregated_data = {
-                    "volume": latest_session.volume,
-                    "pace": latest_session.pace_score,
-                    "clarity": latest_session.clarity,
                     "impact": latest_session.impact,
+                    "volume": latest_session.volume,
+                    "pace": latest_session.pace,
+                    "clarity": latest_session.clarity,
                     "engagement": latest_session.audience_engagement,
                     # Add other relevant aggregated fields here
                 }
@@ -258,8 +258,8 @@ class ChunkSentimentAnalysisView(APIView):
         averages = ChunkSentimentAnalysis.objects.filter(chunk__session=session).aggregate(
             avg_impact=Avg('impact'),
             avg_volume=Avg('volume'),
-            avg_pitch=Avg('pitch_variability_score'),
-            avg_body_posture=Avg('pace'),
+            avg_pitch=Avg('pitch_variability'),
+            avg_pace=Avg('pace'),
             avg_clarity=Avg('clarity'),
         )
 

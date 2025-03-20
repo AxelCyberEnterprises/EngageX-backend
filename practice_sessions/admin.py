@@ -34,13 +34,12 @@ class ChunkSentimentAnalysisAdmin(admin.ModelAdmin):
         'chunk',
         'engagement',
         'confidence',
-        'overall_score',
+        'impact',  
         'tone',
-        # 'emotional_impact',
-        # Add other relevant fields from ChunkSentimentAnalysis
     )
     search_fields = ('chunk__session__session_name',)
     list_filter = ('tone',)
+
 
 @admin.register(SessionChunk)
 class SessionChunkAdmin(admin.ModelAdmin):

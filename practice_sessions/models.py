@@ -41,8 +41,6 @@ class PracticeSession(models.Model):
     pauses = models.IntegerField(default=0) # Aggregated
     emotional_expression = models.TextField(blank=True, null=True) # Aggregated
     tone = models.TextField(blank=True, null=True) # Aggregated
-    pronunciation = models.TextField(blank=True, null=True) # Aggregated
-    content_organization = models.TextField(blank=True, null=True) # Aggregated
     impact = models.TextField(blank=True, null=True) # Aggregated
     audience_engagement = models.TextField(blank=True, null=True) # Aggregated
     transformative_potential = models.TextField(blank=True, null=True) # Aggregated
@@ -85,10 +83,10 @@ class ChunkSentimentAnalysis(models.Model):
     # Scores from OpenAI's GPT model
     engagement = models.PositiveIntegerField(default=0, validators=[MinValueValidator(0), MaxValueValidator(100)], help_text="Engagement Heatmap")
     confidence = models.PositiveIntegerField(default=0, validators=[MinValueValidator(0), MaxValueValidator(100)], help_text="Confidence score")
-    volume_score = models.PositiveIntegerField(default=0, validators=[MinValueValidator(0), MaxValueValidator(100)], help_text="Volume score")
-    pitch_variability_score = models.PositiveIntegerField(default=0, validators=[MinValueValidator(0), MaxValueValidator(100)], help_text="Pitch variability score")
-    pace_score = models.PositiveIntegerField(default=0, validators=[MinValueValidator(0), MaxValueValidator(100)], help_text="pace score")
-    pauses = models.PositiveIntegerField(default=0, validators=[MinValueValidator(0), MaxValueValidator(100)], help_text="Pauses score")
+    # volume_score = models.PositiveIntegerField(default=0, validators=[MinValueValidator(0), MaxValueValidator(100)], help_text="Volume score")
+    # pitch_variability_score = models.PositiveIntegerField(default=0, validators=[MinValueValidator(0), MaxValueValidator(100)], help_text="Pitch variability score")
+    # pace_score = models.PositiveIntegerField(default=0, validators=[MinValueValidator(0), MaxValueValidator(100)], help_text="pace score")
+    # pauses = models.PositiveIntegerField(default=0, validators=[MinValueValidator(0), MaxValueValidator(100)], help_text="Pauses score")
     tone = models.CharField(max_length=50, blank=True, null=True, help_text="Tone of the speech")
     curiosity = models.PositiveIntegerField(default=0, validators=[MinValueValidator(0), MaxValueValidator(100)], help_text="Curiosity score")
     empathy = models.PositiveIntegerField(default=0, validators=[MinValueValidator(0), MaxValueValidator(100)], help_text="Empathy score")
@@ -96,6 +94,7 @@ class ChunkSentimentAnalysis(models.Model):
     clarity = models.PositiveIntegerField(default=0, validators=[MinValueValidator(0), MaxValueValidator(100)], help_text="Clarity score")
     impact = models.PositiveIntegerField(default=0, validators=[MinValueValidator(0), MaxValueValidator(100)], help_text="overall performance")
     body_posture = models.PositiveIntegerField(default=0, validators=[MinValueValidator(0), MaxValueValidator(100)], help_text="Body language score")
+    transformative_potential = models.PositiveIntegerField(default=0, validators=[MinValueValidator(0), MaxValueValidator(100)], help_text="transformative potential")
     strengths = models.TextField(blank=True, null=True)
     area_of_improvement = models.TextField(blank=True, null=True)
     general_feedback = models.TextField(blank=True, null=True)
