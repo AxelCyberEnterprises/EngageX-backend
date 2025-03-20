@@ -233,23 +233,54 @@ STATIC_ROOT = os.path.join(BASE_DIR, "staticfiles")
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
-MEDIA_URL = "/media/"
-MEDIA_ROOT = os.path.join(BASE_DIR, "media")
+
+USE_S3 = os.environ["USE_S3"] == "True"
 
 # # aws setting
-# AWS_STORAGE_BUCKET_NAME = config("AWS_STORAGE_BUCKET_NAME")
-# AWS_S3_REGION_NAME = config("AWS_S3_REGION_NAME", default="us-east-1")
-# aws media settings
+if USE_S3:
+    AWS_STORAGE_BUCKET_NAME = os.environ["AWS_STORAGE_BUCKET_NAME"]
+    AWS_S3_REGION_NAME = os.environ["AWS_S3_REGION_NAME"]
+    AWS_S3_CUSTOM_DOMAIN = f"{AWS_STORAGE_BUCKET_NAME}.s3.amazonaws.com"
+    # s3 media settings
+    MEDIA_URL = f"https://{AWS_S3_CUSTOM_DOMAIN}/"
+
+    STORAGES = {
+        "default": {
+            "BACKEND": "storages.backends.s3boto3.S3Boto3Storage",
+            "OPTIONS": {
+                "bucket_name": AWS_STORAGE_BUCKET_NAME,
+            },
+        },
+        "staticfiles": {
+            "BACKEND": "storages.backends.s3boto3.S3Boto3Storage",  # For static files
+            "OPTIONS": {
+                "bucket_name": AWS_STORAGE_BUCKET_NAME,
+                "location": "static/",  # Stores static files in 'static/' folder in S3
+            },
+        },
+        "ProfilePicStorage": {
+            "BACKEND": "users.storages_backends.ProfilePicStorage",
+        },
+        "SlidesStorage": {
+            "BACKEND": "users.storages_backends.SlidesStorage",
+        },
+        "StaticVideosStorage": {
+            "BACKEND": "users.storages_backends.StaticVideosStorage",
+        },
+        "UserVideosStorage": {
+            "BACKEND": "users.storages_backends.StaticVideosStorage",
+        },
+    }
+
+
+else:
+    MEDIA_URL = "/media/"
+    MEDIA_ROOT = os.path.join(BASE_DIR, "media")
+
+
 # PUBLIC_MEDIA_LOCATION = "media"
 # MEDIA_URL = f"https://{AWS_S3_CUSTOM_DOMAIN}/{AWS_STORAGE_BUCKET_NAME}/"
 # DEFAULT_FILE_STORAGE = "hello_django.storage_backends.PublicMediaStorage"
-
-# STORAGES = {
-#     "default": {
-#         "BACKEND": "storages.backends.s3.S3Storage",
-#         "OPTIONS": {},
-#     }
-# }
 
 
 # Media files settings
