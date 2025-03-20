@@ -43,7 +43,7 @@ class PracticeSession(models.Model):
     tone = models.TextField(blank=True, null=True) # Aggregated
     pronunciation = models.TextField(blank=True, null=True) # Aggregated
     content_organization = models.TextField(blank=True, null=True) # Aggregated
-    emotional_impact = models.TextField(blank=True, null=True) # Aggregated
+    impact = models.TextField(blank=True, null=True) # Aggregated
     audience_engagement = models.TextField(blank=True, null=True) # Aggregated
     transformative_potential = models.TextField(blank=True, null=True) # Aggregated
     visual_communication = models.TextField(blank=True, null=True) # Aggregated
@@ -91,17 +91,21 @@ class ChunkSentimentAnalysis(models.Model):
     tone = models.CharField(max_length=50, blank=True, null=True, help_text="Tone of the speech")
     curiosity = models.PositiveIntegerField(default=0, validators=[MinValueValidator(0), MaxValueValidator(100)], help_text="Curiosity score")
     empathy = models.PositiveIntegerField(default=0, validators=[MinValueValidator(0), MaxValueValidator(100)], help_text="Empathy score")
-    convictions = models.PositiveIntegerField(default=0, validators=[MinValueValidator(0), MaxValueValidator(100)], help_text="Convictions score")
+    conviction = models.PositiveIntegerField(default=0, validators=[MinValueValidator(0), MaxValueValidator(100)], help_text="Convictions score")
     clarity = models.PositiveIntegerField(default=0, validators=[MinValueValidator(0), MaxValueValidator(100)], help_text="Clarity score")
-    emotional_impact = models.PositiveIntegerField(default=0, validators=[MinValueValidator(0), MaxValueValidator(100)], help_text="Emotional impact score")
+    impact = models.PositiveIntegerField(default=0, validators=[MinValueValidator(0), MaxValueValidator(100)], help_text="impact score")
     authenticity = models.PositiveIntegerField(default=0, validators=[MinValueValidator(0), MaxValueValidator(100)], help_text="Authenticity score")
     dynamism = models.PositiveIntegerField(default=0, validators=[MinValueValidator(0), MaxValueValidator(100)], help_text="Dynamism score")
     pacing = models.PositiveIntegerField(default=0, validators=[MinValueValidator(0), MaxValueValidator(100)], help_text="Pacing score")
     filler_words = models.PositiveIntegerField(default=0, validators=[MinValueValidator(0), MaxValueValidator(100)], help_text="Filler words score")
     gestures = models.PositiveIntegerField(default=0, validators=[MinValueValidator(0), MaxValueValidator(100)], help_text="Gestures score")
     eye_contact = models.PositiveIntegerField(default=0, validators=[MinValueValidator(0), MaxValueValidator(100)], help_text="Eye contact score")
-    body_language = models.PositiveIntegerField(default=0, validators=[MinValueValidator(0), MaxValueValidator(100)], help_text="Body language score")
+    body_posture = models.PositiveIntegerField(default=0, validators=[MinValueValidator(0), MaxValueValidator(100)], help_text="Body language score")
+    strengths = models.TextField(blank=True, null=True)
+    area_of_improvement = models.TextField(blank=True, null=True)
+    general_feedback = models.TextField(blank=True, null=True)
     overall_score = models.PositiveIntegerField(default=0, validators=[MinValueValidator(0), MaxValueValidator(100)], help_text="Overall score")
+
 
     # Metrics from audio analysis
     volume = models.FloatField(null=True, blank=True, help_text="Average volume (dB)")
