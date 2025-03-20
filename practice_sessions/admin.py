@@ -17,7 +17,7 @@ class PracticeSessionAdmin(admin.ModelAdmin):
         'user',
         'pauses',
         'tone',
-        'emotional_impact',
+        # 'emotional_impact',
         'audience_engagement',
         'sequence', # Added sequence to the list display
         'allow_ai_questions', # Added allow_ai_questions to the list display
@@ -36,7 +36,7 @@ class ChunkSentimentAnalysisAdmin(admin.ModelAdmin):
         'confidence',
         'overall_score',
         'tone',
-        'emotional_impact',
+        # 'emotional_impact',
         # Add other relevant fields from ChunkSentimentAnalysis
     )
     search_fields = ('chunk__session__session_name',)
