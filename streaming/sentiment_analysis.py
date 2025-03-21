@@ -95,6 +95,9 @@ def score_volume(volume):
 
 def score_pauses(appropriate_pauses, long_pauses):
     """scores pauses using discrete buckets."""
+    # call scale_to_score after getting rationale
+    score = scale_to_score(appropriate_pauses, 12, 30)
+
     if 12 <= appropriate_pauses <= 30:
         rationale = "Ideal pause frequency; pauses enhance clarity without disrupting flow."
     elif appropriate_pauses < 12:
@@ -102,8 +105,6 @@ def score_pauses(appropriate_pauses, long_pauses):
     else:
         rationale = "Excessive pause frequency; too many breaks can disrupt continuity."
 
-    # call scale_to_score after getting rationale
-    score = scale_to_score(appropriate_pauses, 12, 30)
 
     # apply penalty for long pauses: each long pause beyond 3 reduces the score by 1.
     if long_pauses > 3:
@@ -112,8 +113,10 @@ def score_pauses(appropriate_pauses, long_pauses):
         rationale += f", with {long_pauses} long pauses (>2s) penalizing flow"
     return score, rationale
 
-def score_speaking_rate(speaking_rate):
+def score_pace(speaking_rate):
     """scores speaking rate with a peak at 1.5-2.5 words/sec, penalizing extremes."""
+    score = scale_to_score(speaking_rate, 2.0, 3.0)
+    
     if 2.0 <= speaking_rate <= 3.0:
         rationale = "Optimal speaking rate; clear, engaging, and well-paced delivery."
     elif speaking_rate < 2.0:
@@ -121,12 +124,12 @@ def score_speaking_rate(speaking_rate):
     else:
         rationale = "Too fast speaking rate; rapid delivery can hinder audience comprehension."
 
-    score = scale_to_score(speaking_rate, 2.0, 3.0)
-
     return score, rationale
 
 def score_pv(pitch_variability):
     """scores pitch variability with a peak at 50-60."""
+    score = scale_to_score(pitch_variability, 50, 85)
+
     if 60 <= pitch_variability <= 85:
         rationale = "Optimal pitch variability, with dynamic yet controlled expressiveness, promoting engagement and emotional impact"
     elif 45 <= pitch_variability < 60:
@@ -138,7 +141,6 @@ def score_pv(pitch_variability):
     else:
         rationale = "Slightly excessive pitch variability; the delivery may seem erratic."
 
-    score = scale_to_score(pitch_variability, 50, 85)
 
     return score, rationale
 
@@ -180,13 +182,13 @@ def get_volume(audio_file, top_db = 20):
     print(min(intensity.values[0]))
     return np.median(intensity.values[0])
 
-def get_speaking_rate(y, sr, transcript):
-    """calculates speaking rate using Librosa onset detection."""
+def get_pace(y, sr, transcript):
+    """calculates paceusing Librosa onset detection."""
     word_count = len(transcript.split())
     print(f"number of words: {word_count} \n")
     print(f"total audio time: {librosa.get_duration(y=y, sr=sr)} \n")
     return word_count/librosa.get_duration(y=y, sr=sr)
-    
+
 def get_pauses(y, sr):
     """detects appropriate and long pauses in speech."""
     onset_frames = librosa.onset.onset_detect(y=y, sr=sr, hop_length=256)
@@ -208,28 +210,30 @@ def process_audio(audio_file, transcript):
     with ThreadPoolExecutor() as executor:
         future_pitch_variability = executor.submit(get_pitch_variability, audio_file)
         future_volume = executor.submit(get_volume, audio_file)
-        future_speaking_rate = executor.submit(get_speaking_rate, y, sr, transcript)
+        future_pace= executor.submit(get_pace, y, sr, transcript)
         future_pauses = executor.submit(get_pauses, y, sr)
-        
+
     # fetch results from threads
     pitch_variability = future_pitch_variability.result()
     avg_volume = future_volume.result()
-    speaking_rate = future_speaking_rate.result()
+    pace= future_pace.result()
     appropriate_pauses, long_pauses = future_pauses.result()
 
     # score dalculation
-    volume_score = scale_to_score(avg_volume, 40, 70)
+    volume_score, volume_rationale = score_volume(avg_volume)
     pitch_variability_score, pitch_variability_rationale = score_pv(pitch_variability) #(15, 85)
-    speaking_rate_score, speaking_rate_rationale = score_speaking_rate(speaking_rate)
+    pace_score, pace_rationale = score_pace(pace)
     pause_score, pause_score_rationale = score_pauses(appropriate_pauses, long_pauses)
+    # back_score, back_rationale = scale_to_score()
 
     results = {
         "Metrics": {
             "Volume": avg_volume,
+            "Volume Rationale": volume_rationale,
             "Pitch Variability": pitch_variability,
-            "Pitch Variability Metric Rationale": pitch_variability_rationale,
-            "Speaking Rate (syllables/sec)": speaking_rate,
-            "Speaking Rate Metric Rationale": speaking_rate_rationale,
+            "Pitch Variability Rationale": pitch_variability_rationale,
+            "Pace": pace,
+            "Pace Rationale": pace_rationale,
             "Appropriate Pauses": appropriate_pauses,
             "Long Pauses": long_pauses,
             "Pause Metric Rationale": pause_score_rationale
@@ -237,7 +241,7 @@ def process_audio(audio_file, transcript):
         "Scores": {
             "Volume Score": volume_score,
             "Pitch Variability Score": pitch_variability_score,
-            "Speaking Rate Score": speaking_rate_score,
+            "Pace Score": pace_score,
             "Pause Score": pause_score,
         }
     }
@@ -258,6 +262,7 @@ def transcribe_audio(audio_file):
             model="whisper-1", file=audio_file_obj
         )
     return transcription.text
+
 
 
 # Calculate Distance
@@ -368,7 +373,7 @@ def display_results():
 
     cv2.destroyAllWindows()
 
-# Main posture analysis function
+# Main Analysis Function
 def analyze_posture(video_path):
     with ThreadPoolExecutor(max_workers=3) as executor:
         executor.submit(capture_frames, video_path)
@@ -427,10 +432,6 @@ def analyze_posture(video_path):
         "bad_neck_time": round(bad_neck_time, 2)
     }
 
-# pass all variables?
-# convert times to scores? get rationale
-# bbt + bnt 
-
 
 # ---------------------- SENTIMENT ANALYSIS ----------------------
 
@@ -458,10 +459,10 @@ def analyze_sentiment(video_path, transcript, metrics):
 
 
     Engagement:
-      - How well the speaker holds audience attention. Graded on the speaker's transcript. Volume, pitch variability, pacing and pauses can boost/lower engagement. Volume_score: {metrics["Metrics"]["Volume"]}, {metrics["Metrics"]["Volume Rationale"]}, pitch_variability_score: {metrics["Scores"]["Pitch Variability Score"]} , {metrics["Metrics"]["Pitch Variability"]}, speaking_rate_score: {metrics["Scores"]["Speaking Rate Score"]} {metrics["Metrics"]["Speaking Rate Rationale"]}, pause_score: {metrics["Scores"]["Pause Score"]} {metrics["Metrics"]["Pause Metric Rationale"]}
+      - How well the speaker holds audience attention. Graded on the speaker's transcript. Volume, pitch variability, pacing and pauses can boost/lower engagement. Volume_score: {metrics["Metrics"]["Volume"]}, {metrics["Metrics"]["Volume Rationale"]}, pitch_variability_score: {metrics["Scores"]["Pitch Variability Score"]} , {metrics["Metrics"]["Pitch Variability"]}, pace_score: {metrics["Scores"]["Pace Score"]} {metrics["Metrics"]["paceRationale"]}, pause_score: {metrics["Scores"]["Pause Score"]} {metrics["Metrics"]["Pause Metric Rationale"]}
 
     Confidence:
-      - Perceived self-assurance. Steady voice, clear articulation, appropriate pauses can indicate confidence. Volume_score: {metrics["Metrics"]["Volume"]}, {metrics["Metrics"]["Volume Rationale"]}, pitch_variability_score: {metrics["Metrics"]["Pitch Variability"]} {metrics["Metrics"]["Pitch Variability Rationale"]}, speaking_rate_score: {metrics["Scores"]["Speaking Rate Score"]} {metrics["Metrics"]["Speaking Rate Rationale"]}, pause_score: {metrics["Scores"]["Pause Score"]} {metrics["Metrics"]["Pause Metric Rationale"]}
+      - Perceived self-assurance. Steady voice, clear articulation, appropriate pauses can indicate confidence. Volume_score: {metrics["Metrics"]["Volume"]}, {metrics["Metrics"]["Volume Rationale"]}, pitch_variability_score: {metrics["Metrics"]["Pitch Variability"]} {metrics["Metrics"]["Pitch Variability Rationale"]}, pace_score: {metrics["Scores"]["Pace Score"]} {metrics["Metrics"]["paceRationale"]}, pause_score: {metrics["Scores"]["Pause Score"]} {metrics["Metrics"]["Pause Metric Rationale"]}
 
     Tone:
       - Any two among [Authoritative, Persuasive, Conversational, Inspirational, Empathetic, Enthusiastic, Serious, Humorous, Reflective, Urgent].
@@ -476,12 +477,12 @@ def analyze_sentiment(video_path, transcript, metrics):
       - Indicates firmness and clarity of beliefs or message. Evaluates how strongly and clearly the speaker presents their beliefs and message. Dependent on Confidence score and transcript
 
     Clarity:
-      -  Measures how easily the audience can understand the speaker’s message, dependent on speaking rate, volume consistency, effective pause usage. Volume_score: {metrics["Metrics"]["Volume"]} {metrics["Metrics"]["Volume Rationale"]}, speaking_rate_score: {metrics["Scores"]["Speaking Rate Score"]} {metrics["Metrics"]["Speaking Rate Rationale"]}, pause_score: {metrics["Scores"]["Pause Score"]} {metrics["Metrics"]["Speaking Rate Rationale"]}
+      -  Measures how easily the audience can understand the speaker’s message, dependent on pace, volume consistency, effective pause usage. Volume_score: {metrics["Metrics"]["Volume"]} {metrics["Metrics"]["Volume Rationale"]}, pace_score: {metrics["Scores"]["Pace Score"]} {metrics["Metrics"]["paceRationale"]}, pause_score: {metrics["Scores"]["Pause Score"]} {metrics["Metrics"]["Pause Metric Rationale"]}
       
     Impact:
       - Overall measure of how captivating the talk is and how well the user visually presents himself. 
       Volume_score: {metrics["Metrics"]["Volume"]} {metrics["Metrics"]["Volume Rationale"]}, pitch_variability_score: {metrics["Scores"]["Pitch Variability Score"]} {metrics["Metrics"]["Pitch Variability Rationale"]}, 
-      speaking_rate_score: {metrics["Scores"]["Speaking Rate Score"]} {metrics["Metrics"]["Speaking Rate Rationale"]}, pause_score: {metrics["Scores"]["Pause Score"]} {metrics["Metrics"]["Speaking Rate Rationale"]}.
+      pace_score: {metrics["Scores"]["Pace Score"]} {metrics["Metrics"]["paceRationale"]}, pause_score: {metrics["Scores"]["Pause Score"]} {metrics["Metrics"]["paceRationale"]}.
       Posture score: {mean_body_posture} {mean_back_rationale} {mean_neck_rationale}, stiffness score: {range_body_posture} {range_back_rationale} {range_neck_rationale}
 
     Transformative Potential:
@@ -535,7 +536,7 @@ def analyze_sentiment(video_path, transcript, metrics):
         model="gpt-4o-mini",
         messages=[{
             "role": "user", "content": prompt
-            }],
+        }],
         response_format={
             "type": "json_schema",
             "json_schema": {
@@ -573,11 +574,27 @@ def analyze_sentiment(video_path, transcript, metrics):
     print(f"DATA TYPE OF RESPONSE:  {type(response)}")
 
     try:
-        parsed_response = json.loads(response)
+        parsed_response = {}
+        parsed_response['Feedback'] = json.loads(response)
+
+        parsed_response['Posture'] = {
+            "mean_back_inclination": posture_data["mean_back_inclination"],
+            "range_back_inclination": posture_data["range_back_inclination"],
+            "mean_neck_inclination": posture_data["mean_neck_inclination"],
+            "range_neck_inclination": posture_data["range_neck_inclination"],
+            "back_feedback": posture_data.get("back_feedback", ""),
+            "neck_feedback": posture_data.get("neck_feedback", ""),
+            "good_back_time": posture_data.get("good_back_time", 0),
+            "bad_back_time": posture_data.get("bad_back_time", 0),
+            "good_neck_time": posture_data.get("good_neck_time", 0),
+            "bad_neck_time": posture_data.get("bad_neck_time", 0)
+        }
         print(f"DATA TYPE OF RESPONSE:  {type(parsed_response)}")
+        print(f"\nPARSE REPONSE: {parsed_response} \n")
     except json.JSONDecoder:
         print("Invalid JSON format in response.")
         return None
+    
     return parsed_response
 
 
@@ -600,7 +617,14 @@ def analyze_results(video_path, audio_output_path):
         metrics = future_audio_analysis.result()
 
         sentiment_analysis = analyze_sentiment(video_path, transcript, metrics)
-        
+
+        final_json = {
+            'Feedback': sentiment_analysis.get('Feedback'),
+            'Metrics': metrics.get('Metrics', {}),
+            'Scores': metrics.get('Scores', {}),
+            'Posture': sentiment_analysis.get('Posture'),
+            'Transcript': transcript
+        }
 
         print(f"\nSentiment Analysis for {audio_output_path}:\n\n", sentiment_analysis)
         elapsed_time = time.time() - start_time
@@ -609,4 +633,4 @@ def analyze_results(video_path, audio_output_path):
     except Exception as e:
         print(f"Error during audio extraction: {e}")
 
-    return sentiment_analysis
+    return final_json

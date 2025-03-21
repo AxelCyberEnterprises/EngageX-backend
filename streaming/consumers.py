@@ -27,7 +27,7 @@ app = socketio.ASGIApp(sio)
 # Session data storage (in-memory dictionary)
 client_sessions = {}
 
-ANALYSIS_INTERVAL_SECONDS = 60  # Interval for performing video sentiment analysis (seconds)
+ANALYSIS_INTERVAL_SECONDS = 60  # Interval for performing video sentiment analysis (seconds) # change to 30 seconds
 QUESTION_PROBABILITY = 0.01 # Example probability of asking a question per frame
 
 
@@ -104,7 +104,7 @@ async def video_chunk(sid, data):
     frame_bytes = data['frame']
 
     if session.get('temp_video_file') is None:
-        session['temp_video_file'] = tempfile.NamedTemporaryFile(delete=False, suffix='.webm')
+        session['temp_video_file'] = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4') # changed format to .p4
 
     try:
         session['temp_video_file'].write(frame_bytes)
@@ -143,7 +143,7 @@ async def perform_video_sentiment_analysis(sid):
     audio_output_path = f"temp_audio_{sid}_{chunk_number}.wav"
 
     try:
-        temp_video_file = tempfile.NamedTemporaryFile(delete=True, suffix='.webm')
+        temp_video_file = tempfile.NamedTemporaryFile(delete=True, suffix='.mp4') # should be .mp4
         temp_video_file.write(accumulated_video_data)
         video_path = temp_video_file.name
 
@@ -163,50 +163,29 @@ async def perform_video_sentiment_analysis(sid):
 
             sentiment_data = analysis_result.get('Feedback', {}).get('schema', {}).get('properties', {})
             audio_metrics = analysis_result.get('Metrics', {})
-            audio_scores = analysis_result.get('Scores', {})
-            posture_data = analysis_result.get('Posture', {})
+            transcript = analysis_result.get('Transcript', {})
 
             await asyncio.get_event_loop().run_in_executor(
                 None, ChunkSentimentAnalysis.objects.create,
                 chunk=session_chunk,
-                engagement=sentiment_data.get('Engagement', {}).get('type') == 'number' and int(sentiment_data.get('Engagement', {}).get('example', 0)) or 0,
-                confidence=sentiment_data.get('Confidence', {}).get('type') == 'number' and int(sentiment_data.get('Confidence', {}).get('example', 0)) or 0,
-                volume_score=audio_scores.get('Volume Score', 0),
-                pitch_variability_score=audio_scores.get('Pitch Variability Score', 0),
-                speech_rate_score=audio_scores.get('Speaking Rate Score', 0),
-                pauses_score=audio_scores.get('Pause Score', 0),
-                tone=sentiment_data.get('Tone', {}).get('type') == 'string' and sentiment_data.get('Tone', {}).get('example') or None,
-                curiosity=sentiment_data.get('Curiosity', {}).get('type') == 'number' and int(sentiment_data.get('Curiosity', {}).get('example', 0)) or 0,
-                empathy=sentiment_data.get('Empathy', {}).get('type') == 'number' and int(sentiment_data.get('Empathy', {}).get('example', 0)) or 0,
-                convictions=sentiment_data.get('Convictions', {}).get('type') == 'number' and int(sentiment_data.get('Convictions', {}).get('example', 0)) or 0,
-                clarity=sentiment_data.get('Clarity', {}).get('type') == 'number' and int(sentiment_data.get('Clarity', {}).get('example', 0)) or 0,
-                emotional_impact=sentiment_data.get('Emotional Impact', {}).get('type') == 'number' and int(sentiment_data.get('Emotional Impact', {}).get('example', 0)) or 0,
-                authenticity=sentiment_data.get('Authenticity', {}).get('type') == 'number' and int(sentiment_data.get('Authenticity', {}).get('example', 0)) or 0,
-                dynamism=sentiment_data.get('Dynamism', {}).get('type') == 'number' and int(sentiment_data.get('Dynamism', {}).get('example', 0)) or 0,
-                pacing=sentiment_data.get('Pacing', {}).get('type') == 'number' and int(sentiment_data.get('Pacing', {}).get('example', 0)) or 0,
-                filler_words=sentiment_data.get('Filler Words', {}).get('type') == 'number' and int(sentiment_data.get('Filler Words', {}).get('example', 0)) or 0,
-                gestures=sentiment_data.get('Gestures', {}).get('type') == 'number' and int(sentiment_data.get('Gestures', {}).get('example', 0)) or 0,
-                eye_contact=sentiment_data.get('Eye Contact', {}).get('type') == 'number' and int(sentiment_data.get('Eye Contact', {}).get('example', 0)) or 0,
-                body_language=sentiment_data.get('Body Language', {}).get('type') == 'number' and int(sentiment_data.get('Body Language', {}).get('example', 0)) or 0,
-                overall_score=sentiment_data.get('Overall Score', {}).get('type') == 'number' and int(sentiment_data.get('Overall Score', {}).get('example', 0)) or 0,
+                
+                engagement=int(sentiment_data.get('Engagement', 0)),
+                confidence=int(sentiment_data.get('Confidence', 0)),
+                
+                tone=sentiment_data.get('Tone', None),
+                curiosity=int(sentiment_data.get('Curiosity', 0)),
+                empathy=int(sentiment_data.get('Empathy', 0)),
+                conviction=int(sentiment_data.get('Conviction', 0)),
+                clarity=int(sentiment_data.get('Clarity', 0)),
+                impact=int(sentiment_data.get('Impact', 0)),
+                body_posture=int(sentiment_data.get('Body Posture', 0)),
+                transformative_potential=int(sentiment_data.get('Transformative Potential', 0)),
+                
                 volume=audio_metrics.get('Volume'),
                 pitch_variability=audio_metrics.get('Pitch Variability'),
-                speaking_rate=audio_metrics.get('Speaking Rate (syllables/sec)'),
-                appropriate_pauses=audio_metrics.get('Appropriate Pauses'),
-                long_pauses=audio_metrics.get('Long Pauses'),
-                pitch_variability_rationale=audio_metrics.get('Pitch Variability Metric Rationale'),
-                speaking_rate_rationale=audio_metrics.get('Speaking Rate Metric Rationale'),
-                pause_metric_rationale=audio_metrics.get('Pause Metric Rationale'),
-                mean_back_inclination=posture_data.get('mean_back_inclination'),
-                range_back_inclination=posture_data.get('range_back_inclination'),
-                mean_neck_inclination=posture_data.get('mean_neck_inclination'),
-                range_neck_inclination=posture_data.get('range_neck_inclination'),
-                back_feedback=posture_data.get('back_feedback'),
-                neck_feedback=posture_data.get('neck_feedback'),
-                good_back_time=posture_data.get('good_back_time'),
-                bad_back_time=posture_data.get('bad_back_time'),
-                good_neck_time=posture_data.get('good_neck_time'),
-                bad_neck_time=posture_data.get('bad_neck_time'),
+                pace=audio_metrics.get('Pace'),
+
+                chunk_transcript=transcript,
             )
             client_sessions[sid]['chunks_processed'] = chunk_number
         except PracticeSession.DoesNotExist:
