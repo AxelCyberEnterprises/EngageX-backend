@@ -6,7 +6,6 @@ import threading
 from queue import Queue
 import numpy as np
 import pandas as pd
-import librosa
 import parselmouth
 import cv2
 import mediapipe as mp
@@ -14,9 +13,11 @@ from openai import OpenAI
 from moviepy import VideoFileClip
 from concurrent.futures import ThreadPoolExecutor
 
+from django.conf import settings
 
+# chnage this shit too
 # load OpenAI API Key
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+client = OpenAI(api_key=settings.OPENAI_API_KEY)
 
 # initialize Mediapipe Pose Detection
 mp_pose = mp.solutions.pose
@@ -24,7 +25,6 @@ pose = mp_pose.Pose()
 
 # queues for thread communication
 frame_queue = Queue(maxsize=5)
-results_queue = Queue(maxsize=5)  
 
 # synchronization and STOP flag for thread termination
 stop_flag = threading.Event()
@@ -130,6 +130,24 @@ def score_pv(pitch_variability):
     elif 80 < pitch_variability <= 85:
         score = round(4 - 2 * (pitch_variability - 80) / (85 - 80))
         rationale = "Slightly excessive pitch variability; the delivery may seem erratic."
+
+
+    return score, rationale
+
+def score_posture(angle, min_value, max_value, body):
+    """Scores back posture with optimal range at 2.5 - 3.5 and smooth drop-off toward 1.5 and 5."""
+
+    score = scale_to_score(angle, min_value, max_value)
+
+    # Rationale logic for back posture interpretation
+    if (5/3) * min_value <= angle <= (7/10) * max_value:
+        rationale = f"Optimal {body} posture; steady, balanced, and confident presence."
+    elif min_value <= angle < (5/3) * min_value:
+        rationale = f"Good {body} posture; may appear rigid but controlled."
+    elif (7/10) * max_value < angle <= max_value:
+        rationale = f"Slightly unstable {body} posture; movement may reduce perceived confidence."
+    elif angle < min_value:
+        rationale = f"Extremely stiff {body} posture; may appear unnatural and uncomfortable."
     else:
         score = 1
         if pitch_variability < 15:
@@ -163,7 +181,7 @@ def get_speaking_rate(y, sr, transcript):
     print(f"number of words: {word_count} \n")
     print(f"total audio time: {librosa.get_duration(y=y, sr=sr)} \n")
     return word_count/librosa.get_duration(y=y, sr=sr)
-    
+
 def get_pauses(y, sr):
     """detects appropriate and long pauses in speech."""
     onset_frames = librosa.onset.onset_detect(y=y, sr=sr, hop_length=256)
@@ -178,7 +196,7 @@ def get_pauses(y, sr):
 def process_audio(audio_file, transcript):
     """processes audio file with Praat & Librosa in parallel to extract features."""
     start_time = time.time()
-    
+
     # load audio
     y, sr = librosa.load(audio_file, sr=16000, res_type="kaiser_fast")  # faster loading
 
@@ -187,7 +205,7 @@ def process_audio(audio_file, transcript):
         future_volume = executor.submit(get_volume, audio_file)
         future_speaking_rate = executor.submit(get_speaking_rate, y, sr, transcript)
         future_pauses = executor.submit(get_pauses, y, sr)
-        
+
     # fetch results from threads
     pitch_variability = future_pitch_variability.result()
     avg_volume = future_volume.result()
@@ -337,28 +355,12 @@ def process_frames():
 
                 mp.solutions.drawing_utils.draw_landmarks(frame, results.pose_landmarks, mp_pose.POSE_CONNECTIONS)
 
-                if not results_queue.full():
-                    results_queue.put(frame)
-
-# Display Thread
-def display_results():
-    while not stop_flag.is_set() or not results_queue.empty():
-        if not results_queue.empty():
-            frame = results_queue.get()
-            cv2.imshow("Posture Analysis", frame)
-
-        if cv2.waitKey(1) & 0xFF == ord('q'):
-            stop_flag.set()  # Signal all threads to terminate
-            break
-
-    cv2.destroyAllWindows()
 
 # Main posture analysis function
 def analyze_posture(video_path):
     with ThreadPoolExecutor(max_workers=3) as executor:
         executor.submit(capture_frames, video_path)
         executor.submit(process_frames)
-        executor.submit(display_results)
 
     # final results calculation
     with lock:
@@ -368,16 +370,8 @@ def analyze_posture(video_path):
         mean_neck = np.mean(results_data["neck_angles"]) if results_data["neck_angles"] else 0
         range_neck = np.max(results_data["neck_angles"]) - np.min(results_data["neck_angles"]) if results_data["neck_angles"] else 0
 
-        # calculate total duration
-        total_back_frames = results_data["good_back_frames"] + results_data["bad_back_frames"]
-        total_back_time = total_back_frames / 30
-
-        # calculate total duration
-        total_neck_frames = results_data["good_neck_frames"] + results_data["bad_neck_frames"]
-        total_neck_time = total_neck_frames / 30
-
-        # normalize to match the known video length (60 seconds)
-        video_duration = 60
+        # Normalize to match the known video length (60 seconds)
+        video_duration = 30
 
         # time spent in good/bad posture
         gb_time = results_data["good_back_frames"] / 30
@@ -397,7 +391,7 @@ def analyze_posture(video_path):
 
         good_neck_time = (gn_time / (gn_time + bn_time)) * video_duration
         bad_neck_time = (bn_time / (gn_time + bn_time)) * video_duration
-        
+
     # return results in dictionary format
     return {
         "mean_back_inclination": mean_back,
@@ -415,10 +409,16 @@ def analyze_posture(video_path):
 
 # ---------------------- SENTIMENT ANALYSIS ----------------------
 
-def analyze_sentiment(video_path, transcript, metrics):
-    # analyse video
-    posture_data = analyze_posture(video_path=video_path)
-    print(f"POSTURE DATA -> {posture_data} \n")
+def analyze_sentiment(transcript, metrics, posture_data):
+
+    # Get posture scores
+    mean_back_score, mean_back_rationale = score_posture(posture_data["mean_back_inclination"] ,1.5, 5, "Back")
+    mean_neck_score, mean_neck_rationale = score_posture(posture_data["mean_neck_inclination"] ,1.5, 5, "Neck")
+    mean_body_posture = (mean_back_score + mean_neck_score)/2
+
+    range_back_score, range_back_rationale = score_posture(posture_data["range_back_inclination"] ,1.5, 5, "Back")
+    range_neck_score, range_neck_rationale = score_posture(posture_data["range_neck_inclination"] ,1.5, 5, "Neck")
+    range_body_posture = (range_back_score + range_neck_score)/2
 
     prompt = f"""
     You are an advanced presentation evaluation system. Using the provided speech metrics, which include:
@@ -428,7 +428,7 @@ def analyze_sentiment(video_path, transcript, metrics):
     these verdicts interpret the meaning of the raw metric values for pitch variability, speaking rate and pauses
     - and the transcript of the speaker's presentation,
 
-    ...generate a performance analysis with the following scores (each on a scale of 1–100) 
+    ...generate a performance analysis with the following scores (each on a scale of 1–100)
     and a general feedback summary. Return valid JSON only, containing:
       - Engagement
       - Confidence
@@ -451,41 +451,41 @@ def analyze_sentiment(video_path, transcript, metrics):
       - General Feedback Summary
 
 
-    Below are the key metrics, with each metric listing its raw value (from metrics['Metrics']), its derived score (from metrics['Scores']), 
-    and an explanation of what the raw value means and how it is interpreted. 
+    Below are the key metrics, with each metric listing its raw value (from metrics['Metrics']), its derived score (from metrics['Scores']),
+    and an explanation of what the raw value means and how it is interpreted.
     The rationale verdicts (if provided) are the system's coded interpretation of the raw values.
 
-    1) Volume Score: {metrics['Scores']['Volume Score']}/10  
-       Raw Volume (dB): {metrics['Metrics']['Volume']}  
+    1) Volume Score: {metrics['Scores']['Volume Score']}/10
+       Raw Volume (dB): {metrics['Metrics']['Volume']}
        Explanation:
-         - Typically, a speaking volume between 45 and 65 dB is considered normal and confident.  
-         - Volumes lower than 45 dB are considered low and might be hard to hear, while volumes higher than 65 dB might be overwhelming.  
+         - Typically, a speaking volume between 45 and 65 dB is considered normal and confident.
+         - Volumes lower than 45 dB are considered low and might be hard to hear, while volumes higher than 65 dB might be overwhelming.
          - This metric indicates the speaker’s vocal projection and clarity.
 
-    2) Pitch Variability Score: {metrics['Scores']['Pitch Variability Score']}/10  
-       Raw Pitch Variability (Hz): {metrics['Metrics']['Pitch Variability']}  
-       Rationale Verdict: {metrics['Metrics']['Pitch Variability Metric Rationale']} 
+    2) Pitch Variability Score: {metrics['Scores']['Pitch Variability Score']}/10
+       Raw Pitch Variability (Hz): {metrics['Metrics']['Pitch Variability']}
+       Rationale Verdict: {metrics['Metrics']['Pitch Variability Metric Rationale']}
        Explanation:
-         - This metric measures the standard deviation of the speaker’s pitch in voiced segments.  
-         - Values below 15 Hz indicate minimal variation (monotone), 15–30 Hz is low variability, 30–45 Hz is fair, 45–85 Hz is good, and above 85 Hz is extremely high (potentially distracting).  
+         - This metric measures the standard deviation of the speaker’s pitch in voiced segments.
+         - Values below 15 Hz indicate minimal variation (monotone), 15–30 Hz is low variability, 30–45 Hz is fair, 45–85 Hz is good, and above 85 Hz is extremely high (potentially distracting).
          - The rationale helps determine if the speaker’s vocal expressiveness is within an optimal range.
 
     3) Speaking Rate Score: {metrics['Scores']['Speaking Rate Score']}/10
-       Raw Speaking Rate (words/sec): {metrics['Metrics']['Speaking Rate (syllables/sec)']}  
+       Raw Speaking Rate (words/sec): {metrics['Metrics']['Speaking Rate (syllables/sec)']}
        Rationale Verdict: {metrics['Metrics']['Speaking Rate Metric Rationale']}
        Explanation:
-         - Speaking rate is calculated as the number of words (or syllables) spoken per second, excluding silent segments.  
-         - A rate below 1.5 words/sec is extremely slow, 1.5-2.0 words/sec is too slow, 2.0–2.5 words/sec is good, 2.5–3.5 words/sec is too fast, and above 3.5 words/sec is extremely fast.  
+         - Speaking rate is calculated as the number of words (or syllables) spoken per second, excluding silent segments.
+         - A rate below 1.5 words/sec is extremely slow, 1.5-2.0 words/sec is too slow, 2.0–2.5 words/sec is good, 2.5–3.5 words/sec is too fast, and above 3.5 words/sec is extremely fast.
          - This metric reflects how easily the audience can follow the presentation.
 
-    4) Pause Score: {metrics['Scores']['Pause Score']}  
-       Appropriate Pauses: {metrics['Metrics']['Appropriate Pauses']}  
-       Long Pauses: {metrics['Metrics']['Long Pauses']}  
-       Rationale Verdict: {metrics['Metrics']['Pause Metric Rationale']}  
-       Explanation:  
-         - Appropriate pauses are short gaps (typically 0.75-1.5 seconds) calculated by detecting gaps between speech segments.  
-         - They are ideally used around 12-s30 times per minute to enhance clarity and emphasize points.  
-         - Long pauses (lasting more than 2 seconds) are counted separately because they may break the flow of speech and suggest hesitation.  
+    4) Pause Score: {metrics['Scores']['Pause Score']}
+       Appropriate Pauses: {metrics['Metrics']['Appropriate Pauses']}
+       Long Pauses: {metrics['Metrics']['Long Pauses']}
+       Rationale Verdict: {metrics['Metrics']['Pause Metric Rationale']}
+       Explanation:
+         - Appropriate pauses are short gaps (typically 0.75-1.5 seconds) calculated by detecting gaps between speech segments.
+         - They are ideally used around 12-s30 times per minute to enhance clarity and emphasize points.
+         - Long pauses (lasting more than 2 seconds) are counted separately because they may break the flow of speech and suggest hesitation.
          - The rationale verdict explains whether the number of appropriate pauses is near the ideal range and if excessive long pauses are penalized.
     below are the key posture metrics:
 
@@ -504,7 +504,7 @@ def analyze_sentiment(video_path, transcript, metrics):
     Describes whether the back appeared "Stiff" (too rigid), "Fluid" (natural movement), or "Unstable" (frequent shifts).
     Time in Good/Bad Back Posture:
     High time in poor posture indicates sustained discomfort or lack of awareness.
-        
+
     6)Mean Neck Inclination (degrees): {posture_data['mean_neck_inclination']}
     Range of Neck Inclination (degrees): {posture_data['range_neck_inclination']}
     Neck Posture Feedback: {posture_data['neck_feedback']}
@@ -520,7 +520,7 @@ def analyze_sentiment(video_path, transcript, metrics):
     Describes if the user's head posture appeared "Stiff" (rigid), "Fluid" (natural), or "Unstable" (frequent changes).
     Time in Good/Bad Neck Posture:
     Consider how prolonged poor posture may have influenced audience perception.
-        
+
     Transcript Provided:
     {transcript}
 
@@ -531,109 +531,47 @@ def analyze_sentiment(video_path, transcript, metrics):
     Engagement:
       - How well the speaker holds audience attention. Good volume, pitch variability, and pacing can boost engagement.
 
-    Confidence:
-      - Perceived self-assurance. Steady voice, clear articulation, appropriate pauses can indicate confidence.
 
-    Volume:
-      - Final 1–100 rating of loudness (based on Volume Score).
+    Audience Emotion:
+      - Select one of these emotions that the audience will be feeling most strongly (Curiosity, Empathy, Excitement, Inspiration, Amusement, Conviction, Surprise, Hope)
 
-    Pitch Variability:
-      - Reflects how much the speaker’s pitch fluctuates throughout the presentation, indicating vocal expressiveness or monotony..
 
-    Speech Rate:
-      - Measures the pace at which the speaker delivers their presentation, typically quantified as the number of words (or syllables) per second.
-      - An ideal speaking rate helps ensure that the audience can follow the content without feeling rushed or bored.
-
-    Pauses:
-      - Evaluates the frequency and appropriateness of pauses during the presentation. This metric focuses on short pauses (typically 0.75-1.5 seconds) that help clarify speech and emphasize important points.
-      - Well-timed pauses can enhance clarity by giving the audience time to absorb key information and can underscore important ideas. 
-
-    Tone:
-      - One of [Authoritative, Persuasive, Conversational, Inspirational, Empathetic, Enthusiastic, Serious, Humorous, Reflective, Urgent].
-    
-    Curiosity:
-      - Measures how the presentation sparks further interest/inquiry.
-
-    Empathy:
-      - Gauges emotional warmth, audience connection. Assesses the speaker’s ability to connect with the audience on an emotional level.
-
-    Convictions:
-      - Indicates firmness and clarity of beliefs or message. Evaluates how strongly and clearly the speaker presents their beliefs and messag
+    Conviction:
+      - Indicates firmness and clarity of beliefs or message. Evaluates how strongly and clearly the speaker presents their beliefs and message. Dependent on Confidence score and transcript
 
     Clarity:
       -  Measures how easily the audience can understand the speaker’s message, as reflected mostly by speaking rate, volume consistency, effective pause usage.
-      
+
     Emotional Impact:
       - Represents the overall emotional effect of the presentation on the audience. It is calculated as the Average of Curiosity, Empathy, Convictions.
-    
+
     Audience Engagement:
       - Overall measure of how captivating the talk is and how well the user visually presents himself.
+
+    Brevity:
+	- Measure of conciseness of words. To be graded by the transcript
+
 
     Transformative Potential:
       - Potential to motivate significant change or shift perspectives.
 
-    Posture Fluidity: 
+    Posture Fluidity:
       - Reflects how naturally the presenter moves. Combine data from mean inclination, range of motion, and time spent in good/bad posture to assess. Controlled Stability: Minimal movement with sustained good posture. Fluid Movement: Balanced motion without excessive stiffness or frequent shifts.
-        Stiffness: Minimal motion that appears unnatural or rigid. Restlessness: Frequent shifts, suggesting discomfort or nervousness.    
-        
-    Body Posture:
-      - Based on the overall quality of posture alignment and stability. A high score reflects steady posture, minimal stiffness, and low time in poor posture.
-        A low score reflects excessive stiffness, poor posture maintenance, or restlessness.
-    
-    Strengths:
-      - Positive aspects or standout qualities.
+        Stiffness: Minimal motion that appears unnatural or rigid. Restlessness: Frequent shifts, suggesting discomfort or nervousness.
 
-    Areas of Improvements:
-      - Offer specific, actionable and constructive suggestions for improvement.
+    Body Posture:
+     - Based on the overall quality of posture alignment and stability. A high score reflects steady posture, minimal stiffness, and low time in poor posture.
+     - Posture score: {mean_body_posture} {mean_back_rationale} {mean_neck_rationale}, stiffness score: {range_body_posture} {range_back_rationale} {range_neck_rationale}
 
     General Feedback Summary:
-      - Tie together the numeric scores, transcript observations, rationales and body language analysis.
-
-    In your feedback, provide a holistic assessment that integrates insights from audio analysis, posture metrics, and transcript sentiment for a complete evaluation of the speaker's presentation. Your feedback should:
-
-    1. Be Specific and Data-Driven
+    Provide a holistic assessment that integrates insights from audio analysis scores, posture metrics, and transcript sentiment for a complete evaluation of the speaker's presentation.
     Explicitly reference key data points from audio metrics, posture analysis, and the transcript to justify observations.
-    For each insight, clearly explain the connection between the observed data and its impact on the presentation quality.
-    For example, if pitch variability is low and posture appears stiff, explain how this may reduce expressiveness and engagement.
-    2. Link Data Insights to Audience Perception
-    Explain how observed behaviors — such as monotonous speech, poor posture, or excessive movement — may influence the audience's perception of:
-    Engagement — Does the speaker appear captivating or robotic?
-    Confidence — Does the speaker seem poised and self-assured or hesitant and uncertain?
-    Emotional Impact — Does the delivery feel heartfelt, warm, or detached?
-    Highlight how combinations of factors may reinforce or conflict with each other (e.g., clear vocal delivery combined with rigid posture may appear controlled but disengaged).
-    3. Offer Actionable Recommendations
-    Provide clear, actionable suggestions tailored to the identified weaknesses.
-    Recommendations should combine insights from multiple metrics for improved effectiveness.
-    For example:
-    If the speaker had low pitch variability, stiff posture, and long pauses, recommend combining improved vocal inflection with subtle, purposeful body language to improve engagement.
-    If the speaker had fast speaking rate with unstable posture, suggest slowing speech and anchoring body movements to project calmness and control.
-    4. Highlight Balanced Feedback
+    Explain how observed behaviors — such as monotonous speech, poor posture, or excessive movement — may influence the audience's perception
     Emphasize both strengths and areas for improvement to provide a balanced assessment.
-    If positive elements like good vocal projection or confident eye contact are observed, highlight these as behaviors to maintain or amplify.
-    Example Feedback Using Integrated Insights
-    If the data shows:
-
-    Mean Neck Inclination = 9° (borderline good)
-    Range of Neck Inclination = 46° (excessive movement)
-    Time in Good Neck Posture = 34 seconds
-    Time in Bad Neck Posture = 24 seconds
-    Neck Feedback = "Stiff neck posture"
-    Pitch Variability = 25 Hz (low)
-    Speaking Rate = 3.2 words/sec (slightly fast)
-    Transcript Sentiment = Reflective tone with minimal emotional language
-    The LLM should say:
-
-    "Your presentation displayed clear articulation and effective pacing, which supported audience comprehension. 
-    However, your delivery lacked vocal variety, reducing your ability to convey emotional nuance and maintain engagement. 
-    Additionally, your posture appeared excessively stiff, with minimal head movement, which may have created an impression of discomfort or formality. 
-    While your back posture remained relatively stable, the frequent neck adjustments and limited fluidity weakened your overall presence.
-
-    To improve: Consider introducing more intentional, controlled head movements to project confidence and enhance engagement. Additionally, practice adding slight variations in pitch to emphasize key points and express emotional depth. These adjustments can help you appear more dynamic and engaging without sacrificing clarity or control."
-        
 
     Response Requirements:
     1) Output valid JSON only, no extra text.
-    2) Each required field must appear in the JSON. Scores are numeric [1–100], “Tone” is a string from the provided list.
+    2) Each required field must appear in the JSON. Scores are numeric [1–100]
     """
 
     completion = client.chat.completions.create(
@@ -649,30 +587,19 @@ def analyze_sentiment(video_path, transcript, metrics):
                     "type": "object",
                     "properties": {
                         "Engagement": {"type": "number"},
-                        "Confidence": {"type": "number"},
-                        "Volume": {"type": "number"}, 
-                        "Pitch Variability": {"type": "number"},
-                        "Speech Rate": {"type": "number"},
-                        "Pauses": {"type": "number"},
-                        "Tone": {"type": "string"}, #llm call
-                        "Curiosity": {"type": "number"},
-                        "Empathy": {"type": "number"},
-                        "Convictions": {"type": "number"},
+                        "Audience Emotion": {"type": "string"},
+                        "Conviction": {"type": "number"},
                         "Clarity": {"type": "number"},
-                        "Emotional Impact": {"type": "number"},
-                        "Audience Engagement": {"type": "number"},
+                        "Impact": {"type": "number"},
+                        "Brevity": {"type": "number"},
                         "Transformative Potential": {"type": "number"},
-                        "Posture Fluidity": {"type": "number"},
                         "Body Posture": {"type": "number"},
-                        "Strengths": {"type": "string"},
-                        "Areas of Improvements": {"type": "string"},
                         "General Feedback Summary": {"type": "string"},
                     },
                     "required": [
-                        "Engagement", "Confidence", "Volume","Pitch Variability", "Speech Rate", "Pauses", "Tone", 
-                        "Curiosity", "Empathy", "Convictions", "Clarity",  "Emotional Impact", "Audience Engagement", "Transformative Potential",
-                        "Posture Fluidity","Body Posture", 
-                        "Strengths", "Areas of Improvememnt", "General Feedback Summary"
+                        "Engagement", "Audience Emotion", "Conviction",
+                        "Clarity", "Impact", "Brevity",
+                        "Transformative Potential","Body Posture", "General Feedback Summary"
                     ]
             }
             }
@@ -680,7 +607,16 @@ def analyze_sentiment(video_path, transcript, metrics):
     )
 
     response = completion.choices[0].message.content
-    return response
+    print(f"DATA TYPE OF RESPONSE:  {type(response)}")
+
+    try:
+        parsed_response = {}
+        parsed_response['Feedback'] = json.loads(response)
+    except json.JSONDecoder:
+        print("Invalid JSON format in response.")
+        return None
+
+    return parsed_response
 
 
 def analyze_results(video_path, audio_output_path):
@@ -689,23 +625,27 @@ def analyze_results(video_path, audio_output_path):
     # video_path = "video_3.mp4"
 
     # add try-excepts
-    
-    extracted_audio_path = extract_audio(video_path, audio_output_path)
 
-    if not extracted_audio_path:
-        print("Audio extraction failed. Exiting...")
-        return
+        # run transcription and audio analysis in parallel
+        with ThreadPoolExecutor() as executor:
+            future_analyze_posture = executor.submit(analyze_posture, video_path=video_path)
+            future_transcription = executor.submit(transcribe_audio, extracted_audio_path)
+            future_audio_analysis = executor.submit(process_audio, extracted_audio_path, future_transcription.result())
 
-    # run transcription and audio analysis in parallel
-    with ThreadPoolExecutor() as executor:
-        future_transcription = executor.submit(transcribe_audio, extracted_audio_path)
-        future_audio_analysis = executor.submit(process_audio, extracted_audio_path, future_transcription.result())
+        posture_data = future_analyze_posture.result()
+        transcript = future_transcription.result()
+        metrics = future_audio_analysis.result()
 
-    transcript = future_transcription.result()
-    metrics = future_audio_analysis.result()
+        sentiment_analysis = analyze_sentiment(transcript, metrics, posture_data)
+
+        final_json = {
+            'Feedback': sentiment_analysis.get('Feedback'),
+            'Scores': metrics.get('Scores', {}),
+            'Transcript': transcript
+        }
 
     sentiment_analysis = analyze_sentiment(video_path, transcript, metrics)
-    
+
 
     print(f"\nSentiment Analysis for {audio_output_path}:\n\n", sentiment_analysis)
     elapsed_time = time.time() - start_time

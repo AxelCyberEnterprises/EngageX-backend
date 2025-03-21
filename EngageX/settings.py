@@ -172,6 +172,7 @@ if 'RDS_HOSTNAME' in os.environ:
             'PORT': os.environ.get('POSTGRESS_PORT', default='5432'),
         }
     }
+    OPENAI_API_KEY = os.environ['OPENAI_API_KEY']
 else:
     # Local development settings (PostgreSQL)
     DATABASES = {
@@ -187,6 +188,9 @@ else:
             },
         }
     }
+
+    OPENAI_API_KEY = config('OPENAI_API_KEY')
+
 
 
 # Password validation
