@@ -5,11 +5,13 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.parsers import MultiPartParser, FormParser
 
+from django.conf import settings
 from django.db.models import Count, Avg
 from django.utils.timezone import now
 from django.shortcuts import get_object_or_404
 
 import os
+import json
 from datetime import timedelta
 from collections import Counter
 from openai import OpenAI
@@ -178,61 +180,29 @@ class ChunkSentimentAnalysisView(APIView):
 
     permission_classes = [IsAuthenticated]
 
-    def get_most_common_tones(self, session_id):
-        tones = ChunkSentimentAnalysis.objects.filter(
-            chunk__session__id=session_id
-        ).values_list('tone', flat=True)
-
-        valid_tones = [
-            "Authoritative", "Persuasive", "Conversational", "Inspirational",
-            "Empathetic", "Enthusiastic", "Serious", "Humorous", "Reflective", "Urgent"
-        ]
-
-        filtered_tones = [
-            t.strip() for tone in tones if tone
-            for t in tone.strip().split(',') if t.strip() in valid_tones
-        ]
-
-        if not filtered_tones:
-            return "N/A"
-
-        top_tones = Counter(filtered_tones).most_common(2)
-        return ', '.join([tone[0] for tone in top_tones])
 
     def generate_full_summary(self, session_id):
         """Creates a cohesive summary for Strengths, Improvements, and Feedback."""
-        client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-
-        strengths = ChunkSentimentAnalysis.objects.filter(
-            chunk__session__id=session_id
-        ).values_list('strengths', flat=True)
-
-        areas_of_improvements = ChunkSentimentAnalysis.objects.filter(
-            chunk__session__id=session_id
-        ).values_list('areas_of_improvements', flat=True)
+        client = OpenAI(api_key=settings.OPENAI_API_KEY)
 
         general_feedback_summary = ChunkSentimentAnalysis.objects.filter(
             chunk__session__id=session_id
         ).values_list('general_feedback_summary', flat=True)
 
-        combined_strengths = " ".join([s for s in strengths if s])
-        combined_improvements = " ".join([a for a in areas_of_improvements if a])
         combined_feedback = " ".join([g for g in general_feedback_summary if g])
 
-        full_summary = f"""
-        Strengths: {combined_strengths}
-
-        Areas for Improvement: {combined_improvements}
-
-        General Feedback: {combined_feedback}
-        """
+        # get strenghts and areas of improvements
+        # grade content_organisation (0-100), from transcript
 
         prompt = f"""
-        Summarize the following presentation evaluation data into a clear and concise summary, highlighting key strengths, actionable improvements, and overall feedback. Ensure the summary is structured, engaging, and helpful.
+        Using the following presentation evaluation data, provide a structured JSON response containing three key elements:
+        
+        1. **Strength**: Identify the speaker’s most notable strengths based on their delivery, clarity, and engagement.
+        2. **Area of Improvement**: Provide actionable and specific recommendations for improving the speaker’s performance.
+        3. **General Feedback Summary**: Summarize the presentation’s overall effectiveness, balancing positive feedback with constructive advice.
 
-        {full_summary}
-
-        The summary should be clear, informative, and highlight both positive and constructive points.
+        Data to analyze:
+        {combined_feedback}
         """
 
         try:
@@ -240,30 +210,51 @@ class ChunkSentimentAnalysisView(APIView):
                 model="gpt-4o-mini",
                 messages=[{
                     "role": "user", "content": prompt
-                }]
+                }],
+                response_format = {
+                    "type": "json_schema",
+                    "json_schema": {
+                        "name": "Feedback",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "Strength": {"type": "string"},
+                                "Area of Improvement": {"type": "string"},
+                                "General Feedback Summary": {"type": "string"}
+                            }
+                        }
+                    }
+                }
             )
 
             refined_summary = completion.choices[0].message.content
+            parsed_summary = json.loads(refined_summary)
 
         except Exception as e:
-            print(f"Error generating GPT summary: {e}")
-            refined_summary = full_summary
-
-        return refined_summary
+            print(f"Error generating summary: {e}")
+            parsed_data = {
+                "Strength": "N/A",
+                "Area of Improvement": "N/A",
+                "General Feedback Summary": combined_feedback
+            }
+        return parsed_summary
 
     
     def get(self, request, session_id):
         session = get_object_or_404(PracticeSession, id=session_id, user=request.user)
 
         averages = ChunkSentimentAnalysis.objects.filter(chunk__session=session).aggregate(
+            avg_engagement=Avg('engagement'),
+            avg_conviction=Avg('conviction'),
+            avg_clarity=Avg('clarity'),
             avg_impact=Avg('impact'),
+            avg_brevity=Avg('brevity'),
+            avg_transformative_potential=Avg('transformative_potential'),
+            avg_body_posture=Avg('body_posture'),
             avg_volume=Avg('volume'),
             avg_pitch=Avg('pitch_variability'),
             avg_pace=Avg('pace'),
-            avg_clarity=Avg('clarity'),
         )
-
-        averages['tone'] = self.get_most_common_tones(session_id)
 
         full_summary = self.generate_full_summary(session_id)
 

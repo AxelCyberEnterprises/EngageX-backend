@@ -103,6 +103,7 @@ async def video_chunk(sid, data):
     session = client_sessions[sid]
     frame_bytes = data['frame']
 
+    # sessionID_chunkNumber
     if session.get('temp_video_file') is None:
         session['temp_video_file'] = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4') # changed format to .p4
 
@@ -140,12 +141,19 @@ async def perform_video_sentiment_analysis(sid):
     print(f"Performing video sentiment analysis for chunk {chunk_number} (seconds {start_offset}-{end_offset}), session {sid}")
 
     temp_video_file = None
-    audio_output_path = f"temp_audio_{sid}_{chunk_number}.wav"
+    audio_output_path = f"temp_audio_{sid}_{chunk_number}.mp3"
+
+    # check for old transcript
+    old_transcript = ""
+
+    if session_data['temp_transcript_file'] is None:
+        session_data['temp_transcript_file'] = tempfile.NamedTemporaryFile(delete=True, suffix='.txt')
 
     try:
         temp_video_file = tempfile.NamedTemporaryFile(delete=True, suffix='.mp4') # should be .mp4
         temp_video_file.write(accumulated_video_data)
         video_path = temp_video_file.name
+        session_data['temp_transcript_file'].write(old_transcript)
 
         analysis_result = await analyze_results(video_path=video_path, audio_output_path=audio_output_path)
 
@@ -161,29 +169,29 @@ async def perform_video_sentiment_analysis(sid):
                 end_time=end_offset,
             )
 
-            sentiment_data = analysis_result.get('Feedback', {}).get('schema', {}).get('properties', {})
-            audio_metrics = analysis_result.get('Metrics', {})
+            sentiment_data = analysis_result.get('Feedback', {})
+            scores = analysis_result.get('Scores', {})
             transcript = analysis_result.get('Transcript', {})
 
             await asyncio.get_event_loop().run_in_executor(
                 None, ChunkSentimentAnalysis.objects.create,
                 chunk=session_chunk,
-                
+
+                # AI response
                 engagement=int(sentiment_data.get('Engagement', 0)),
-                confidence=int(sentiment_data.get('Confidence', 0)),
-                
-                tone=sentiment_data.get('Tone', None),
-                curiosity=int(sentiment_data.get('Curiosity', 0)),
-                empathy=int(sentiment_data.get('Empathy', 0)),
+                audience_emotion = int(sentiment_data.get('Audience Emotion', 0)),
                 conviction=int(sentiment_data.get('Conviction', 0)),
                 clarity=int(sentiment_data.get('Clarity', 0)),
                 impact=int(sentiment_data.get('Impact', 0)),
+                brevity=int(sentiment_data.get('Brevity', 0)),
                 body_posture=int(sentiment_data.get('Body Posture', 0)),
                 transformative_potential=int(sentiment_data.get('Transformative Potential', 0)),
+                general_feedback=sentiment_data.get('General Feedback Summary', ''),
                 
-                volume=audio_metrics.get('Volume'),
-                pitch_variability=audio_metrics.get('Pitch Variability'),
-                pace=audio_metrics.get('Pace'),
+                # Scores
+                volume=scores.get('Volume'),
+                pitch_variability=scores.get('Pitch Variability'),
+                pace=scores.get('Pace'),
 
                 chunk_transcript=transcript,
             )

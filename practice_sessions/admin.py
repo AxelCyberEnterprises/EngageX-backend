@@ -33,12 +33,10 @@ class ChunkSentimentAnalysisAdmin(admin.ModelAdmin):
     list_display = (
         'chunk',
         'engagement',
-        'confidence',
         'impact',  
-        'tone',
     )
     search_fields = ('chunk__session__session_name',)
-    list_filter = ('tone',)
+    list_filter = ('impact',)
 
 
 @admin.register(SessionChunk)
