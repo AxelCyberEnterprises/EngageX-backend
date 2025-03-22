@@ -4,13 +4,16 @@ import os
 import tempfile
 import asyncio  # For asynchronous tasks
 import random  # Mock sentiment analysis (for demonstration)
+import boto3
+import concurrent.futures
+from botocore.exceptions import NoCredentialsError
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.files import File
-from sentiment_analysis import analyze_results
+from .sentiment_analysis import analyze_results
 
 # Initialize Socket.IO ASGI server, allowing CORS for development.
-sio = socketio.AsyncServer(async_mode='asgi', cors_allowed_origins='*')
+sio = socketio.AsyncServer(async_mode="asgi", cors_allowed_origins="*")
 
 # Create a Socket.IO ASGI application.
 app = socketio.ASGIApp(sio)
@@ -18,7 +21,18 @@ app = socketio.ASGIApp(sio)
 # Session data storage (in-memory dictionary, consider Redis or similar for production)
 client_sessions = {}
 
-ANALYSIS_INTERVAL_SECONDS = 60  # Interval for performing video sentiment analysis (seconds)
+ANALYSIS_INTERVAL_SECONDS = (
+    30  # Interval for performing video sentiment analysis (seconds)
+)
+
+# Intialize S3 client
+s3_client = boto3.client("s3")
+# Chuck number
+chunk_number = 0
+# Thread pool executor for parallel execution
+executor = concurrent.futures.ThreadPoolExecutor(
+    max_workers=2
+)  # Two threads: S3 & Sentiment Analysis
 
 
 @sio.event
@@ -33,43 +47,25 @@ async def connect(sid, environ):
         environ (dict): Environment dictionary (e.g., headers, query parameters).
     """
     print(f"Client connected: {sid}")
+    # session_temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".webm")
     client_sessions[sid] = {
-        'temp_video_file': tempfile.NamedTemporaryFile(delete=False, suffix='.webm'),  # Temp file for video chunks (consider .mp4, .webm based on frontend encoding)
-        'accumulated_video_data': b"",  # Buffer for accumulating video data for analysis intervals
-        'frame_count': 0,  # Frame counter for the session
-        'analysis_timer': None,  # Asynchronous task for periodic analysis
+        "temp_video_file": tempfile.NamedTemporaryFile(
+            delete=False, suffix=".webm"
+        ),  # Temp file for video chunks (consider .mp4, .webm based on frontend encoding)
+        "accumulated_video_data": b"",  # Buffer for accumulating video data for analysis intervals
+        "frame_count": 0,  # Frame counter for the session
+        "analysis_timer": None,  # Asynchronous task for periodic analysis
     }
-    await sio.emit('connection_established', {'message': 'WebSocket connection established for video stream'}, to=sid)
-    await start_analysis_timer(sid)  # Begin periodic analysis scheduling
+    print(client_sessions)
+    await sio.emit(
+        "connection_established",
+        {
+            "message": "WebSocket connection established for video stream",
+        },
+        to=sid,
+    )
 
-
-async def start_analysis_timer(sid):
-    """
-    Starts a recurring timer that triggers video sentiment analysis at intervals.
-
-    Analysis is performed every ANALYSIS_INTERVAL_SECONDS.
-    """
-    async def trigger_analysis():
-        """Inner task to trigger and reschedule analysis."""
-        if sid in client_sessions:
-            await perform_video_sentiment_analysis(sid)
-            client_sessions[sid]['analysis_timer'] = asyncio.create_task(trigger_analysis())  # Reschedule itself
-
-    client_sessions[sid]['analysis_timer'] = asyncio.create_task(trigger_analysis())  # Initial timer start
-
-
-async def stop_analysis_timer(sid):
-    """
-    Stops the periodic video sentiment analysis timer for a session.
-
-    This is called upon client disconnection or stream end.
-    """
-    if sid in client_sessions and client_sessions[sid]['analysis_timer']:
-        client_sessions[sid]['analysis_timer'].cancel()
-        try:
-            await client_sessions[sid]['analysis_timer']  # Await cancellation for clean shutdown
-        except asyncio.CancelledError:
-            pass  # Expected exception when task is cancelled
+    # await start_analysis_timer(sid)  # Begin periodic analysis scheduling
 
 
 @sio.event
@@ -84,13 +80,7 @@ async def disconnect(sid):
         sid (str): Session ID of the disconnected client.
     """
     print(f"Client disconnected: {sid}")
-    await stop_analysis_timer(sid)  # Stop analysis timer on disconnect
-    if sid in client_sessions:
-        session = client_sessions[sid]
-        if session['temp_video_file']:
-            session['temp_video_file'].close()
-            os.unlink(session['temp_video_file'].name)  # Delete temporary video file
-        del client_sessions[sid]  # Remove session data
+    # await stop_analysis_timer(sid)  # Stop analysis timer on disconnect
 
 
 @sio.event
@@ -111,10 +101,58 @@ async def video_chunk(sid, data):
         return
 
     session = client_sessions[sid]
-    frame_bytes = data['frame']  # Assumes frontend sends encoded video frame as bytes
+    frame_bytes = data["frame"]  # Assumes frontend sends encoded video frame as bytes
+    session["accumulated_video_data"] += frame_bytes  # Accumulate video frame data
+    session["frame_count"] += 1  # Increment frame count
 
-    session['accumulated_video_data'] += frame_bytes  # Accumulate video frame data
-    session['frame_count'] += 1 # Increment frame count
+    temp_file = session["temp_video_file"]
+
+    # Access and write to the file
+    temp_file = session["temp_video_file"]
+    temp_file.write(frame_bytes)
+    temp_file.flush()
+
+
+# print(f"Video chunk saved temporarily at: {temp_filename}")
+
+# write the
+
+
+# S3_BUCKET_NAME = os.environ["AWS_S3_BUCKET_NAME"]
+# S3_REGION = os.environ["AWS_S3_REGION_NAME"]
+
+
+# async def upload_video_chuck_to_s3(sid, file_path):
+#     """
+#     Uploads a video Chunk file to an S3 bucket.
+
+#     Args:
+#         file_path (str): Local path of the video file.
+#         s3_filename (str): The desired name for the file in S3.
+
+#     Returns:
+#         str: The URL of the uploaded video if successful, None otherwise.
+#     """
+#     s3_filename = f"{sid}/{sid}_{chunk_number}.webm"
+#     try:
+#         s3_client.upload_file(
+#             file_path,
+#             S3_BUCKET_NAME,
+#             s3_filename,
+#             ExtraArgs={"ContentType": "video/webm"},
+#         )
+
+#         # Generate the public S3 URL
+#         video_url = f"https://{S3_BUCKET_NAME}.s3.{S3_REGION}.amazonaws.com/user-videos/UserID/{s3_filename}"
+#         print(f"Video uploaded successfully: {video_url}")
+
+#         return video_url
+#     except NoCredentialsError:
+#         print("AWS credentials not found.")
+#         return None
+#     except Exception as e:
+#         print(f"Error uploading video: {e}")
+#         return None
 
 
 async def perform_video_sentiment_analysis(sid):
@@ -132,65 +170,182 @@ async def perform_video_sentiment_analysis(sid):
         return
 
     session = client_sessions[sid]
-    video_data_for_analysis = session['accumulated_video_data'] # Get accumulated video data
+    video_data_for_analysis = session[
+        "accumulated_video_data"
+    ]  # Get accumulated video data
 
     # save to temp file
-    audio_data_for_analysis = session['accumulated_audio_data'] # Path for extarcted audio
+    audio_data_for_analysis = session[
+        "accumulated_audio_data"
+    ]  # Path for extarcted audio
 
     if not video_data_for_analysis:
-        print(f"No video data to analyze for session {sid} in this interval.") # Log if no data
-        return # No data to analyze in this interval
+        print(
+            f"No video data to analyze for session {sid} in this interval."
+        )  # Log if no data
+        return  # No data to analyze in this interval
 
-    print(f"Performing video sentiment analysis for interval {session['frame_count'] // (ANALYSIS_INTERVAL_SECONDS * 30) + 1}, session {sid}") # Example interval count log (assuming ~30fps)
+    # loop = asyncio.get_event_loop()
+    # s3_future = loop.run_in_executor(executor, save_video_to_s3, video_data, sid)
+    # sentiment_future = loop.run_in_executor(
+    #     executor, analyze_sentiment, video_data, audio_data
+    # )
 
+    print(
+        f"Performing video sentiment analysis for interval {session['frame_count'] // (ANALYSIS_INTERVAL_SECONDS * 30) + 1}, session {sid}"
+    )  # Example interval count log (assuming ~30fps)
 
     # *** REPLACE THIS MOCK ANALYSIS WITH YOUR ACTUAL VIDEO SENTIMENT ANALYSIS LOGIC ***
     # analysis_result = await mock_video_sentiment_analysis(video_data_for_analysis, audio_data_for_analysis)  # Placeholder analysis
 
-    analysis_result = await analyze_results(video_path=video_data_for_analysis, audio_output_path=audio_data_for_analysis)
+    analysis_result = await analyze_results(
+        video_path=video_data_for_analysis, audio_output_path=audio_data_for_analysis
+    )
 
     # Emit sentiment analysis result back to the specific client
-    await sio.emit('video_analysis_result', {
-        'interval_number': session['frame_count'] // (ANALYSIS_INTERVAL_SECONDS * 30) + 1, # Example interval number
-        'sentiment_analysis': analysis_result  # Analysis result dictionary (structure depends on your AI model)
-    }, to=sid)
+    await sio.emit(
+        "video_analysis_result",
+        {
+            "interval_number": session["frame_count"]
+            // (ANALYSIS_INTERVAL_SECONDS * 30)
+            + 1,  # Example interval number
+            "sentiment_analysis": analysis_result,  # Analysis result dictionary (structure depends on your AI model)
+        },
+        to=sid,
+    )
 
-    session['accumulated_video_data'] = b""  # Reset accumulated video data buffer after analysis
+    session["accumulated_video_data"] = (
+        b""  # Reset accumulated video data buffer after analysis
+    )
 
 
-@sio.event
-async def start_stream(sid, data):
-    """Handles 'start_stream' event from the client (optional signaling)."""
-    print(f"Video stream started by client: {sid}")
-    await sio.emit('stream_started', {'message': 'Video stream recording started on server'}, to=sid)
-    await start_analysis_timer(sid)  # Ensure analysis timer starts
-
-
-@sio.event
-async def end_stream(sid, data):
+async def start_analysis_timer(sid):
     """
-    Handles 'end_stream' event from the client.
+    Starts a recurring timer that triggers video sentiment analysis at intervals.
 
-    Finalizes the video stream recording, performs any final tasks, and cleans up session resources.
+    Analysis is performed every ANALYSIS_INTERVAL_SECONDS.
     """
-    print(f"Video stream ended by client: {sid}")
-    await stop_analysis_timer(sid)  # Stop the analysis timer
 
+    async def trigger_analysis():
+        """Inner task to trigger and reschedule analysis."""
+        if sid in client_sessions:
+            await perform_video_sentiment_analysis(sid)
+            client_sessions[sid]["analysis_timer"] = asyncio.create_task(
+                trigger_analysis()
+            )  # Reschedule itself
+
+    client_sessions[sid]["analysis_timer"] = asyncio.create_task(
+        trigger_analysis()
+    )  # Initial timer start
+
+
+async def stop_analysis_timer(sid):
+    """
+    Stops the periodic video sentiment analysis timer for a session.
+
+    This is called upon client disconnection or stream end.
+    """
+    if sid in client_sessions and client_sessions[sid]["analysis_timer"]:
+        client_sessions[sid]["analysis_timer"].cancel()
+        try:
+            await client_sessions[sid][
+                "analysis_timer"
+            ]  # Await cancellation for clean shutdown
+        except asyncio.CancelledError:
+            pass  # Expected exception when task is cancelled
     if sid in client_sessions:
         session = client_sessions[sid]
-        if session['temp_video_file']:
-            session['temp_video_file'].close()
-            # In a real application, you would process the temp video file here:
-            # - Save to permanent storage (S3, database, etc.)
-            # - Trigger final, more comprehensive video analysis
-            print(f"Temporary video file saved: {session['temp_video_file'].name}") # Log saved file path
+        if session["temp_video_file"]:
+            session["temp_video_file"].close()
+            os.unlink(session["temp_video_file"].name)  # Delete temporary video file
+        del client_sessions[sid]  # Remove session data
 
-        await sio.emit('stream_ended', {
-            'message': 'Video stream recording completed and processed',
-            'total_frames': session['frame_count'],
-            'analysis_intervals': session['frame_count'] // (ANALYSIS_INTERVAL_SECONDS * 30) # Example interval count assuming ~30fps
-        }, to=sid)
-        del client_sessions[sid]  # Clean up session data
+
+# @sio.event
+# async def start_stream(sid, data):
+#     """Handles 'start_stream' event from the client (optional signaling)."""
+#     print(f"Video stream started by client: {sid}")
+#     await sio.emit(
+#         "stream_started",
+#         {"message": "Video stream recording started on server"},
+#         to=sid,
+#     )
+#     await start_analysis_timer(sid)  # Ensure analysis timer starts
+
+
+# @sio.event
+# async def end_stream(sid, data):
+#     """
+#     Handles 'end_stream' event from the client.
+
+#     Finalizes the video stream recording, performs any final tasks, and cleans up session resources.
+#     """
+#     print(f"Video stream ended by client: {sid}")
+#     await stop_analysis_timer(sid)  # Stop the analysis timer
+
+#     if sid in client_sessions:
+#         session = client_sessions[sid]
+#         if session["temp_video_file"]:
+#             session["temp_video_file"].close()
+#             # In a real application, you would process the temp video file here:
+#             # - Save to permanent storage (S3, database, etc.)
+#             # - Trigger final, more comprehensive video analysis
+#             print(
+#                 f"Temporary video file saved: {session['temp_video_file'].name}"
+#             )  # Log saved file path
+
+#         await sio.emit(
+#             "stream_ended",
+#             {
+#                 "message": "Video stream recording completed and processed",
+#                 "total_frames": session["frame_count"],
+#                 "analysis_intervals": session["frame_count"]
+#                 // (
+#                     ANALYSIS_INTERVAL_SECONDS * 30
+#                 ),  # Example interval count assuming ~30fps
+#             },
+#             to=sid,
+#         )
+#         del client_sessions[sid]  # Clean up session data
+
+
+# S3_BUCKET_NAME = os.environ["AWS_S3_BUCKET_NAME"]
+# S3_REGION = os.environ["AWS_S3_REGION_NAME"]
+
+
+# async def upload_video_chuck_to_s3(file_path):
+#     """
+#     Uploads a video file to an S3 bucket.
+
+#     Args:
+#         file_path (str): Local path of the video file.
+#         s3_filename (str): The desired name for the file in S3.
+
+#     Returns:
+#         str: The URL of the uploaded video if successful, None otherwise.
+#     """
+#     s3_filename = "user_videos/UserID/"
+#     try:
+#         s3_client.upload_file(
+#             file_path,
+#             S3_BUCKET_NAME,
+#             s3_filename,
+#             ExtraArgs={"ContentType": "video/webm"},
+#         )
+
+#         # Generate the public S3 URL
+#         video_url = (
+#             f"https://{S3_BUCKET_NAME}.s3.{S3_REGION}.amazonaws.com/{s3_filename}"
+#         )
+#         print(f"Video uploaded successfully: {video_url}")
+
+#         return video_url
+#     except NoCredentialsError:
+#         print("AWS credentials not found.")
+#         return None
+#     except Exception as e:
+#         print(f"Error uploading video: {e}")
+#         return None"
 
 
 # async def mock_video_sentiment_analysis(video_frame_data):

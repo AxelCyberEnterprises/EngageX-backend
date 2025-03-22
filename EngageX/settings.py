@@ -235,10 +235,10 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 
 USE_S3 = os.environ["USE_S3"] == "True"
-
+AWS_STORAGE_BUCKET_NAME = os.environ["AWS_STORAGE_BUCKET_NAME"]
 # # aws setting
 if USE_S3:
-    AWS_STORAGE_BUCKET_NAME = os.environ["AWS_STORAGE_BUCKET_NAME"]
+
     AWS_S3_REGION_NAME = os.environ["AWS_S3_REGION_NAME"]
     AWS_S3_CUSTOM_DOMAIN = f"{AWS_STORAGE_BUCKET_NAME}.s3.amazonaws.com"
     # s3 media settings
