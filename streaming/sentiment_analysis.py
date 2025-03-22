@@ -6,7 +6,6 @@ import threading
 from queue import Queue
 import numpy as np
 import pandas as pd
-import librosa
 import parselmouth
 import cv2
 import mediapipe as mp
@@ -14,9 +13,11 @@ from openai import OpenAI
 from moviepy import VideoFileClip
 from concurrent.futures import ThreadPoolExecutor
 
+from django.conf import settings
 
+# chnage this shit too
 # load OpenAI API Key
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+client = OpenAI(api_key=settings.OPENAI_API_KEY)
 
 # initialize Mediapipe Pose Detection
 mp_pose = mp.solutions.pose
@@ -24,7 +25,6 @@ pose = mp_pose.Pose()
 
 # queues for thread communication
 frame_queue = Queue(maxsize=5)
-results_queue = Queue(maxsize=5)  
 
 # synchronization and STOP flag for thread termination
 stop_flag = threading.Event()
@@ -153,7 +153,7 @@ def score_posture(angle, min_value, max_value, body):
     if (5/3) * min_value <= angle <= (7/10) * max_value:
         rationale = f"Optimal {body} posture; steady, balanced, and confident presence."
     elif min_value <= angle < (5/3) * min_value:
-        rationale = f"Slightly stiff {body} posture; may appear rigid but controlled."
+        rationale = f"Good {body} posture; may appear rigid but controlled."
     elif (7/10) * max_value < angle <= max_value:
         rationale = f"Slightly unstable {body} posture; movement may reduce perceived confidence."
     elif angle < min_value:
@@ -357,28 +357,12 @@ def process_frames():
 
                 mp.solutions.drawing_utils.draw_landmarks(frame, results.pose_landmarks, mp_pose.POSE_CONNECTIONS)
 
-                if not results_queue.full():
-                    results_queue.put(frame)
-
-# Display Thread
-def display_results():
-    while not stop_flag.is_set() or not results_queue.empty():
-        if not results_queue.empty():
-            frame = results_queue.get()
-            cv2.imshow("Posture Analysis", frame)
-
-        if cv2.waitKey(1) & 0xFF == ord('q'):
-            stop_flag.set()  # Signal all threads to terminate
-            break
-
-    cv2.destroyAllWindows()
 
 # Main Analysis Function
 def analyze_posture(video_path):
     with ThreadPoolExecutor(max_workers=3) as executor:
         executor.submit(capture_frames, video_path)
         executor.submit(process_frames)
-        executor.submit(display_results)
 
     # Final results calculation
     with lock:
@@ -389,7 +373,7 @@ def analyze_posture(video_path):
         range_neck = np.max(results_data["neck_angles"]) - np.min(results_data["neck_angles"]) if results_data["neck_angles"] else 0
 
         # Normalize to match the known video length (60 seconds)
-        video_duration = 60
+        video_duration = 30
 
         # Time spent in good/bad posture
         gb_time = results_data["good_back_frames"] / 30
@@ -435,21 +419,16 @@ def analyze_posture(video_path):
 
 # ---------------------- SENTIMENT ANALYSIS ----------------------
 
-def analyze_sentiment(video_path, transcript, metrics):
-    posture_data = analyze_posture(video_path=video_path)
+def analyze_sentiment(transcript, metrics, posture_data):
 
     # Get posture scores
     mean_back_score, mean_back_rationale = score_posture(posture_data["mean_back_inclination"] ,1.5, 5, "Back")
-    mean_neck_score, mean_neck_rationale = score_posture(posture_data["mean_neck_inclination"] ,1.5, 10, "Neck")
+    mean_neck_score, mean_neck_rationale = score_posture(posture_data["mean_neck_inclination"] ,1.5, 5, "Neck")
     mean_body_posture = (mean_back_score + mean_neck_score)/2
 
-    range_back_score, range_back_rationale = score_posture(posture_data["range_back_inclination"] ,1.5, 10, "Back")
-    range_neck_score, range_neck_rationale = score_posture(posture_data["range_neck_inclination"] ,1.5, 10, "Neck")
+    range_back_score, range_back_rationale = score_posture(posture_data["range_back_inclination"] ,1.5, 5, "Back")
+    range_neck_score, range_neck_rationale = score_posture(posture_data["range_neck_inclination"] ,1.5, 5, "Neck")
     range_body_posture = (range_back_score + range_neck_score)/2
-
-    # pass time into as part of rationale
-        
-    print(f"POSTURE DATA -> {posture_data} \n")
 
     prompt = f"""
     You are an advanced presentation evaluation system. Using the provided speech metrics, their rationale and the speakers transcript, generate a performance analysis with the following scores (each on a scale of 1–100) and a general feedback summary. Return valid JSON only
@@ -461,18 +440,11 @@ def analyze_sentiment(video_path, transcript, metrics):
     Engagement:
       - How well the speaker holds audience attention. Graded on the speaker's transcript. Volume, pitch variability, pacing and pauses can boost/lower engagement. Volume_score: {metrics["Metrics"]["Volume"]}, {metrics["Metrics"]["Volume Rationale"]}, pitch_variability_score: {metrics["Scores"]["Pitch Variability Score"]} , {metrics["Metrics"]["Pitch Variability"]}, pace_score: {metrics["Scores"]["Pace Score"]} {metrics["Metrics"]["paceRationale"]}, pause_score: {metrics["Scores"]["Pause Score"]} {metrics["Metrics"]["Pause Metric Rationale"]}
 
-    Confidence:
-      - Perceived self-assurance. Steady voice, clear articulation, appropriate pauses can indicate confidence. Volume_score: {metrics["Metrics"]["Volume"]}, {metrics["Metrics"]["Volume Rationale"]}, pitch_variability_score: {metrics["Metrics"]["Pitch Variability"]} {metrics["Metrics"]["Pitch Variability Rationale"]}, pace_score: {metrics["Scores"]["Pace Score"]} {metrics["Metrics"]["paceRationale"]}, pause_score: {metrics["Scores"]["Pause Score"]} {metrics["Metrics"]["Pause Metric Rationale"]}
 
-    Tone:
-      - Any two among [Authoritative, Persuasive, Conversational, Inspirational, Empathetic, Enthusiastic, Serious, Humorous, Reflective, Urgent].
-    
-    Curiosity:
-      - Measures how the presentation sparks further interest/inquiry. Dependent on Engagement score and sentiment analysis from transcript
+    Audience Emotion:
+      - Select one of these emotions that the audience will be feeling most strongly (Curiosity, Empathy, Excitement, Inspiration, Amusement, Conviction, Surprise, Hope)
 
-    Empathy:
-      - Gauges emotional warmth, audience connection. Assesses the speaker’s ability to connect with the audience on an emotional level. Dependent on Engagement score and transcript
-
+   
     Conviction:
       - Indicates firmness and clarity of beliefs or message. Evaluates how strongly and clearly the speaker presents their beliefs and message. Dependent on Confidence score and transcript
 
@@ -485,51 +457,26 @@ def analyze_sentiment(video_path, transcript, metrics):
       pace_score: {metrics["Scores"]["Pace Score"]} {metrics["Metrics"]["paceRationale"]}, pause_score: {metrics["Scores"]["Pause Score"]} {metrics["Metrics"]["paceRationale"]}.
       Posture score: {mean_body_posture} {mean_back_rationale} {mean_neck_rationale}, stiffness score: {range_body_posture} {range_back_rationale} {range_neck_rationale}
 
+    Brevity:
+	- Measure of conciseness of words. To be graded by the transcript
+
+      
     Transformative Potential:
       - Potential to motivate significant change or shift perspectives.
 
     Body Posture:
      - Based on the overall quality of posture alignment and stability. A high score reflects steady posture, minimal stiffness, and low time in poor posture.
      - Posture score: {mean_body_posture} {mean_back_rationale} {mean_neck_rationale}, stiffness score: {range_body_posture} {range_back_rationale} {range_neck_rationale}
-
-    Strengths:
-      - Positive aspects or standout qualities.
-
-    Areas of Improvements:
-      - Offer specific, actionable and constructive suggestions for improvement.
-
+   
     General Feedback Summary:
-      - Tie together the numeric scores, transcript observations, rationales and body language analysis.
-
-    In your feedback, provide a holistic assessment that integrates insights from audio analysis, posture metrics, and transcript sentiment for a complete evaluation of the speaker's presentation. Your feedback should:
-
-    1. Be Specific and Data-Driven
+    Provide a holistic assessment that integrates insights from audio analysis scores, posture metrics, and transcript sentiment for a complete evaluation of the speaker's presentation.
     Explicitly reference key data points from audio metrics, posture analysis, and the transcript to justify observations.
-    For each insight, clearly explain the connection between the observed data and its impact on the presentation quality.
-  
-    2. Link Data Insights to Audience Perception
     Explain how observed behaviors — such as monotonous speech, poor posture, or excessive movement — may influence the audience's perception
-    Highlight how combinations of factors may reinforce or conflict with each other (e.g., clear vocal delivery combined with rigid posture may appear controlled but disengaged).
-
-    3. Offer Actionable Recommendations
-    Provide clear, actionable suggestions tailored to the identified weaknesses.
-    Recommendations should combine insights from multiple metrics for improved effectiveness.
-
-    4. Highlight Balanced Feedback
     Emphasize both strengths and areas for improvement to provide a balanced assessment.
-    If positive elements like good vocal projection are observed, highlight these as behaviors to maintain or amplify.
-    
-    e.g
-    "Your presentation displayed clear articulation and effective pacing, which supported audience comprehension. 
-    However, your delivery lacked vocal variety, reducing your ability to convey emotional nuance and maintain engagement. 
-    Additionally, your posture appeared excessively stiff, with minimal head movement, which may have created an impression of discomfort or formality. 
-    While your back posture remained relatively stable, the frequent neck adjustments and limited fluidity weakened your overall presence.
-    To improve: Consider introducing more intentional, controlled head movements to project confidence and enhance engagement. Additionally, practice adding slight variations in pitch to emphasize key points and express emotional depth. These adjustments can help you appear more dynamic and engaging without sacrificing clarity or control."
-        
 
     Response Requirements:
     1) Output valid JSON only, no extra text.
-    2) Each required field must appear in the JSON. Scores are numeric [1–100], “Tone” is a string from the provided list.
+    2) Each required field must appear in the JSON. Scores are numeric [1–100]
     """
 
     completion = client.chat.completions.create(
@@ -545,30 +492,24 @@ def analyze_sentiment(video_path, transcript, metrics):
                     "type": "object",
                     "properties": {
                         "Engagement": {"type": "number"},
-                        "Confidence": {"type": "number"},
-                        "Tone": {"type": "string"},
-                        "Body Posture": {"type": "number"},
-                        "Curiosity": {"type": "number"},
-                        "Empathy": {"type": "number"},
+                        "Audience Emotion": {"type": "string"},
                         "Conviction": {"type": "number"},
                         "Clarity": {"type": "number"},
                         "Impact": {"type": "number"},
+                        "Brevity": {"type": "number"},
                         "Transformative Potential": {"type": "number"},
-                        "Strengths": {"type": "string"},
-                        "Areas of Improvements": {"type": "string"},
+                        "Body Posture": {"type": "number"},
                         "General Feedback Summary": {"type": "string"},
                     },
                     "required": [
-                        "Engagement", "Confidence","Tone", "Body Posture",
-                        "Curiosity", "Empathy", "Conviction", "Clarity",  "Impact", "Transformative Potential",
-                        "Strengths", "Areas of Improvememnt", "General Feedback Summary"
+                        "Engagement", "Audience Emotion", "Conviction", 
+                        "Clarity", "Impact", "Brevity",
+                        "Transformative Potential","Body Posture", "General Feedback Summary"
                     ]
             }
             }
         }
     )
-
-    print(f"Prompt: {prompt}\n")
 
     response = completion.choices[0].message.content
     print(f"DATA TYPE OF RESPONSE:  {type(response)}")
@@ -576,21 +517,6 @@ def analyze_sentiment(video_path, transcript, metrics):
     try:
         parsed_response = {}
         parsed_response['Feedback'] = json.loads(response)
-
-        parsed_response['Posture'] = {
-            "mean_back_inclination": posture_data["mean_back_inclination"],
-            "range_back_inclination": posture_data["range_back_inclination"],
-            "mean_neck_inclination": posture_data["mean_neck_inclination"],
-            "range_neck_inclination": posture_data["range_neck_inclination"],
-            "back_feedback": posture_data.get("back_feedback", ""),
-            "neck_feedback": posture_data.get("neck_feedback", ""),
-            "good_back_time": posture_data.get("good_back_time", 0),
-            "bad_back_time": posture_data.get("bad_back_time", 0),
-            "good_neck_time": posture_data.get("good_neck_time", 0),
-            "bad_neck_time": posture_data.get("bad_neck_time", 0)
-        }
-        print(f"DATA TYPE OF RESPONSE:  {type(parsed_response)}")
-        print(f"\nPARSE REPONSE: {parsed_response} \n")
     except json.JSONDecoder:
         print("Invalid JSON format in response.")
         return None
@@ -610,19 +536,19 @@ def analyze_results(video_path, audio_output_path):
     
         # run transcription and audio analysis in parallel
         with ThreadPoolExecutor() as executor:
+            future_analyze_posture = executor.submit(analyze_posture, video_path=video_path)
             future_transcription = executor.submit(transcribe_audio, extracted_audio_path)
             future_audio_analysis = executor.submit(process_audio, extracted_audio_path, future_transcription.result())
 
+        posture_data = future_analyze_posture.result()
         transcript = future_transcription.result()
         metrics = future_audio_analysis.result()
 
-        sentiment_analysis = analyze_sentiment(video_path, transcript, metrics)
+        sentiment_analysis = analyze_sentiment(transcript, metrics, posture_data)
 
         final_json = {
             'Feedback': sentiment_analysis.get('Feedback'),
-            'Metrics': metrics.get('Metrics', {}),
             'Scores': metrics.get('Scores', {}),
-            'Posture': sentiment_analysis.get('Posture'),
             'Transcript': transcript
         }
 
