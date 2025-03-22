@@ -182,20 +182,60 @@ def get_volume(audio_file, top_db = 20):
     print(min(intensity.values[0]))
     return np.median(intensity.values[0])
 
-def get_pace(y, sr, transcript):
+def get_pace(audio_file, transcript):
     """calculates paceusing Librosa onset detection."""
-    word_count = len(transcript.split())
-    print(f"number of words: {word_count} \n")
-    print(f"total audio time: {librosa.get_duration(y=y, sr=sr)} \n")
-    return word_count/librosa.get_duration(y=y, sr=sr)
+    start_time = time.time()
 
-def get_pauses(y, sr):
-    """detects appropriate and long pauses in speech."""
-    onset_frames = librosa.onset.onset_detect(y=y, sr=sr, hop_length=256)
-    onset_times = librosa.frames_to_time(onset_frames, sr=sr)
-    pause_durations = np.diff(onset_times)
-    appropriate_pauses = len([p for p in pause_durations if 0.75 < p < 1.5])
-    long_pauses = len([p for p in pause_durations if p > 2])
+    sound = parselmouth.Sound(audio_file)
+    duration = sound.duration
+
+    word_count = len(transcript.split())
+
+    elapsed_time = time.time() - start_time
+    # print(f"\nElapsed time for pace: {elapsed_time:.2f} seconds")
+    return word_count/duration
+
+def get_pauses(audio_file):
+    """
+    Detects pauses using Praat's intensity feature via parselmouth.
+    """
+
+    # Load audio file with Praat
+    sound = parselmouth.Sound(audio_file)
+
+    intensity_threshold=30 
+    min_pause_duration=0.5
+    long_pause_duration=1.75
+    
+    # Extract intensity
+    intensity = sound.to_intensity()
+    
+    # Identify pause segments (where intensity falls below the threshold)
+    pause_times = []
+    for i, value in enumerate(intensity.values[0]):
+        if value < intensity_threshold:
+            pause_times.append(intensity.xs()[i])
+    
+    # Identify continuous pause regions
+    if not pause_times:
+        return 0, 0  # No pauses detected
+
+    # Group pause segments into continuous pauses
+    pauses = []
+    start_time = pause_times[0]
+
+    for i in range(1, len(pause_times)):
+        if pause_times[i] - pause_times[i-1] > 0.1:  # Break detected
+            pauses.append((start_time, pause_times[i-1]))
+            start_time = pause_times[i]
+
+    # Add the last pause
+    pauses.append((start_time, pause_times[-1]))
+
+    # Classify pauses
+    appropriate_pauses = sum(min_pause_duration <= (end - start) < long_pause_duration for start, end in pauses)
+    long_pauses = sum((end - start) >= long_pause_duration for start, end in pauses)
+
     return appropriate_pauses, long_pauses
 
 # ---------------------- PROCESS AUDIO ----------------------
@@ -204,14 +244,11 @@ def process_audio(audio_file, transcript):
     """processes audio file with Praat & Librosa in parallel to extract features."""
     start_time = time.time()
     
-    # load audio
-    y, sr = librosa.load(audio_file, sr=16000, res_type="kaiser_fast")  # faster loading
-
     with ThreadPoolExecutor() as executor:
         future_pitch_variability = executor.submit(get_pitch_variability, audio_file)
         future_volume = executor.submit(get_volume, audio_file)
-        future_pace= executor.submit(get_pace, y, sr, transcript)
-        future_pauses = executor.submit(get_pauses, y, sr)
+        future_pace= executor.submit(get_pace, audio_file, transcript)
+        future_pauses = executor.submit(get_pauses, audio_file)
 
     # fetch results from threads
     pitch_variability = future_pitch_variability.result()
