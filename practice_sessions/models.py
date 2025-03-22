@@ -56,6 +56,18 @@ class PracticeSession(models.Model):
         blank=True,
         help_text="Optional sequence this session belongs to"
     )
+    VIRTUAL_ENVIRONMENT_CHOICES = [
+        ('conference_room', 'Conference Room'),
+        ('seminar_room', 'Seminar Room'),
+    ]
+    virtual_environment = models.CharField(
+        max_length=50,
+        choices=VIRTUAL_ENVIRONMENT_CHOICES,
+        blank=True,
+        null=True,
+        help_text="Select a virtual environment."
+    )
+    
     allow_ai_questions = models.BooleanField(default=False, help_text="Allow AI to ask random questions during the session")
 
     def __str__(self):

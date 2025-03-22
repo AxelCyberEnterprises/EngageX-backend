@@ -8,6 +8,7 @@ from rest_framework.parsers import MultiPartParser, FormParser
 from django.db.models import Count, Avg
 from django.utils.timezone import now
 from django.shortcuts import get_object_or_404
+from django.contrib.auth import get_user_model
 
 import os
 from datetime import timedelta
@@ -73,6 +74,74 @@ class PracticeSessionViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
 
 
+# class SessionDashboardView(APIView):
+#     """
+#     Dashboard endpoint that returns different aggregated data depending on user role.
+
+#     For admin users:
+#       - Total sessions
+#       - Breakdown of sessions by type (pitch, public speaking, presentation)
+#       - Sessions over time (for graphing purposes)
+#       - Recent sessions
+
+#     For regular users:
+#       - Latest session aggregated data (pauses, tone, emotional_impact, audience_engagement)
+#       - Average aggregated data across all their sessions
+#     """
+#     permission_classes = [IsAuthenticated]
+
+#     def get(self, request):
+#         user = request.user
+#         data = {}
+#         if hasattr(user, 'userprofile') and user.userprofile.is_admin():
+#             sessions = PracticeSession.objects.all()
+#             total_sessions = sessions.count()
+#             breakdown = sessions.values('session_type').annotate(count=Count('id'))
+#             last_30_days = now() - timedelta(days=30)
+#             sessions_over_time = (sessions.filter(date__gte=last_30_days)
+#                                     .extra(select={'day': "date(date)"})
+#                                     .values('day')
+#                                     .annotate(count=Count('id'))
+#                                     .order_by('day'))
+#             recent_sessions = sessions.order_by('-date')[:5].values('session_name', 'session_type', 'date')
+#             data = {
+#                 "total_sessions": total_sessions,
+#                 "session_breakdown": list(breakdown),
+#                 "sessions_over_time": list(sessions_over_time),
+#                 "recent_sessions": list(recent_sessions),
+#                 "credits": user.userprofile.available_credits,
+#             }
+#         else:
+#             latest_session = PracticeSession.objects.filter(user=user).order_by('-date').first()
+#             latest_aggregated_data = {}
+#             if latest_session:
+#                 latest_aggregated_data = {
+#                     "impact": latest_session.impact,
+#                     "volume": latest_session.volume,
+#                     "pace": latest_session.pace,
+#                     "clarity": latest_session.clarity,
+#                     "engagement": latest_session.audience_engagement,
+#                     "credits": user.userprofile.available_credits,
+#                     # Add other relevant aggregated fields here
+#                 }
+
+#             # Calculate averages of the aggregated fields across all user sessions
+#             aggregated_averages = PracticeSession.objects.filter(user=user).aggregate(
+#                 avg_pauses=Avg('pauses'),
+#                 avg_emotional_impact=Avg('emotional_impact'),
+#                 avg_audience_engagement=Avg('audience_engagement'),
+#                 # Add averages for other relevant aggregated fields
+#             )
+
+#             data = {
+#                 "latest_session_data": latest_aggregated_data,
+#                 "average_performance": aggregated_averages,
+#             }
+#         return Response(data, status=status.HTTP_200_OK)
+
+
+User = get_user_model()
+
 class SessionDashboardView(APIView):
     """
     Dashboard endpoint that returns different aggregated data depending on user role.
@@ -81,17 +150,26 @@ class SessionDashboardView(APIView):
       - Total sessions
       - Breakdown of sessions by type (pitch, public speaking, presentation)
       - Sessions over time (for graphing purposes)
-      - Recent sessions
+      - Recent sessions (with duration)
+      - Total new sessions (per day) and the percentage difference from yesterday
+      - Session category breakdown with percentage difference from yesterday
+      - User growth per day
+      - Number of active and inactive users
 
     For regular users:
       - Latest session aggregated data (pauses, tone, emotional_impact, audience_engagement)
       - Average aggregated data across all their sessions
+      - Latest session score
+      - Performance analytics data over time (list of dictionaries with date, volume, articulation, confidence)
     """
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
         user = request.user
         data = {}
+        today = now().date()
+        yesterday = today - timedelta(days=1)
+
         if hasattr(user, 'userprofile') and user.userprofile.is_admin():
             sessions = PracticeSession.objects.all()
             total_sessions = sessions.count()
@@ -102,30 +180,98 @@ class SessionDashboardView(APIView):
                                     .values('day')
                                     .annotate(count=Count('id'))
                                     .order_by('day'))
-            recent_sessions = sessions.order_by('-date')[:5].values('session_name', 'session_type', 'date')
+            recent_sessions = sessions.order_by('-date')[:5].values('session_name', 'session_type', 'date', 'duration')
+
+            # Total new sessions (per day) and the percentage difference from yesterday
+            today_new_sessions_count = PracticeSession.objects.filter(date__date=today).count()
+            yesterday_new_sessions_count = PracticeSession.objects.filter(date__date=yesterday).count()
+            new_sessions_percentage_difference = self.calculate_percentage_difference(today_new_sessions_count, yesterday_new_sessions_count)
+
+            # Session category breakdown with percentage difference from yesterday
+            session_types = ['public', 'pitch', 'presentation']
+            session_breakdown_with_diff = []
+            for session_type in session_types:
+                today_count = PracticeSession.objects.filter(date__date=today, session_type=session_type).count()
+                yesterday_count = PracticeSession.objects.filter(date__date=yesterday, session_type=session_type).count()
+                percentage_difference = self.calculate_percentage_difference(today_count, yesterday_count)
+                session_breakdown_with_diff.append({
+                    "session_type": session_type,
+                    "today_count": today_count,
+                    "percentage_difference": percentage_difference,
+                })
+
+            # User growth per day
+            today_new_users_count = User.objects.filter(date_joined__date=today).count()
+            yesterday_new_users_count = User.objects.filter(date_joined__date=yesterday).count()
+            user_growth_percentage_difference = self.calculate_percentage_difference(today_new_users_count, yesterday_new_users_count)
+
+            # Number of active and inactive users (assuming active means having created at least one session)
+            active_users_count = PracticeSession.objects.values('user').distinct().count()
+            total_users_count = User.objects.count()
+            inactive_users_count = total_users_count - active_users_count
+
             data = {
                 "total_sessions": total_sessions,
                 "session_breakdown": list(breakdown),
                 "sessions_over_time": list(sessions_over_time),
-                "recent_sessions": list(recent_sessions)
+                "recent_sessions": list(recent_sessions),
+                "credits": user.userprofile.available_credits,
+                "today_new_sessions_count": today_new_sessions_count,
+                "new_sessions_percentage_difference": new_sessions_percentage_difference,
+                "session_breakdown_with_difference": session_breakdown_with_diff,
+                "today_new_users_count": today_new_users_count,
+                "user_growth_percentage_difference": user_growth_percentage_difference,
+                "active_users_count": active_users_count,
+                "inactive_users_count": inactive_users_count,
             }
         else:
             latest_session = PracticeSession.objects.filter(user=user).order_by('-date').first()
             latest_aggregated_data = {}
+            latest_session_score = None
+            performance_analytics_over_time = []
+
             if latest_session:
+                # Calculate the average volume for the latest session
+                average_volume = ChunkSentimentAnalysis.objects.filter(chunk__session=latest_session).aggregate(avg_volume=Avg('volume'))['avg_volume']
+                # Calculate the average pace for the latest session
+                average_pace = ChunkSentimentAnalysis.objects.filter(chunk__session=latest_session).aggregate(avg_pace=Avg('pace'))['avg_pace']
+
                 latest_aggregated_data = {
                     "impact": latest_session.impact,
-                    "volume": latest_session.volume,
-                    "pace": latest_session.pace,
+                    "volume": average_volume if average_volume is not None else 0.0, # Use average volume
+                    "pace": average_pace if average_pace is not None else 0.0, # Use average pace
                     "clarity": latest_session.clarity,
                     "engagement": latest_session.audience_engagement,
+                    "credits": user.userprofile.available_credits,
                     # Add other relevant aggregated fields here
                 }
+                # Calculate the latest session score (average impact from chunks)
+                chunk_impacts = ChunkSentimentAnalysis.objects.filter(chunk__session=latest_session).values_list('impact', flat=True)
+                if chunk_impacts:
+                    latest_session_score = sum(chunk_impacts) / len(chunk_impacts)
+
+            # Prepare performance analytics data over time
+            user_sessions = PracticeSession.objects.filter(user=user).order_by('date')
+            for session in user_sessions:
+                chunk_data = ChunkSentimentAnalysis.objects.filter(chunk__session=session).aggregate(
+                    avg_volume=Avg('volume'),
+                    avg_articulation=Avg('clarity'),
+                    avg_confidence=Avg('confidence'),
+                    avg_pace=Avg('pace') # Include pace here as well if needed in the historical data
+                )
+                if chunk_data['avg_volume'] is not None and chunk_data['avg_articulation'] is not None and chunk_data['avg_confidence'] is not None:
+                    performance_analytics_over_time.append({
+                        "date": session.date.isoformat(),  # Use isoformat for easy handling in JavaScript
+                        "volume": chunk_data['avg_volume'],
+                        "articulation": chunk_data['avg_articulation'],
+                        "confidence": chunk_data['avg_confidence'],
+                        # You might want to include pace in the historical data as well
+                    })
 
             # Calculate averages of the aggregated fields across all user sessions
             aggregated_averages = PracticeSession.objects.filter(user=user).aggregate(
                 avg_pauses=Avg('pauses'),
-                avg_emotional_impact=Avg('emotional_impact'),
+                avg_emotional_impact=Avg('emotional_expression'), # Assuming emotional_expression is the correct field
                 avg_audience_engagement=Avg('audience_engagement'),
                 # Add averages for other relevant aggregated fields
             )
@@ -133,9 +279,16 @@ class SessionDashboardView(APIView):
             data = {
                 "latest_session_data": latest_aggregated_data,
                 "average_performance": aggregated_averages,
+                "latest_session_score": latest_session_score,
+                "performance_analytics": performance_analytics_over_time,
             }
         return Response(data, status=status.HTTP_200_OK)
 
+    def calculate_percentage_difference(self, current_value, previous_value):
+        if previous_value == 0:
+            return 100.0 if current_value > 0 else 0.0
+        return ((current_value - previous_value) / previous_value) * 100
+    
 
 class UploadSessionSlidesView(APIView):
     """
