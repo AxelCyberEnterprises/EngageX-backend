@@ -38,6 +38,6 @@ jobs:
           EB_APPLICATION_NAME: Exchange-v3  #${{ secrets.EB_APPLICATION_NAME }}
           EB_ENVIRONMENT_NAME: Exchange-v3-env  #${{ secrets.EB_ENVIRONMENT_NAME }}
         run: | 
-         eb init $EB_APPLICATION_NAME --platform "Python 3.13" --region $AWS_REGION
+         eb init $EB_APPLICATION_NAME --platform "Python 3.11" --region $AWS_REGION
          eb use $EB_ENVIRONMENT_NAME --region $AWS_REGION 
          eb deploy --region $AWS_REGION
