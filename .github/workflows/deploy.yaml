@@ -36,7 +36,7 @@ jobs:
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           AWS_REGION: ${{ secrets.AWS_REGION }}
           EB_APPLICATION_NAME: Exchange-v2.11  #${{ secrets.EB_APPLICATION_NAME }}
-          EB_ENVIRONMENT_NAME: Exchange-v2.11-env  #${{ secrets.EB_ENVIRONMENT_NAME }}
+          EB_ENVIRONMENT_NAME: Exchange-v211-env  #${{ secrets.EB_ENVIRONMENT_NAME }}
         run: |
          eb init $EB_APPLICATION_NAME --platform "Python 3.11" --region $AWS_REGION
          eb use $EB_ENVIRONMENT_NAME --region $AWS_REGION
