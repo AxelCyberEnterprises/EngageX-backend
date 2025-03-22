@@ -1,5 +1,3 @@
-# streaming/consumers.py
-
 import socketio
 import json
 import os
@@ -27,7 +25,7 @@ app = socketio.ASGIApp(sio)
 # Session data storage (in-memory dictionary)
 client_sessions = {}
 
-ANALYSIS_INTERVAL_SECONDS = 60  # Interval for performing video sentiment analysis (seconds) # change to 30 seconds
+ANALYSIS_INTERVAL_SECONDS = 30  # Interval for performing video sentiment analysis (seconds) # change to 30 seconds
 QUESTION_PROBABILITY = 0.01 # Example probability of asking a question per frame
 
 
