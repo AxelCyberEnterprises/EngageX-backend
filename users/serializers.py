@@ -86,7 +86,6 @@ class CustomTokenCreateSerializer(TokenCreateSerializer):
 
 
 class UserSerializer(serializers.ModelSerializer):
-<<<<<<< HEAD
     user_intent = serializers.ChoiceField(
         choices=UserProfile.INTENT_CHOICES, required=False, allow_null=True
     )
@@ -119,7 +118,7 @@ class UserSerializer(serializers.ModelSerializer):
         validated_data["username"] = validated_data.get("first_name")
         user = CustomUser(**validated_data)
         user.set_password(validated_data["password"])  # Hash the password
-=======
+
     user_intent = serializers.ChoiceField(choices=UserProfile.INTENT_CHOICES, required=False, allow_null=True)
     role = serializers.ChoiceField(choices=UserProfile.ROLE_CHOICES, required=False, allow_null=True)
     purpose = serializers.ChoiceField(choices=UserProfile.PURPOSE_CHOICES, required=False, allow_null=True)
@@ -142,7 +141,7 @@ class UserSerializer(serializers.ModelSerializer):
         validated_data['username'] = validated_data.get('first_name')
         user = CustomUser.objects.create(**validated_data)
         user.set_password(validated_data['password'])
->>>>>>> 27e7c3b
+
         user.save()
 
         try:
@@ -151,11 +150,6 @@ class UserSerializer(serializers.ModelSerializer):
                 user_profile.user_intent = user_intent
             if role is not None:
                 user_profile.role = role
-<<<<<<< HEAD
-=======
-            if purpose is not None:
-                user_profile.purpose = purpose
->>>>>>> 27e7c3b
             user_profile.save()
         except UserProfile.DoesNotExist:
             print(f"UserProfile not found for user: {user.email}")
