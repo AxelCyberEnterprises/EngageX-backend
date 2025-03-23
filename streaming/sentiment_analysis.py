@@ -14,9 +14,12 @@ from moviepy import VideoFileClip
 from concurrent.futures import ThreadPoolExecutor
 
 from django.conf import settings
+from django.conf import settings
 
 # chnage this shit too
+# chnage this shit too
 # load OpenAI API Key
+client = OpenAI(api_key=settings.OPENAI_API_KEY)
 client = OpenAI(api_key=settings.OPENAI_API_KEY)
 
 # initialize Mediapipe Pose Detection
@@ -75,9 +78,9 @@ def scale_to_score(value, min_val, max_val):
 
 def score_volume(volume):
     """Scores volume with a peak at 55 and smooth drop-off toward 40 and 70."""
-    
+
     score = scale_to_score(volume, 40, 70)
-    
+
     # Rationale logic based on common volume interpretation
     if 50 <= volume <= 60:
         rationale = "Optimal volume; clear, confident, and well-projected delivery."
@@ -89,7 +92,7 @@ def score_volume(volume):
         rationale = "Volume too low; significantly reduces clarity and presence."
     else:
         rationale = "Volume too high; may overwhelm listeners or create discomfort."
-    
+
     return score, rationale
 
 
@@ -116,7 +119,7 @@ def score_pauses(appropriate_pauses, long_pauses):
 def score_pace(speaking_rate):
     """scores speaking rate with a peak at 1.5-2.5 words/sec, penalizing extremes."""
     score = scale_to_score(speaking_rate, 2.0, 3.0)
-    
+
     if 2.0 <= speaking_rate <= 3.0:
         rationale = "Optimal speaking rate; clear, engaging, and well-paced delivery."
     elif speaking_rate < 2.0:
@@ -160,7 +163,7 @@ def score_posture(angle, min_value, max_value, body):
         rationale = f"Extremely stiff {body} posture; may appear unnatural and uncomfortable."
     else:
         rationale = f"Excessive {body} movement; suggests restlessness or discomfort."
-    
+
     return score, rationale
 
 # ---------------------- FEATURE EXTRACTION FUNCTIONS ----------------------
@@ -203,7 +206,7 @@ def get_pauses(y, sr):
 def process_audio(audio_file, transcript):
     """processes audio file with Praat & Librosa in parallel to extract features."""
     start_time = time.time()
-    
+
     # load audio
     y, sr = librosa.load(audio_file, sr=16000, res_type="kaiser_fast")  # faster loading
 
@@ -394,14 +397,9 @@ def analyze_posture(video_path):
             good_back_time = 0
             bad_back_time = 0
 
-        if (gn_time + bn_time) > 0:
-            good_neck_time = (gn_time / (gn_time + bn_time)) * video_duration
-            bad_neck_time = (bn_time / (gn_time + bn_time)) * video_duration
-        else:
-            good_back_time = 0
-            bad_back_time = 0
+        good_neck_time = (gn_time / (gn_time + bn_time)) * video_duration
+        bad_neck_time = (bn_time / (gn_time + bn_time)) * video_duration
 
-    
     # return results in dictionary format
     return {
         "mean_back_inclination": mean_back,
@@ -431,8 +429,106 @@ def analyze_sentiment(transcript, metrics, posture_data):
     range_body_posture = (range_back_score + range_neck_score)/2
 
     prompt = f"""
-    You are an advanced presentation evaluation system. Using the provided speech metrics, their rationale and the speakers transcript, generate a performance analysis with the following scores (each on a scale of 1–100) and a general feedback summary. Return valid JSON only
-    
+    You are an advanced presentation evaluation system. Using the provided speech metrics, which include:
+    - Raw values ({metrics['Metrics']})
+    - Score values ({metrics['Scores']})
+    - Rationale verdicts for Pitch Variability, Speaking Rate and Pauses:
+    these verdicts interpret the meaning of the raw metric values for pitch variability, speaking rate and pauses
+    - and the transcript of the speaker's presentation,
+
+    ...generate a performance analysis with the following scores (each on a scale of 1–100)
+    and a general feedback summary. Return valid JSON only, containing:
+      - Engagement
+      - Confidence
+      - Volume
+      - Pitch Variability
+      - Speech Rate
+      - Pauses
+      - Tone
+      - Curiosity
+      - Empathy
+      - Convictions
+      - Clarity
+      - Emotional Impact
+      - Audience Engagement
+      - Transformative Potential
+      - Postue Fluidity
+      - Body Posture
+      - Strengths
+      - Areas of Improvements
+      - General Feedback Summary
+
+
+    Below are the key metrics, with each metric listing its raw value (from metrics['Metrics']), its derived score (from metrics['Scores']),
+    and an explanation of what the raw value means and how it is interpreted.
+    The rationale verdicts (if provided) are the system's coded interpretation of the raw values.
+
+    1) Volume Score: {metrics['Scores']['Volume Score']}/10
+       Raw Volume (dB): {metrics['Metrics']['Volume']}
+       Explanation:
+         - Typically, a speaking volume between 45 and 65 dB is considered normal and confident.
+         - Volumes lower than 45 dB are considered low and might be hard to hear, while volumes higher than 65 dB might be overwhelming.
+         - This metric indicates the speaker’s vocal projection and clarity.
+
+    2) Pitch Variability Score: {metrics['Scores']['Pitch Variability Score']}/10
+       Raw Pitch Variability (Hz): {metrics['Metrics']['Pitch Variability']}
+       Rationale Verdict: {metrics['Metrics']['Pitch Variability Metric Rationale']}
+       Explanation:
+         - This metric measures the standard deviation of the speaker’s pitch in voiced segments.
+         - Values below 15 Hz indicate minimal variation (monotone), 15–30 Hz is low variability, 30–45 Hz is fair, 45–85 Hz is good, and above 85 Hz is extremely high (potentially distracting).
+         - The rationale helps determine if the speaker’s vocal expressiveness is within an optimal range.
+
+    3) Speaking Rate Score: {metrics['Scores']['Speaking Rate Score']}/10
+       Raw Speaking Rate (words/sec): {metrics['Metrics']['Speaking Rate (syllables/sec)']}
+       Rationale Verdict: {metrics['Metrics']['Speaking Rate Metric Rationale']}
+       Explanation:
+         - Speaking rate is calculated as the number of words (or syllables) spoken per second, excluding silent segments.
+         - A rate below 1.5 words/sec is extremely slow, 1.5-2.0 words/sec is too slow, 2.0–2.5 words/sec is good, 2.5–3.5 words/sec is too fast, and above 3.5 words/sec is extremely fast.
+         - This metric reflects how easily the audience can follow the presentation.
+
+    4) Pause Score: {metrics['Scores']['Pause Score']}
+       Appropriate Pauses: {metrics['Metrics']['Appropriate Pauses']}
+       Long Pauses: {metrics['Metrics']['Long Pauses']}
+       Rationale Verdict: {metrics['Metrics']['Pause Metric Rationale']}
+       Explanation:
+         - Appropriate pauses are short gaps (typically 0.75-1.5 seconds) calculated by detecting gaps between speech segments.
+         - They are ideally used around 12-s30 times per minute to enhance clarity and emphasize points.
+         - Long pauses (lasting more than 2 seconds) are counted separately because they may break the flow of speech and suggest hesitation.
+         - The rationale verdict explains whether the number of appropriate pauses is near the ideal range and if excessive long pauses are penalized.
+    below are the key posture metrics:
+
+    5) Mean Back Inclination (degrees): {posture_data['mean_back_inclination']}
+    Range of Back Inclination (degrees): {posture_data['range_back_inclination']}
+    Back Posture Feedback: {posture_data['back_feedback']}
+    Time in Good Back Posture: {posture_data['good_back_time']} seconds
+    Time in Bad Back Posture: {posture_data['bad_back_time']} seconds
+    Explanation:
+    Mean Back Inclination
+    Values below 10 degrees indicate good back posture. Values above 10 degrees suggest leaning or slouching.
+    Range of Back Inclination:
+    A low range (below 10 degrees) suggests controlled, stable posture.
+    A high range (above 10 degrees) suggests excessive movement, potentially reflecting restlessness or discomfort.
+    Back Feedback:
+    Describes whether the back appeared "Stiff" (too rigid), "Fluid" (natural movement), or "Unstable" (frequent shifts).
+    Time in Good/Bad Back Posture:
+    High time in poor posture indicates sustained discomfort or lack of awareness.
+
+    6)Mean Neck Inclination (degrees): {posture_data['mean_neck_inclination']}
+    Range of Neck Inclination (degrees): {posture_data['range_neck_inclination']}
+    Neck Posture Feedback: {posture_data['neck_feedback']}
+    Time in Good Neck Posture: {posture_data['good_neck_time']} seconds
+    Time in Bad Neck Posture: {posture_data['bad_neck_time']} seconds
+    Explanation:
+    Mean Neck Inclination:
+    Values below 10 degrees indicate a steady, balanced head position. Values above 10 degrees indicate excessive head tilt.
+    Range of Neck Inclination:
+    A low range (below 10 degrees) suggests controlled movement.
+    A high range (above 10 degrees) suggests frequent head movement or instability, often perceived as nervousness or discomfort.
+    Neck Feedback:
+    Describes if the user's head posture appeared "Stiff" (rigid), "Fluid" (natural), or "Unstable" (frequent changes).
+    Time in Good/Bad Neck Posture:
+    Consider how prolonged poor posture may have influenced audience perception.
+
     Transcript Provided:
     {transcript}
 
@@ -464,11 +560,16 @@ def analyze_sentiment(transcript, metrics, posture_data):
     Transformative Potential:
       - Potential to motivate significant change or shift perspectives.
 
+    Posture Fluidity:
+      - Reflects how naturally the presenter moves. Combine data from mean inclination, range of motion, and time spent in good/bad posture to assess. Controlled Stability: Minimal movement with sustained good posture. Fluid Movement: Balanced motion without excessive stiffness or frequent shifts.
+        Stiffness: Minimal motion that appears unnatural or rigid. Restlessness: Frequent shifts, suggesting discomfort or nervousness.
+
     Body Posture:
      - Based on the overall quality of posture alignment and stability. A high score reflects steady posture, minimal stiffness, and low time in poor posture.
      - Posture score: {mean_body_posture} {mean_back_rationale} {mean_neck_rationale}, stiffness score: {range_body_posture} {range_back_rationale} {range_neck_rationale}
    
     General Feedback Summary:
+    Provide a holistic assessment that integrates insights from audio analysis scores, posture metrics, and transcript sentiment for a complete evaluation of the speaker's presentation.
     Provide a holistic assessment that integrates insights from audio analysis scores, posture metrics, and transcript sentiment for a complete evaluation of the speaker's presentation.
     Explicitly reference key data points from audio metrics, posture analysis, and the transcript to justify observations.
     Explain how observed behaviors — such as monotonous speech, poor posture, or excessive movement — may influence the audience's perception
@@ -476,6 +577,7 @@ def analyze_sentiment(transcript, metrics, posture_data):
 
     Response Requirements:
     1) Output valid JSON only, no extra text.
+    2) Each required field must appear in the JSON. Scores are numeric [1–100]
     2) Each required field must appear in the JSON. Scores are numeric [1–100]
     """
 
@@ -526,9 +628,12 @@ def analyze_sentiment(transcript, metrics, posture_data):
 
 def analyze_results(video_path, audio_output_path):
     start_time = time.time()
+    # audio_output_path = "test.mp3"
+    # video_path = "video_3.mp4"
 
-    try:
-        extracted_audio_path = extract_audio(video_path, audio_output_path)
+    # add try-excepts
+
+    extracted_audio_path = extract_audio(video_path, audio_output_path)
 
         if not extracted_audio_path:
             print("Audio extraction failed. Exiting...")

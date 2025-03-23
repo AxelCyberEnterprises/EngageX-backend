@@ -6,6 +6,7 @@ from rest_framework.views import APIView
 from rest_framework.parsers import MultiPartParser, FormParser
 
 from django.conf import settings
+from django.conf import settings
 from django.db.models import Count, Avg
 from django.utils.timezone import now
 from django.shortcuts import get_object_or_404
@@ -18,8 +19,12 @@ from collections import Counter
 from openai import OpenAI
 
 
-from .models import (PracticeSession, PracticeSequence, ChunkSentimentAnalysis)
-from .serializers import (PracticeSessionSerializer, PracticeSessionSlidesSerializer, PracticeSequenceSerializer)
+from .models import PracticeSession, PracticeSequence, ChunkSentimentAnalysis
+from .serializers import (
+    PracticeSessionSerializer,
+    PracticeSessionSlidesSerializer,
+    PracticeSequenceSerializer,
+)
 
 
 class PracticeSequenceViewSet(viewsets.ModelViewSet):
@@ -27,19 +32,20 @@ class PracticeSequenceViewSet(viewsets.ModelViewSet):
     ViewSet for handling practice session sequences.
     Regular users can manage their own sequences; admin users can manage all.
     """
+
     serializer_class = PracticeSequenceSerializer
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
         user = self.request.user
 
-        if getattr(self, 'swagger_fake_view', False) or user.is_anonymous:
+        if getattr(self, "swagger_fake_view", False) or user.is_anonymous:
             return PracticeSequence.objects.none()
 
-        if hasattr(user, 'userprofile') and user.userprofile.is_admin():
-            return PracticeSequence.objects.all().order_by('-sequence_name')
+        if hasattr(user, "userprofile") and user.userprofile.is_admin():
+            return PracticeSequence.objects.all().order_by("-sequence_name")
 
-        return PracticeSequence.objects.filter(user=user).order_by('-sequence_name')
+        return PracticeSequence.objects.filter(user=user).order_by("-sequence_name")
 
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
@@ -51,21 +57,24 @@ class PracticeSessionViewSet(viewsets.ModelViewSet):
     Admin users see all sessions; regular users see only their own sessions.
     Includes a custom action 'report' to retrieve full session details.
     """
+
     serializer_class = PracticeSessionSerializer
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
         user = self.request.user
 
-        if getattr(self, 'swagger_fake_view', False) or user.is_anonymous:
-            return PracticeSession.objects.none() # Return empty queryset for schema generation or anonymous users
+        if getattr(self, "swagger_fake_view", False) or user.is_anonymous:
+            return (
+                PracticeSession.objects.none()
+            )  # Return empty queryset for schema generation or anonymous users
 
-        if hasattr(user, 'userprofile') and user.userprofile.is_admin():
-            return PracticeSession.objects.all().order_by('-date')
+        if hasattr(user, "userprofile") and user.userprofile.is_admin():
+            return PracticeSession.objects.all().order_by("-date")
 
-        return PracticeSession.objects.filter(user=user).order_by('-date')
+        return PracticeSession.objects.filter(user=user).order_by("-date")
 
-    @action(detail=True, methods=['get'])
+    @action(detail=True, methods=["get"])
     def report(self, request, pk=None):
         """
         Retrieve the full session report for the given session.
@@ -144,6 +153,7 @@ class PracticeSessionViewSet(viewsets.ModelViewSet):
 
 User = get_user_model()
 
+
 class SessionDashboardView(APIView):
     """
     Dashboard endpoint that returns different aggregated data depending on user role.
@@ -164,6 +174,7 @@ class SessionDashboardView(APIView):
       - Latest session score
       - Performance analytics data over time (list of dictionaries with date, volume, articulation, confidence)
     """
+
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
@@ -172,43 +183,67 @@ class SessionDashboardView(APIView):
         today = now().date()
         yesterday = today - timedelta(days=1)
 
-        if hasattr(user, 'userprofile') and user.userprofile.is_admin():
+        if hasattr(user, "userprofile") and user.userprofile.is_admin():
             sessions = PracticeSession.objects.all()
             total_sessions = sessions.count()
-            breakdown = sessions.values('session_type').annotate(count=Count('id'))
+            breakdown = sessions.values("session_type").annotate(count=Count("id"))
             last_30_days = now() - timedelta(days=30)
-            sessions_over_time = (sessions.filter(date__gte=last_30_days)
-                                    .extra(select={'day': "date(date)"})
-                                    .values('day')
-                                    .annotate(count=Count('id'))
-                                    .order_by('day'))
-            recent_sessions = sessions.order_by('-date')[:5].values('session_name', 'session_type', 'date', 'duration')
+            sessions_over_time = (
+                sessions.filter(date__gte=last_30_days)
+                .extra(select={"day": "date(date)"})
+                .values("day")
+                .annotate(count=Count("id"))
+                .order_by("day")
+            )
+            recent_sessions = sessions.order_by("-date")[:5].values(
+                "session_name", "session_type", "date", "duration"
+            )
 
             # Total new sessions (per day) and the percentage difference from yesterday
-            today_new_sessions_count = PracticeSession.objects.filter(date__date=today).count()
-            yesterday_new_sessions_count = PracticeSession.objects.filter(date__date=yesterday).count()
-            new_sessions_percentage_difference = self.calculate_percentage_difference(today_new_sessions_count, yesterday_new_sessions_count)
+            today_new_sessions_count = PracticeSession.objects.filter(
+                date__date=today
+            ).count()
+            yesterday_new_sessions_count = PracticeSession.objects.filter(
+                date__date=yesterday
+            ).count()
+            new_sessions_percentage_difference = self.calculate_percentage_difference(
+                today_new_sessions_count, yesterday_new_sessions_count
+            )
 
             # Session category breakdown with percentage difference from yesterday
-            session_types = ['public', 'pitch', 'presentation']
+            session_types = ["public", "pitch", "presentation"]
             session_breakdown_with_diff = []
             for session_type in session_types:
-                today_count = PracticeSession.objects.filter(date__date=today, session_type=session_type).count()
-                yesterday_count = PracticeSession.objects.filter(date__date=yesterday, session_type=session_type).count()
-                percentage_difference = self.calculate_percentage_difference(today_count, yesterday_count)
-                session_breakdown_with_diff.append({
-                    "session_type": session_type,
-                    "today_count": today_count,
-                    "percentage_difference": percentage_difference,
-                })
+                today_count = PracticeSession.objects.filter(
+                    date__date=today, session_type=session_type
+                ).count()
+                yesterday_count = PracticeSession.objects.filter(
+                    date__date=yesterday, session_type=session_type
+                ).count()
+                percentage_difference = self.calculate_percentage_difference(
+                    today_count, yesterday_count
+                )
+                session_breakdown_with_diff.append(
+                    {
+                        "session_type": session_type,
+                        "today_count": today_count,
+                        "percentage_difference": percentage_difference,
+                    }
+                )
 
             # User growth per day
             today_new_users_count = User.objects.filter(date_joined__date=today).count()
-            yesterday_new_users_count = User.objects.filter(date_joined__date=yesterday).count()
-            user_growth_percentage_difference = self.calculate_percentage_difference(today_new_users_count, yesterday_new_users_count)
+            yesterday_new_users_count = User.objects.filter(
+                date_joined__date=yesterday
+            ).count()
+            user_growth_percentage_difference = self.calculate_percentage_difference(
+                today_new_users_count, yesterday_new_users_count
+            )
 
             # Number of active and inactive users (assuming active means having created at least one session)
-            active_users_count = PracticeSession.objects.values('user').distinct().count()
+            active_users_count = (
+                PracticeSession.objects.values("user").distinct().count()
+            )
             total_users_count = User.objects.count()
             inactive_users_count = total_users_count - active_users_count
 
@@ -227,54 +262,78 @@ class SessionDashboardView(APIView):
                 "inactive_users_count": inactive_users_count,
             }
         else:
-            latest_session = PracticeSession.objects.filter(user=user).order_by('-date').first()
+            latest_session = (
+                PracticeSession.objects.filter(user=user).order_by("-date").first()
+            )
             latest_aggregated_data = {}
             latest_session_score = None
             performance_analytics_over_time = []
 
             if latest_session:
                 # Calculate the average volume for the latest session
-                average_volume = ChunkSentimentAnalysis.objects.filter(chunk__session=latest_session).aggregate(avg_volume=Avg('volume'))['avg_volume']
+                average_volume = ChunkSentimentAnalysis.objects.filter(
+                    chunk__session=latest_session
+                ).aggregate(avg_volume=Avg("volume"))["avg_volume"]
                 # Calculate the average pace for the latest session
-                average_pace = ChunkSentimentAnalysis.objects.filter(chunk__session=latest_session).aggregate(avg_pace=Avg('pace'))['avg_pace']
+                average_pace = ChunkSentimentAnalysis.objects.filter(
+                    chunk__session=latest_session
+                ).aggregate(avg_pace=Avg("pace"))["avg_pace"]
 
                 latest_aggregated_data = {
                     "impact": latest_session.impact,
-                    "volume": average_volume if average_volume is not None else 0.0, # Use average volume
-                    "pace": average_pace if average_pace is not None else 0.0, # Use average pace
+                    "volume": (
+                        average_volume if average_volume is not None else 0.0
+                    ),  # Use average volume
+                    "pace": (
+                        average_pace if average_pace is not None else 0.0
+                    ),  # Use average pace
                     "clarity": latest_session.clarity,
                     "engagement": latest_session.audience_engagement,
                     "credits": user.userprofile.available_credits,
                     # Add other relevant aggregated fields here
                 }
                 # Calculate the latest session score (average impact from chunks)
-                chunk_impacts = ChunkSentimentAnalysis.objects.filter(chunk__session=latest_session).values_list('impact', flat=True)
+                chunk_impacts = ChunkSentimentAnalysis.objects.filter(
+                    chunk__session=latest_session
+                ).values_list("impact", flat=True)
                 if chunk_impacts:
                     latest_session_score = sum(chunk_impacts) / len(chunk_impacts)
 
             # Prepare performance analytics data over time
-            user_sessions = PracticeSession.objects.filter(user=user).order_by('date')
+            user_sessions = PracticeSession.objects.filter(user=user).order_by("date")
             for session in user_sessions:
-                chunk_data = ChunkSentimentAnalysis.objects.filter(chunk__session=session).aggregate(
-                    avg_volume=Avg('volume'),
-                    avg_articulation=Avg('clarity'),
-                    avg_confidence=Avg('confidence'),
-                    avg_pace=Avg('pace') # Include pace here as well if needed in the historical data
+                chunk_data = ChunkSentimentAnalysis.objects.filter(
+                    chunk__session=session
+                ).aggregate(
+                    avg_volume=Avg("volume"),
+                    avg_articulation=Avg("clarity"),
+                    avg_confidence=Avg("confidence"),
+                    avg_pace=Avg(
+                        "pace"
+                    ),  # Include pace here as well if needed in the historical data
                 )
-                if chunk_data['avg_volume'] is not None and chunk_data['avg_articulation'] is not None and chunk_data['avg_confidence'] is not None:
-                    performance_analytics_over_time.append({
-                        "date": session.date.isoformat(),  # Use isoformat for easy handling in JavaScript
-                        "volume": chunk_data['avg_volume'],
-                        "articulation": chunk_data['avg_articulation'],
-                        "confidence": chunk_data['avg_confidence'],
-                        # You might want to include pace in the historical data as well
-                    })
+                if (
+                    chunk_data["avg_volume"] is not None
+                    and chunk_data["avg_articulation"] is not None
+                    and chunk_data["avg_confidence"] is not None
+                ):
+                    performance_analytics_over_time.append(
+                        {
+                            "date": session.date.isoformat(),  # Use isoformat for easy handling in JavaScript
+                            "volume": chunk_data["avg_volume"],
+                            "articulation": chunk_data["avg_articulation"],
+                            "confidence": chunk_data["avg_confidence"],
+                            # You might want to include pace in the historical data as well
+                        }
+                    )
 
             # Calculate averages of the aggregated fields across all user sessions
             aggregated_averages = PracticeSession.objects.filter(user=user).aggregate(
-                avg_pauses=Avg('pauses'),
-                avg_emotional_impact=Avg('emotional_expression'), # Assuming emotional_expression is the correct field
-                avg_audience_engagement=Avg('audience_engagement'),
+                avg_pauses=Avg("pauses"),
+                avg_emotional_impact=Avg(
+                    "emotional_expression"
+                ),  # Assuming emotional_expression is the correct field
+                avg_audience_engagement=Avg("audience_engagement"),
                 # Add averages for other relevant aggregated fields
             )
 
@@ -290,14 +349,15 @@ class SessionDashboardView(APIView):
         if previous_value == 0:
             return 100.0 if current_value > 0 else 0.0
         return ((current_value - previous_value) / previous_value) * 100
-    
+
 
 class UploadSessionSlidesView(APIView):
     """
     Endpoint to upload slides to a specific practice session.
     """
+
     permission_classes = [IsAuthenticated]
-    parser_classes = [MultiPartParser, FormParser] # To handle file uploads
+    parser_classes = [MultiPartParser, FormParser]  # To handle file uploads
 
     def put(self, request, pk=None):
         """
@@ -307,23 +367,36 @@ class UploadSessionSlidesView(APIView):
 
         # Ensure the user making the request is the owner of the session
         if practice_session.user != request.user:
-            return Response({"message": "You do not have permission to upload slides for this session."}, status=status.HTTP_403_FORBIDDEN)
+            return Response(
+                {
+                    "message": "You do not have permission to upload slides for this session."
+                },
+                status=status.HTTP_403_FORBIDDEN,
+            )
 
-        serializer = PracticeSessionSlidesSerializer(practice_session, data=request.data, partial=True) # partial=True for updates
+        serializer = PracticeSessionSlidesSerializer(
+            practice_session, data=request.data, partial=True
+        )  # partial=True for updates
 
         if serializer.is_valid():
             serializer.save()
-            return Response({
-                "status": "success",
-                "message": "Slides uploaded successfully.",
-                "data": serializer.data
-            }, status=status.HTTP_200_OK)
+            return Response(
+                {
+                    "status": "success",
+                    "message": "Slides uploaded successfully.",
+                    "data": serializer.data,
+                },
+                status=status.HTTP_200_OK,
+            )
         else:
-            return Response({
-                "status": "fail",
-                "message": "Slide upload failed.",
-                "errors": serializer.errors
-            }, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {
+                    "status": "fail",
+                    "message": "Slide upload failed.",
+                    "errors": serializer.errors,
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
 
 class ChunkSentimentAnalysisView(APIView):
@@ -340,7 +413,7 @@ class ChunkSentimentAnalysisView(APIView):
 
         general_feedback_summary = ChunkSentimentAnalysis.objects.filter(
             chunk__session__id=session_id
-        ).values_list('general_feedback_summary', flat=True)
+        ).values_list("general_feedback_summary", flat=True)
 
         combined_feedback = " ".join([g for g in general_feedback_summary if g])
 
@@ -411,7 +484,7 @@ class ChunkSentimentAnalysisView(APIView):
 
         full_summary = self.generate_full_summary(session_id)
 
-        return Response({
-            'average_scores': averages,
-            'full_summary': full_summary
-        }, status=status.HTTP_200_OK)
+        return Response(
+            {"average_scores": averages, "full_summary": full_summary},
+            status=status.HTTP_200_OK,
+        )
