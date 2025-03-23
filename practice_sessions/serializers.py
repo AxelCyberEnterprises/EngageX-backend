@@ -27,10 +27,11 @@ class PracticeSessionSerializer(serializers.ModelSerializer):
             'user_email',
             'pauses',
             'tone',
-            'emotional_impact',
+            'impact',
             'audience_engagement',
             'sequence',
             'allow_ai_questions',
+            'virtual_environment'
             # Add other aggregated fields here if you have them in your PracticeSession model
         ]
         read_only_fields = ['id', 'date', 'duration', 'user_email', 'pauses', 'tone', 'emotional_impact', 'audience_engagement'] # These are populated by the backend
@@ -46,6 +47,7 @@ class PracticeSessionSerializer(serializers.ModelSerializer):
         instance.note = validated_data.get('note', instance.note)
         instance.sequence = validated_data.get('sequence', instance.sequence)
         instance.allow_ai_questions = validated_data.get('allow_ai_questions', instance.allow_ai_questions)
+        instance.virtual_environment = validated_data.get('virtual_environment', instance.virtual_environment)
         instance.save()
         return instance
 

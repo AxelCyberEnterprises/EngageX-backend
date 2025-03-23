@@ -15,7 +15,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 from django.conf import settings
 
-# chnage this shit too
+
 # load OpenAI API Key
 client = OpenAI(api_key=settings.OPENAI_API_KEY)
 
@@ -75,9 +75,9 @@ def scale_to_score(value, min_val, max_val):
 
 def score_volume(volume):
     """Scores volume with a peak at 55 and smooth drop-off toward 40 and 70."""
-    
+
     score = scale_to_score(volume, 40, 70)
-    
+
     # Rationale logic based on common volume interpretation
     if 50 <= volume <= 60:
         rationale = "Optimal volume; clear, confident, and well-projected delivery."
@@ -89,7 +89,7 @@ def score_volume(volume):
         rationale = "Volume too low; significantly reduces clarity and presence."
     else:
         rationale = "Volume too high; may overwhelm listeners or create discomfort."
-    
+
     return score, rationale
 
 
@@ -116,7 +116,7 @@ def score_pauses(appropriate_pauses, long_pauses):
 def score_pace(speaking_rate):
     """scores speaking rate with a peak at 1.5-2.5 words/sec, penalizing extremes."""
     score = scale_to_score(speaking_rate, 2.0, 3.0)
-    
+
     if 2.0 <= speaking_rate <= 3.0:
         rationale = "Optimal speaking rate; clear, engaging, and well-paced delivery."
     elif speaking_rate < 2.0:
@@ -160,7 +160,7 @@ def score_posture(angle, min_value, max_value, body):
         rationale = f"Extremely stiff {body} posture; may appear unnatural and uncomfortable."
     else:
         rationale = f"Excessive {body} movement; suggests restlessness or discomfort."
-    
+
     return score, rationale
 
 # ---------------------- FEATURE EXTRACTION FUNCTIONS ----------------------
@@ -177,13 +177,10 @@ def get_volume(audio_file, top_db = 20):
     sound = parselmouth.Sound(audio_file)
     intensity = sound.to_intensity()
     num_low = [low for low in intensity.values[0] if low < top_db]
-    print(f"number of silen sequencies: {len(num_low)} \n")
-    print(f"number of decibles tracked: {len(intensity.values[0])} \n")
-    print(min(intensity.values[0]))
     return np.median(intensity.values[0])
 
 def get_pace(audio_file, transcript):
-    """calculates paceusing Librosa onset detection."""
+    """calculates pauses."""
     start_time = time.time()
 
     sound = parselmouth.Sound(audio_file)
@@ -241,7 +238,7 @@ def get_pauses(audio_file):
 # ---------------------- PROCESS AUDIO ----------------------
 
 def process_audio(audio_file, transcript):
-    """processes audio file with Praat & Librosa in parallel to extract features."""
+    """processes audio file with Praat in parallel to extract features."""
     start_time = time.time()
     
     with ThreadPoolExecutor() as executor:
@@ -431,14 +428,9 @@ def analyze_posture(video_path):
             good_back_time = 0
             bad_back_time = 0
 
-        if (gn_time + bn_time) > 0:
-            good_neck_time = (gn_time / (gn_time + bn_time)) * video_duration
-            bad_neck_time = (bn_time / (gn_time + bn_time)) * video_duration
-        else:
-            good_back_time = 0
-            bad_back_time = 0
+        good_neck_time = (gn_time / (gn_time + bn_time)) * video_duration
+        bad_neck_time = (bn_time / (gn_time + bn_time)) * video_duration
 
-    
     # return results in dictionary format
     return {
         "mean_back_inclination": mean_back,
@@ -563,9 +555,12 @@ def analyze_sentiment(transcript, metrics, posture_data):
 
 def analyze_results(video_path, audio_output_path):
     start_time = time.time()
+    # audio_output_path = "test.mp3"
+    # video_path = "video_3.mp4"
 
-    try:
-        extracted_audio_path = extract_audio(video_path, audio_output_path)
+    # add try-excepts
+
+    extracted_audio_path = extract_audio(video_path, audio_output_path)
 
         if not extracted_audio_path:
             print("Audio extraction failed. Exiting...")
