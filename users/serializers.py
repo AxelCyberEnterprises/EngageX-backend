@@ -64,7 +64,29 @@ class CustomTokenCreateSerializer(TokenCreateSerializer):
         return {"auth_token": token.key}
 
 
+# class UserSerializer(serializers.ModelSerializer):
+#     class Meta:
+#         model = CustomUser
+#         fields = ['id', 'email', 'first_name', 'last_name', 'password']
+#         # fields = '__all__'
+#         extra_kwargs = {
+#             'password': {'write_only': True, 'required': True},  # Password is required
+#             'email': {'required': True},  # Email is required
+#             'first_name': {'required': False},  # First name is optional
+#             'last_name': {'required': False},  # Last name is optional
+#         }
+
+#     def create(self, validated_data):
+#         # Automatically set the username as the first name
+#         validated_data['username'] = validated_data.get('first_name')
+#         user = CustomUser(**validated_data)
+#         user.set_password(validated_data['password'])  # Hash the password
+#         user.save()
+#         return user
+
+
 class UserSerializer(serializers.ModelSerializer):
+<<<<<<< HEAD
     user_intent = serializers.ChoiceField(
         choices=UserProfile.INTENT_CHOICES, required=False, allow_null=True
     )
@@ -97,6 +119,30 @@ class UserSerializer(serializers.ModelSerializer):
         validated_data["username"] = validated_data.get("first_name")
         user = CustomUser(**validated_data)
         user.set_password(validated_data["password"])  # Hash the password
+=======
+    user_intent = serializers.ChoiceField(choices=UserProfile.INTENT_CHOICES, required=False, allow_null=True)
+    role = serializers.ChoiceField(choices=UserProfile.ROLE_CHOICES, required=False, allow_null=True)
+    purpose = serializers.ChoiceField(choices=UserProfile.PURPOSE_CHOICES, required=False, allow_null=True)
+
+    class Meta:
+        model = CustomUser
+        fields = ['id', 'email', 'first_name', 'last_name', 'password', 'user_intent', 'role', 'purpose']
+        extra_kwargs = {
+            'password': {'write_only': True, 'required': True},
+            'email': {'required': True},
+            'first_name': {'required': False},
+            'last_name': {'required': False},
+        }
+
+    def create(self, validated_data):
+        user_intent = validated_data.pop('user_intent', None)
+        role = validated_data.pop('role', None)
+        purpose = validated_data.pop('pupose', None)
+
+        validated_data['username'] = validated_data.get('first_name')
+        user = CustomUser.objects.create(**validated_data)
+        user.set_password(validated_data['password'])
+>>>>>>> 27e7c3b
         user.save()
 
         try:
@@ -105,6 +151,11 @@ class UserSerializer(serializers.ModelSerializer):
                 user_profile.user_intent = user_intent
             if role is not None:
                 user_profile.role = role
+<<<<<<< HEAD
+=======
+            if purpose is not None:
+                user_profile.purpose = purpose
+>>>>>>> 27e7c3b
             user_profile.save()
         except UserProfile.DoesNotExist:
             print(f"UserProfile not found for user: {user.email}")

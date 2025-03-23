@@ -24,7 +24,7 @@ class PracticeSessionAdmin(admin.ModelAdmin):
         "user",
         "pauses",
         "tone",
-        "emotional_impact",
+        # 'emotional_impact',
         "audience_engagement",
         "sequence",  # Added sequence to the list display
         "allow_ai_questions",  # Added allow_ai_questions to the list display
@@ -45,7 +45,9 @@ class ChunkSentimentAnalysisAdmin(admin.ModelAdmin):
     list_display = (
         "chunk",
         "engagement",
+        "confidence",
         "impact",
+        "tone",
     )
     search_fields = ("chunk__session__session_name",)
     list_filter = ("impact",)

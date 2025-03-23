@@ -77,7 +77,9 @@ class UserCreateViewSet(viewsets.ModelViewSet):
                         "username": user.first_name,
                         "otp": user.verification_code,
                         "first_name": user.first_name,
-                        "last_name": user.last_name
+                        "last_name": user.last_name,
+                        # "role": user.user_profile.role,
+                        # "career_stage": user.user_profile.user_intent
                     }
                 }
             }
@@ -260,17 +262,17 @@ class PasswordResetRequestView(APIView):
             cache.set(f"password_reset_otp_{user.id}", otp, timeout=300)
             
             # Prepare and send email with OTP
-            email_message = EmailMessage(
-                subject='Password Reset Verification Code',
-                body=f'Your OTP code is {otp}',
-                from_email=settings.DEFAULT_FROM_EMAIL,
-                to=[user.email],
-            )
-            email_message.extra_headers = {'X-PM-Message-Stream': 'outbound'}
-            email_message.send(fail_silently=False)
+            # email_message = EmailMessage(
+            #     subject='Password Reset Verification Code',
+            #     body=f'Your OTP code is {otp}',
+            #     from_email=settings.DEFAULT_FROM_EMAIL,
+            #     to=[user.email],
+            # )
+            # email_message.extra_headers = {'X-PM-Message-Stream': 'outbound'}
+            # email_message.send(fail_silently=False)
 
             # Success response
-            return Response({"status": "success", "message": "OTP sent to email"}, status=status.HTTP_200_OK)
+            return Response({"status": "success", "message": "OTP sent to email", "otp": otp}, status=status.HTTP_200_OK)
         
         except CustomUser.DoesNotExist:
             # Error response if user is not found
