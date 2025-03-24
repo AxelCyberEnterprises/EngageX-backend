@@ -18,11 +18,8 @@ class PaymentTransaction(models.Model):
         related_name='payment_transactions'
     )
     transaction_id = models.CharField(max_length=100, blank=True, null=True)
-    customer_id = models.CharField(max_length=100)
     status = models.CharField(max_length=10, choices=STATUS_CHOICES, default=STATUS_PENDING)
     amount = models.DecimalField(max_digits=10, decimal_places=2)
-    currency = models.CharField(max_length=3)
-    payment_method = models.CharField(max_lenght=20)
     credits = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
     gateway_response = models.JSONField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
