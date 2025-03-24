@@ -133,7 +133,10 @@ SOCKETIO = {
     'CORS_ALLOWED_ORIGINS': '*',  # Configure this appropriately in production
     'ASYNC_MODE': 'asgi',
 }
-
+CORS_ALLOWED_ORIGINS = ["main.d2wwdi7x8g70xe.amplifyapp.com",
+    "https://www.engagexai.io",
+    "http://localhost:5173",
+]
 
 # Database
 # https://docs.djangoproject.com/en/4.2/ref/settings/#databases

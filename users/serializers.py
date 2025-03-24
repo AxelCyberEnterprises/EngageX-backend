@@ -118,6 +118,30 @@ class UserSerializer(serializers.ModelSerializer):
         validated_data["username"] = validated_data.get("first_name")
         user = CustomUser(**validated_data)
         user.set_password(validated_data["password"])  # Hash the password
+
+    user_intent = serializers.ChoiceField(choices=UserProfile.INTENT_CHOICES, required=False, allow_null=True)
+    role = serializers.ChoiceField(choices=UserProfile.ROLE_CHOICES, required=False, allow_null=True)
+    purpose = serializers.ChoiceField(choices=UserProfile.PURPOSE_CHOICES, required=False, allow_null=True)
+
+    class Meta:
+        model = CustomUser
+        fields = ['id', 'email', 'first_name', 'last_name', 'password', 'user_intent', 'role', 'purpose']
+        extra_kwargs = {
+            'password': {'write_only': True, 'required': True},
+            'email': {'required': True},
+            'first_name': {'required': False},
+            'last_name': {'required': False},
+        }
+
+    def create(self, validated_data):
+        user_intent = validated_data.pop('user_intent', None)
+        role = validated_data.pop('role', None)
+        purpose = validated_data.pop('pupose', None)
+
+        validated_data['username'] = validated_data.get('first_name')
+        user = CustomUser.objects.create(**validated_data)
+        user.set_password(validated_data['password'])
+
         user.save()
 
         try:
