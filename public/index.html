@@ -21,33 +21,21 @@
 
 		document.getElementById("startBtn").addEventListener("click", async function () {
 			try {
-				const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+				// Request camera and microphone access
+				const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
 				document.getElementById("videoPreview").srcObject = stream;
 
 				// Initialize WebSocket
-				socket = new WebSocket(`ws://localhost:8000/ws/socket_server/`);
+				socket = new WebSocket("ws://localhost:8000/ws/socket_server/");
 
-				socket.onopen = () => {
-					console.log("WebSocket Connected");
-					document.getElementById("status").textContent = "Status: Recording...";
-				};
+				socket.onopen = () => console.log("WebSocket Connected");
+				socket.onmessage = (e) => console.log("Server Acknowledgment:", JSON.parse(e.data));
+				socket.onerror = (error) => console.error("WebSocket Error:", error);
+				socket.onclose = () => console.log("WebSocket Disconnected");
 
-				socket.onmessage = (e) => {
-					let data = JSON.parse(e.data);
-					console.log("Server Acknowledgment:", data);
-				};
-
-				socket.onerror = (error) => {
-					console.error("WebSocket Error:", error);
-				};
-
-				socket.onclose = () => {
-					console.log("WebSocket Disconnected");
-					document.getElementById("status").textContent = "Status: Disconnected";
-				};
-
-				// Start MediaRecorder
+				// Start MediaRecorder (Continuous Recording)
 				mediaRecorder = new MediaRecorder(stream, { mimeType: "video/webm" });
+
 				mediaRecorder.ondataavailable = (event) => {
 					if (event.data.size > 0 && socket.readyState === WebSocket.OPEN) {
 						chunkCounter++;
@@ -56,11 +44,13 @@
 					}
 				};
 
-				mediaRecorder.start(30000); // Record in 30-second chunks
+				// Start recording
+				mediaRecorder.start();
+
+				// Extract and send a chunk every 30 seconds
 				setInterval(() => {
-					mediaRecorder.stop();
-					mediaRecorder.start(30000); // Restart recording every 30 seconds
-				}, 30000);
+					mediaRecorder.requestData();  // Ask for the current 30-second recording
+				}, 30000);  // 30 seconds
 
 				document.getElementById("startBtn").disabled = true;
 				document.getElementById("stopBtn").disabled = false;
