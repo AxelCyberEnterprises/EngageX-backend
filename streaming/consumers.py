@@ -2,223 +2,397 @@ import socketio
 import json
 import os
 import tempfile
-import asyncio  # For asynchronous tasks
-import random  # Mock sentiment analysis (for demonstration)
+import asyncio
+import logging
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.files import File
-from sentiment_analysis import analyze_results
+from .sentiment_analysis import analyze_results
+from practice_sessions.models import (
+    PracticeSession,
+    SessionChunk,
+    ChunkSentimentAnalysis,
+)
+from django.utils import timezone
+from datetime import timedelta
+import random
+
+# Initialize logger
+logger = logging.getLogger(__name__)
 
 # Initialize Socket.IO ASGI server, allowing CORS for development.
-sio = socketio.AsyncServer(async_mode='asgi', cors_allowed_origins='*')
+sio = socketio.AsyncServer(async_mode="asgi", cors_allowed_origins="*")
 
 # Create a Socket.IO ASGI application.
 app = socketio.ASGIApp(sio)
 
-# Session data storage (in-memory dictionary, consider Redis or similar for production)
+# Session data storage (in-memory dictionary)
 client_sessions = {}
 
-ANALYSIS_INTERVAL_SECONDS = 60  # Interval for performing video sentiment analysis (seconds)
+ANALYSIS_INTERVAL_SECONDS = 30  # Interval for performing video sentiment analysis (seconds) # change to 30 seconds
+QUESTION_PROBABILITY = 0.01  # Example probability of asking a question per frame
 
 
 @sio.event
 async def connect(sid, environ):
-    """
-    Handles WebSocket connection from a client.
-
-    Upon connection, initializes session-specific data and starts the analysis timer.
-
-    Args:
-        sid (str): Session ID assigned by Socket.IO.
-        environ (dict): Environment dictionary (e.g., headers, query parameters).
-    """
+    """Handles WebSocket connection from a client."""
     print(f"Client connected: {sid}")
     client_sessions[sid] = {
-        'temp_video_file': tempfile.NamedTemporaryFile(delete=False, suffix='.webm'),  # Temp file for video chunks (consider .mp4, .webm based on frontend encoding)
-        'accumulated_video_data': b"",  # Buffer for accumulating video data for analysis intervals
-        'frame_count': 0,  # Frame counter for the session
-        'analysis_timer': None,  # Asynchronous task for periodic analysis
+        "temp_video_file": None,
+        "accumulated_video_data": b"",
+        "frame_count": 0,
+        "analysis_timer": None,
+        "practice_session_id": None,
+        "session_start_time": timezone.now(),
+        "chunks_processed": 0,
+        "allow_ai_questions": False,  # Initialize AI question flag
     }
-    await sio.emit('connection_established', {'message': 'WebSocket connection established for video stream'}, to=sid)
-    await start_analysis_timer(sid)  # Begin periodic analysis scheduling
+    await sio.emit(
+        "connection_established",
+        {"message": "WebSocket connection established for video stream"},
+        to=sid,
+    )
 
 
 async def start_analysis_timer(sid):
-    """
-    Starts a recurring timer that triggers video sentiment analysis at intervals.
+    """Starts a recurring timer that triggers video sentiment analysis at intervals."""
 
-    Analysis is performed every ANALYSIS_INTERVAL_SECONDS.
-    """
     async def trigger_analysis():
         """Inner task to trigger and reschedule analysis."""
-        if sid in client_sessions:
+        if sid in client_sessions and client_sessions[sid].get("practice_session_id"):
             await perform_video_sentiment_analysis(sid)
-            client_sessions[sid]['analysis_timer'] = asyncio.create_task(trigger_analysis())  # Reschedule itself
+            if sid in client_sessions:
+                client_sessions[sid]["analysis_timer"] = asyncio.create_task(
+                    trigger_analysis()
+                )
 
-    client_sessions[sid]['analysis_timer'] = asyncio.create_task(trigger_analysis())  # Initial timer start
+    if sid in client_sessions and client_sessions[sid].get("practice_session_id"):
+        client_sessions[sid]["analysis_timer"] = asyncio.create_task(trigger_analysis())
 
 
 async def stop_analysis_timer(sid):
-    """
-    Stops the periodic video sentiment analysis timer for a session.
-
-    This is called upon client disconnection or stream end.
-    """
-    if sid in client_sessions and client_sessions[sid]['analysis_timer']:
-        client_sessions[sid]['analysis_timer'].cancel()
+    """Stops the periodic video sentiment analysis timer for a session."""
+    if sid in client_sessions and client_sessions[sid].get("analysis_timer"):
+        client_sessions[sid]["analysis_timer"].cancel()
         try:
-            await client_sessions[sid]['analysis_timer']  # Await cancellation for clean shutdown
+            await client_sessions[sid]["analysis_timer"]
         except asyncio.CancelledError:
-            pass  # Expected exception when task is cancelled
+            pass
+        client_sessions[sid]["analysis_timer"] = None
 
 
 @sio.event
 async def disconnect(sid):
-    """
-    Handles client disconnection.
-
-    Cleans up session-specific resources, including stopping the analysis timer
-    and deleting temporary files.
-
-    Args:
-        sid (str): Session ID of the disconnected client.
-    """
+    """Handles client disconnection."""
     print(f"Client disconnected: {sid}")
-    await stop_analysis_timer(sid)  # Stop analysis timer on disconnect
+    await stop_analysis_timer(sid)
     if sid in client_sessions:
         session = client_sessions[sid]
-        if session['temp_video_file']:
-            session['temp_video_file'].close()
-            os.unlink(session['temp_video_file'].name)  # Delete temporary video file
-        del client_sessions[sid]  # Remove session data
+        if session.get("temp_video_file"):
+            try:
+                session["temp_video_file"].close()
+                os.unlink(session["temp_video_file"].name)
+            except Exception as e:
+                logger.error(
+                    f"Error cleaning up temporary video file for session {sid}: {e}"
+                )
+        del client_sessions[sid]
+
+
+async def mock_ask_question(sid):
+    """Mock function to simulate asking a question."""
+    print(f"AI asking a question to client: {sid}")
+    await sio.emit(
+        "ai_question", {"message": "AI is asking a question..."}, to=sid
+    )  # Frontend will need to handle this event
 
 
 @sio.event
 async def video_chunk(sid, data):
-    """
-    Handles incoming video data chunks from a client.
-
-    Accumulates video chunks and may perform minimal real-time processing if needed.
-    Sentiment analysis is triggered periodically by the analysis timer, not per chunk.
-
-    Args:
-        sid (str): Session ID of the client.
-        data (dict): Dictionary containing video data chunk.
-                     Expected format: {'frame': bytes} where bytes is an encoded video frame.
-                     Format should align with frontend encoding (e.g., H.264 encoded frame).
-    """
+    """Handles incoming video data chunks from a client."""
     if sid not in client_sessions:
         return
 
     session = client_sessions[sid]
-    frame_bytes = data['frame']  # Assumes frontend sends encoded video frame as bytes
+    frame_bytes = data["frame"]
 
-    session['accumulated_video_data'] += frame_bytes  # Accumulate video frame data
-    session['frame_count'] += 1 # Increment frame count
+    # sessionID_chunkNumber
+    if session.get('temp_video_file') is None:
+        session['temp_video_file'] = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4') # changed format to .p4
+
+    try:
+        session["temp_video_file"].write(frame_bytes)
+        session["accumulated_video_data"] += frame_bytes
+        session["frame_count"] += 1
+
+        # Mock AI question trigger
+        if session.get("allow_ai_questions") and random.random() < QUESTION_PROBABILITY:
+            await mock_ask_question(sid)
+
+    except Exception as e:
+        logger.error(f"Error processing video chunk for session {sid}: {e}")
+        await sio.emit(
+            "stream_error", {"message": "Error processing video chunk."}, to=sid
+        )
 
 
 async def perform_video_sentiment_analysis(sid):
-    """
-    Performs video sentiment analysis on accumulated video data for a session.
-
-    This function is triggered periodically by the analysis timer.
-    It gets the accumulated video data since the last analysis, performs
-    sentiment analysis (placeholder for actual AI model), and emits results.
-
-    Args:
-        sid (str): Session ID of the client for which to perform analysis.
-    """
+    """Performs video sentiment analysis on accumulated video data for a session."""
     if sid not in client_sessions:
         return
 
-    session = client_sessions[sid]
-    video_data_for_analysis = session['accumulated_video_data'] # Get accumulated video data
+    session_data = client_sessions[sid]
+    practice_session_id = session_data.get("practice_session_id")
+    accumulated_video_data = session_data.get("accumulated_video_data")
 
-    # save to temp file
-    audio_data_for_analysis = session['accumulated_audio_data'] # Path for extarcted audio
+    if not accumulated_video_data:
+        print(f"No video data to analyze for session {sid} in this interval.")
+        return
 
-    if not video_data_for_analysis:
-        print(f"No video data to analyze for session {sid} in this interval.") # Log if no data
-        return # No data to analyze in this interval
+    chunk_number = session_data.get("chunks_processed", 0) + 1
+    start_offset = session_data.get("chunks_processed", 0) * ANALYSIS_INTERVAL_SECONDS
+    end_offset = chunk_number * ANALYSIS_INTERVAL_SECONDS
 
-    print(f"Performing video sentiment analysis for interval {session['frame_count'] // (ANALYSIS_INTERVAL_SECONDS * 30) + 1}, session {sid}") # Example interval count log (assuming ~30fps)
+    print(
+        f"Performing video sentiment analysis for chunk {chunk_number} (seconds {start_offset}-{end_offset}), session {sid}"
+    )
 
+    temp_video_file = None
+    audio_output_path = f"temp_audio_{sid}_{chunk_number}.mp3"
 
-    # *** REPLACE THIS MOCK ANALYSIS WITH YOUR ACTUAL VIDEO SENTIMENT ANALYSIS LOGIC ***
-    # analysis_result = await mock_video_sentiment_analysis(video_data_for_analysis, audio_data_for_analysis)  # Placeholder analysis
+    # check for old transcript
+    old_transcript = ""
 
-    analysis_result = await analyze_results(video_path=video_data_for_analysis, audio_output_path=audio_data_for_analysis)
+    if session_data['temp_transcript_file'] is None:
+        session_data['temp_transcript_file'] = tempfile.NamedTemporaryFile(delete=True, suffix='.txt')
 
-    # Emit sentiment analysis result back to the specific client
-    await sio.emit('video_analysis_result', {
-        'interval_number': session['frame_count'] // (ANALYSIS_INTERVAL_SECONDS * 30) + 1, # Example interval number
-        'sentiment_analysis': analysis_result  # Analysis result dictionary (structure depends on your AI model)
-    }, to=sid)
+    try:
+        temp_video_file = tempfile.NamedTemporaryFile(
+            delete=True, suffix=".mp4"
+        )  # should be .mp4
+        temp_video_file.write(accumulated_video_data)
+        video_path = temp_video_file.name
+        session_data['temp_transcript_file'].write(old_transcript)
 
-    session['accumulated_video_data'] = b""  # Reset accumulated video data buffer after analysis
+        analysis_result = await analyze_results(
+            video_path=video_path, audio_output_path=audio_output_path
+        )
+
+        try:
+            practice_session = await asyncio.get_event_loop().run_in_executor(
+                None, PracticeSession.objects.get, id=practice_session_id
+            )
+
+            session_chunk = await asyncio.get_event_loop().run_in_executor(
+                None,
+                SessionChunk.objects.create,
+                session=practice_session,
+                start_time=start_offset,
+                end_time=end_offset,
+            )
+
+            sentiment_data = analysis_result.get('Feedback', {})
+            scores = analysis_result.get('Scores', {})
+            transcript = analysis_result.get('Transcript', {})
+
+            await asyncio.get_event_loop().run_in_executor(
+                None,
+                ChunkSentimentAnalysis.objects.create,
+                chunk=session_chunk,
+
+                # AI response
+                engagement=int(sentiment_data.get('Engagement', 0)),
+                audience_emotion = int(sentiment_data.get('Audience Emotion', 0)),
+                conviction=int(sentiment_data.get('Conviction', 0)),
+                clarity=int(sentiment_data.get('Clarity', 0)),
+                impact=int(sentiment_data.get('Impact', 0)),
+                brevity=int(sentiment_data.get('Brevity', 0)),
+                body_posture=int(sentiment_data.get('Body Posture', 0)),
+                transformative_potential=int(sentiment_data.get('Transformative Potential', 0)),
+                general_feedback=sentiment_data.get('General Feedback Summary', ''),
+                
+                # Scores
+                volume=scores.get('Volume'),
+                pitch_variability=scores.get('Pitch Variability'),
+                pace=scores.get('Pace'),
+
+                chunk_transcript=transcript,
+            )
+            client_sessions[sid]["chunks_processed"] = chunk_number
+        except PracticeSession.DoesNotExist:
+            logger.error(f"PracticeSession with id {practice_session_id} not found.")
+        except Exception as e:
+            logger.error(f"Error creating SessionChunk or ChunkSentimentAnalysis: {e}")
+    except Exception as e:
+        logger.error(
+            f"Error during sentiment analysis for session {sid}, chunk {chunk_number}: {e}"
+        )
+        await sio.emit(
+            "analysis_error",
+            {"message": f"Analysis error for chunk {chunk_number}."},
+            to=sid,
+        )
+    finally:
+        if temp_video_file:
+            try:
+                temp_video_file.close()
+                os.remove(temp_video_file.name)
+            except Exception as e:
+                logger.error(
+                    f"Error cleaning up temporary video file for session {sid}, chunk {chunk_number}: {e}"
+                )
+        if os.path.exists(audio_output_path):
+            try:
+                os.remove(audio_output_path)
+            except Exception as e:
+                logger.error(
+                    f"Error cleaning up temporary audio file for session {sid}, chunk {chunk_number}: {e}"
+                )
+
+    client_sessions[sid]["accumulated_video_data"] = b""  # Reset buffer
 
 
 @sio.event
 async def start_stream(sid, data):
-    """Handles 'start_stream' event from the client (optional signaling)."""
+    """Handles 'start_stream' event from the client."""
     print(f"Video stream started by client: {sid}")
-    await sio.emit('stream_started', {'message': 'Video stream recording started on server'}, to=sid)
-    await start_analysis_timer(sid)  # Ensure analysis timer starts
+    practice_session_id = data.get("practice_session_id")
+    allow_ai_questions = data.get("allow_ai_questions", False)  # Get the toggle value
+    if sid in client_sessions:
+        client_sessions[sid]["practice_session_id"] = practice_session_id
+        client_sessions[sid]["session_start_time"] = timezone.now()
+        client_sessions[sid][
+            "allow_ai_questions"
+        ] = allow_ai_questions  # Store the toggle value
+        await sio.emit(
+            "stream_started",
+            {"message": "Video stream recording started on server"},
+            to=sid,
+        )
+        await start_analysis_timer(sid)
+    else:
+        logger.error(f"Session data not found for client {sid} during start_stream.")
+        await sio.emit(
+            "stream_error", {"message": "Session initialization error."}, to=sid
+        )
 
 
 @sio.event
 async def end_stream(sid, data):
-    """
-    Handles 'end_stream' event from the client.
-
-    Finalizes the video stream recording, performs any final tasks, and cleans up session resources.
-    """
+    """Handles 'end_stream' event from the client."""
     print(f"Video stream ended by client: {sid}")
-    await stop_analysis_timer(sid)  # Stop the analysis timer
+    await stop_analysis_timer(sid)
 
     if sid in client_sessions:
-        session = client_sessions[sid]
-        if session['temp_video_file']:
-            session['temp_video_file'].close()
-            # In a real application, you would process the temp video file here:
-            # - Save to permanent storage (S3, database, etc.)
-            # - Trigger final, more comprehensive video analysis
-            print(f"Temporary video file saved: {session['temp_video_file'].name}") # Log saved file path
+        session_data = client_sessions[sid]
+        practice_session_id = session_data.get("practice_session_id")
 
-        await sio.emit('stream_ended', {
-            'message': 'Video stream recording completed and processed',
-            'total_frames': session['frame_count'],
-            'analysis_intervals': session['frame_count'] // (ANALYSIS_INTERVAL_SECONDS * 30) # Example interval count assuming ~30fps
-        }, to=sid)
+        if practice_session_id:
+            try:
+                practice_session = await asyncio.get_event_loop().run_in_executor(
+                    None, PracticeSession.objects.get, id=practice_session_id
+                )
+                total_chunks = session_data.get("chunks_processed", 0)
+                if total_chunks > 0:
+                    try:
+                        all_chunk_sentiments = (
+                            await asyncio.get_event_loop().run_in_executor(
+                                None,
+                                ChunkSentimentAnalysis.objects.filter,
+                                chunk__session=practice_session,
+                            )
+                        )
+
+                        # Aggregation Logic
+                        total_pauses = sum(
+                            cs.appropriate_pauses + cs.long_pauses
+                            for cs in all_chunk_sentiments
+                        )
+                        tones = [cs.tone for cs in all_chunk_sentiments if cs.tone]
+                        most_common_tone = (
+                            max(set(tones), key=tones.count) if tones else None
+                        )
+                        avg_emotional_impact = (
+                            sum(cs.emotional_impact for cs in all_chunk_sentiments)
+                            / total_chunks
+                            if total_chunks > 0
+                            else 0
+                        )
+                        avg_audience_engagement = (
+                            sum(cs.engagement for cs in all_chunk_sentiments)
+                            / total_chunks
+                            if total_chunks > 0
+                            else 0
+                        )
+                        # For emotional_expression, pronunciation, content_organization, etc.,
+                        # you might need a more specific logic. For now, we can leave them.
+
+                        practice_session.pauses = total_pauses
+                        practice_session.tone = most_common_tone
+                        practice_session.emotional_impact = round(
+                            avg_emotional_impact, 2
+                        )
+                        practice_session.audience_engagement = round(
+                            avg_audience_engagement, 2
+                        )
+                        practice_session.allow_ai_questions = session_data.get(
+                            "allow_ai_questions", False
+                        )  # Save the AI question toggle state
+
+                        await asyncio.get_event_loop().run_in_executor(
+                            None, practice_session.save
+                        )
+
+                    except Exception as e:
+                        logger.error(
+                            f"Error during aggregation for session {practice_session_id}: {e}"
+                        )
+                        await sio.emit(
+                            "session_error",
+                            {"message": "Error aggregating session results."},
+                            to=sid,
+                        )
+
+            except PracticeSession.DoesNotExist:
+                logger.error(
+                    f"PracticeSession with id {practice_session_id} not found for aggregation."
+                )
+                await sio.emit(
+                    "session_error", {"message": "Practice session not found."}, to=sid
+                )
+            except Exception as e:
+                logger.error(f"Error retrieving PracticeSession for aggregation: {e}")
+                await sio.emit(
+                    "session_error", {"message": "Error finalizing session."}, to=sid
+                )
+
+        if session_data.get("temp_video_file"):
+            try:
+                session_data["temp_video_file"].close()
+                temp_file_path = session_data["temp_video_file"].name
+                print(f"Temporary video file saved: {temp_file_path}")
+                os.unlink(temp_file_path)
+            except Exception as e:
+                logger.error(
+                    f"Error cleaning up main temporary video file for session {sid}: {e}"
+                )
+
+        end_time = timezone.now()
+        duration = end_time - session_data["session_start_time"]
+
+        await sio.emit(
+            "stream_ended",
+            {
+                "message": "Video stream recording completed and processed",
+                "total_frames": session_data.get("frame_count", 0),
+                "analysis_intervals": session_data.get("chunks_processed", 0),
+                "session_duration": str(duration),
+            },
+            to=sid,
+        )
         del client_sessions[sid]  # Clean up session data
-
-
-# async def mock_video_sentiment_analysis(video_frame_data):
-#     """
-#     Placeholder for AI-powered video sentiment analysis.
-#     REPLACE THIS ENTIRE FUNCTION with your actual video sentiment analysis implementation.
-
-#     This mock function simulates analyzing video frame data (which would ideally be
-#     processed to extract relevant features like facial landmarks, body pose, etc.).
-
-#     Args:
-#         video_frame_data (bytes): Encoded video frame data (or features extracted from video).
-
-#     Returns:
-#         dict: Mock video sentiment analysis result.
-#               Structure of this dict should reflect the output of your actual AI model.
-#               Example: {'overall_sentiment': 'neutral', 'facial_expression': 'happy', 'body_language': 'confident'}.
-#     """
-
-
-#     await asyncio.sleep(0.02)  # Simulate processing time for video analysis (could be longer in reality)
-#     sentiments = ['positive', 'neutral', 'negative']
-#     emotions = ['happy', 'sad', 'angry', 'neutral', 'surprised'] # Example facial expressions
-
-#     return {
-#         'overall_sentiment': random.choice(sentiments),
-#         'facial_expression': random.choice(emotions),
-#         'body_language': random.choice(['confident', 'hesitant', 'engaged', 'disengaged']), # Example body language
-#         'confidence_score': random.uniform(0.6, 0.95), # Example confidence score
-#         'processing_time_ms': random.randint(20, 150) # Mock processing time in milliseconds
-#     }
+    else:
+        logger.error(f"Session data not found for client {sid} during end_stream.")
+        await sio.emit(
+            "session_error", {"message": "Session data not found on server."}, to=sid
+        )
