@@ -33,6 +33,7 @@ ALLOWED_HOSTS = [".elasticbeanstalk.com", "*"]
 # Application definition
 
 INSTALLED_APPS = [
+    "daphne",
     "django.contrib.admin",
     "django.contrib.auth",
     "django.contrib.contenttypes",
@@ -53,6 +54,8 @@ INSTALLED_APPS = [
     "drf_yasg",
     # s3 storage
     "storages",
+    # websocket
+    "channels",
 ]
 
 MIDDLEWARE = [
@@ -286,3 +289,8 @@ else:
 # Media files settings
 # MEDIA_URL = f"https://{AWS_S3_CUSTOM_DOMAIN}/media/"
 # STATIC_URL = f"https://{AWS_S3_CUSTOM_DOMAIN}/static/"
+CHANNEL_LAYERS = {
+    "default": {
+        "BACKEND": "channels.layers.InMemoryChannelLayer",
+    },
+}
