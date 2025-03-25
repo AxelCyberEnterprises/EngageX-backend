@@ -460,7 +460,7 @@ def analyze_sentiment(transcript, metrics, posture_data):
     range_body_posture = (range_back_score + range_neck_score)/2
 
     prompt = f"""
-    You are an advanced presentation evaluation system. Using the provided speech metrics, their rationale and the speakers transcript, generate a performance analysis with the following scores (each on a scale of 1–100) and a general feedback summary. Return valid JSON only
+    You are an advanced presentation evaluation system for a corporate environment. Using the provided speech metrics, their rationale and the presenters transcript, generate a performance analysis with the following scoress (each on a scale of 1–100) and a general feedback summary. Return valid JSON only
     
     Transcript Provided:
     {transcript}
@@ -562,10 +562,11 @@ def analyze_results(video_path, audio_output_path):
 
     extracted_audio_path = extract_audio(video_path, audio_output_path)
 
-        if not extracted_audio_path:
-            print("Audio extraction failed. Exiting...")
-            return
+    if not extracted_audio_path:
+        print("Audio extraction failed. Exiting...")
+        return
     
+    try:
         # run transcription and audio analysis in parallel
         with ThreadPoolExecutor() as executor:
             future_analyze_posture = executor.submit(analyze_posture, video_path=video_path)
@@ -589,6 +590,6 @@ def analyze_results(video_path, audio_output_path):
         print(f"\nElapsed time for everything: {elapsed_time:.2f} seconds")
 
     except Exception as e:
-        print(f"Error during audio extraction: {e}")
+        print(f"Error during audio and video extraction: {e}")
 
     return final_json
