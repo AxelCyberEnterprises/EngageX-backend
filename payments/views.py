@@ -61,11 +61,13 @@ class PaymentCallbackView(APIView):
 
     def post(self, request):
         data = request.data
-        transcation_id = data.get("Payment", {}).get("Id")
+        transaction_date = data.get("TxnDate")
+        transaction_id = data.get("Payment", {}).get("Id")
         amount = data.get("TotalAmt")
-        transcation_date = data.get("TxnDate")
+        transaction_date = data.get("TxnDate")
         status_str = "success" if data.get("ProcessPayment", False) else "failed"
         tier = data.get("tier")
+        user_email = data.get("user_email")
         gateway_response = data.get("gateway_response", {})
 
 
@@ -74,7 +76,6 @@ class PaymentCallbackView(APIView):
         # customer_id = data.get("customer_id")
         # amount = data.get("amount")
         # currency = data.get("currency")
-        # # user_email = data.get("user_email")
         # payment_method = data.get("payment_method")
 
         # Validate required fields
@@ -96,7 +97,6 @@ class PaymentCallbackView(APIView):
         transaction, created = PaymentTransaction.objects.update_or_create(
             transaction_id=transaction_id,
             defaults={
-                "user": user,
                 "status": status_str.lower(),
                 "gateway_response": gateway_response,
                 "amount": amount,
