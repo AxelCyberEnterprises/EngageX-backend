@@ -8,8 +8,8 @@ from channels.generic.websocket import AsyncWebsocketConsumer
 
 s3 = boto3.resource("s3")
 
-for bucket in s3.buckets.all():
-    print(bucket)
+# for bucket in s3.buckets.all():
+#     print(bucket)
 
 
 class LiveSessionConsumer(AsyncWebsocketConsumer):
@@ -79,7 +79,7 @@ class LiveSessionConsumer(AsyncWebsocketConsumer):
             )
         )
 
-        threading.Thread(target=self.process_chunk, args=(chunk_path,)).start()
+        # threading.Thread(target=self.process_chunk, args=(chunk_path,)).start()
 
 
 def process_chunk(self, chunk_path):
