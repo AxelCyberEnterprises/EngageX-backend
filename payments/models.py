@@ -18,6 +18,7 @@ class PaymentTransaction(models.Model):
         related_name='payment_transactions'
     )
     transaction_id = models.CharField(max_length=100, blank=True, null=True)
+    transaction_date = models.DateTimeField(blank=True, null=True)
     status = models.CharField(max_length=10, choices=STATUS_CHOICES, default=STATUS_PENDING)
     amount = models.DecimalField(max_digits=10, decimal_places=2)
     credits = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
