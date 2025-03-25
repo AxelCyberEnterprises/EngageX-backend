@@ -77,25 +77,30 @@ class LiveSessionConsumer(AsyncWebsocketConsumer):
                 }
             )
         )
-        upload_to_s3(
-            session_id=self.session_id, chunk_path=chunk_path, file_name=file_name
-        )
 
-        threading.Thread(target=self.process_chunk, args=(chunk_path,)).start()
+        threading.Thread(
+            target=process_chunk, args=(self.session_id, chunk_path, file_name)
+        ).start()
 
 
-def process_chunk(self, chunk_path):
+def process_chunk(session_id, chunk_path, file_name):
     """Run sentiment analysis & upload to S3 in parallel."""
     print(f"Processing {chunk_path}")
+    # Upload to S3
+    threading.Thread(
+        target=upload_to_s3,
+        args=(
+            session_id,
+            chunk_path,
+            file_name,
+        ),
+    ).start()
 
     # Run sentiment analysis
-    threading.Thread(target=self.run_sentiment_analysis, args=(chunk_path,)).start()
-
-    # Upload to S3
-    threading.Thread(target=self.upload_to_s3, args=(chunk_path,)).start()
+    threading.Thread(target=run_sentiment_analysis, args=(chunk_path,)).start()
 
 
-def run_sentiment_analysis(self, chunk_path):
+def run_sentiment_analysis(chunk_path):
     """Perform sentiment analysis on the video chunk."""
     print(f"Running sentiment analysis on {chunk_path}")
     try:
