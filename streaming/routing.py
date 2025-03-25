@@ -1,4 +1,7 @@
-from .consumers import app as socketio_app
+from . import consumers2
+from django.urls import re_path
 
-# The Socket.IO app will be mounted at the root URL
-urlpatterns = []  # Empty since we're using Socket.IO's built-in routing 
+
+websocket_urlpatterns = [
+    re_path(r"ws/socket_server/$", consumers2.LiveSessionConsumer.as_asgi()),
+]

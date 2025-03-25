@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>WebSocket Video Stream</title>
+</head>
+
+<body>
+	<h2>WebSocket Video Streaming</h2>
+	<video id="videoPreview" autoplay></video>
+	<button id="startBtn">Start Recording</button>
+	<button id="stopBtn" disabled>Stop Recording</button>
+	<p id="status">Status: Waiting...</p>
+
+	<script>
+		let mediaRecorder;
+		let socket;
+		let chunkCounter = 0;
+
+		document.getElementById("startBtn").addEventListener("click", async function () {
+			try {
+				// Request camera and microphone access
+				const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+				document.getElementById("videoPreview").srcObject = stream;
+
+				// Initialize WebSocket
+				socket = new WebSocket("ws://localhost:8000/ws/socket_server/");
+
+				socket.onopen = () => console.log("WebSocket Connected");
+				socket.onmessage = (e) => console.log("Server Acknowledgment:", JSON.parse(e.data));
+				socket.onerror = (error) => console.error("WebSocket Error:", error);
+				socket.onclose = () => console.log("WebSocket Disconnected");
+
+				// Start MediaRecorder (Continuous Recording)
+				mediaRecorder = new MediaRecorder(stream, { mimeType: "video/webm" });
+
+				mediaRecorder.ondataavailable = (event) => {
+					if (event.data.size > 0 && socket.readyState === WebSocket.OPEN) {
+						chunkCounter++;
+						socket.send(event.data);
+						console.log(`Sent Chunk ${chunkCounter}`);
+					}
+				};
+
+				// Start recording
+				mediaRecorder.start();
+
+				// Extract and send a chunk every 30 seconds
+				setInterval(() => {
+					mediaRecorder.requestData();  // Ask for the current 30-second recording
+				}, 30000);  // 30 seconds
+
+				document.getElementById("startBtn").disabled = true;
+				document.getElementById("stopBtn").disabled = false;
+			} catch (error) {
+				console.error("Camera Access Error:", error);
+			}
+		});
+
+		document.getElementById("stopBtn").addEventListener("click", function () {
+			mediaRecorder.stop();
+			socket.close();
+			document.getElementById("status").textContent = "Status: Stopped";
+			document.getElementById("startBtn").disabled = false;
+			document.getElementById("stopBtn").disabled = true;
+		});
+	</script>
+</body>
+
+</html>
