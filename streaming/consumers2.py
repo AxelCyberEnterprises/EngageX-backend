@@ -3,13 +3,15 @@ import os
 import tempfile
 import threading
 import boto3
+import logging
+from botocore.exceptions import ClientError
 from asgiref.sync import async_to_sync
 from channels.generic.websocket import AsyncWebsocketConsumer
+from .sentiment_analysis import analyze_results
 
 s3 = boto3.resource("s3")
-
-# for bucket in s3.buckets.all():
-#     print(bucket)
+BUCKET_NAME = "engagex-user-content-1234"
+BASE_FOLDER = "user-videos/UserID/"
 
 
 class LiveSessionConsumer(AsyncWebsocketConsumer):
@@ -59,13 +61,10 @@ class LiveSessionConsumer(AsyncWebsocketConsumer):
         with open(chunk_path, "wb") as f:
             f.write(bytes_data)
             f.flush()
-
-        # with open(chunk_path, "rb") as f:
-        #     content = f.read()
-        #     print(content)
+            file_name = os.path.basename(f.name)
 
         print(
-            f"Received chunk {self.chunk_counter} for Session {self.session_id} - Saved as {chunk_path}"
+            f"Received chunk {self.chunk_counter} for Session {self.session_id} - Saved as {file_name}"
         )
 
         # Send acknowledgment to client
@@ -78,8 +77,11 @@ class LiveSessionConsumer(AsyncWebsocketConsumer):
                 }
             )
         )
+        upload_to_s3(
+            session_id=self.session_id, chunk_path=chunk_path, file_name=file_name
+        )
 
-        # threading.Thread(target=self.process_chunk, args=(chunk_path,)).start()
+        threading.Thread(target=self.process_chunk, args=(chunk_path,)).start()
 
 
 def process_chunk(self, chunk_path):
@@ -96,21 +98,26 @@ def process_chunk(self, chunk_path):
 def run_sentiment_analysis(self, chunk_path):
     """Perform sentiment analysis on the video chunk."""
     print(f"Running sentiment analysis on {chunk_path}")
-    # try:
-    #     video_clip = VideoFileClip(chunk_path)
-    #     duration = video_clip.duration
-    #     print(f"Extracted {duration} seconds of video for sentiment analysis.")
-    #     # TODO: Implement actual sentiment analysis logic
-    # except Exception as e:
-    #     print(f"Error in sentiment analysis: {e}")
+    try:
+        analysis = analyze_results(video_path=chunk_path, audio_output_path=None)
+        return analysis
+        # TODO: Implement actual sentiment analysis logic
+    except Exception as e:
+        print(f"Error in sentiment analysis: {e}")
 
 
-def upload_to_s3(self, chunk_path):
+def upload_to_s3(session_id, chunk_path, file_name):
     """Upload the video chunk to AWS S3."""
     print(f"Uploading {chunk_path} to S3...")
-    # try:
-    #     s3_key = f"video_chunks/{os.path.basename(chunk_path)}"
-    #     s3_client.upload_file(chunk_path, S3_BUCKET_NAME, s3_key)
-    #     print(f"Uploaded {chunk_path} to S3 as {s3_key}")
-    # except Exception as e:
-    #     print(f"Error uploading to S3: {e}")
+
+    folder_path = f"{BASE_FOLDER}{session_id}/"
+    s3_key = f"{folder_path}{file_name}"
+
+    s3_client = boto3.client("s3")
+    try:
+        response = s3_client.upload_file(chunk_path, BUCKET_NAME, s3_key)
+        print(f"Uploaded {chunk_path} to {s3_key}")
+    except ClientError as e:
+        logging.error(e)
+        return False
+    return True
