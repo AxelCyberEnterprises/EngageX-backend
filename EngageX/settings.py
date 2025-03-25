@@ -52,10 +52,6 @@ INSTALLED_APPS = [
     "rest_framework.authtoken",
     # API Documentation
     "drf_yasg",
-    # s3 storage
-    "storages",
-    # websocket
-    "channels",
 ]
 
 MIDDLEWARE = [
@@ -132,9 +128,11 @@ SOCKETIO = {
     "CORS_ALLOWED_ORIGINS": "*",  # Configure this appropriately in production
     "ASYNC_MODE": "asgi",
 }
-CORS_ALLOWED_ORIGINS = []
-CORS_ALLOW_ALL_ORIGINS = True  # allow all origins(remove for prof)
-
+CORS_ALLOWED_ORIGINS = [
+    "https://www.engagexai.io",
+    "http://localhost:5173",
+    "https://main.d2wwdi7x8g70xe.amplifyapp.com",
+]
 
 # Database
 # https://docs.djangoproject.com/en/4.2/ref/settings/#databases
@@ -173,6 +171,7 @@ if "RDS_HOSTNAME" in os.environ:
             "PORT": os.environ.get("POSTGRESS_PORT", default="5432"),
         }
     }
+    OPENAI_API_KEY = os.environ["OPENAI_API_KEY"]
 else:
     # Local development settings (PostgreSQL)
     DATABASES = {
@@ -188,6 +187,8 @@ else:
             },
         }
     }
+
+    OPENAI_API_KEY = config("OPENAI_API_KEY")
 
 
 # Password validation
@@ -292,5 +293,34 @@ else:
 CHANNEL_LAYERS = {
     "default": {
         "BACKEND": "channels.layers.InMemoryChannelLayer",
+    },
+}
+
+# settings.py
+
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+        },
+        "file": {
+            "level": "ERROR",
+            "class": "logging.FileHandler",
+            "filename": "error.log",
+        },
+    },
+    "loggers": {
+        "streaming.consumers": {
+            "handlers": ["console", "file"],
+            "level": "ERROR",
+            "propagate": False,
+        },
+        # Add other loggers as needed
+    },
+    "root": {
+        "handlers": ["console"],
+        "level": "INFO",
     },
 }

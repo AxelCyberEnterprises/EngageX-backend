@@ -94,6 +94,20 @@ class UserProfile(models.Model):
     ]
     role = models.CharField(max_length=20, choices=ROLE_CHOICES, default=USER)
 
+    PUBLIC_SPEAKING = 'public_speaking'
+    PITCH = 'pitch'
+    PRESENTING = 'presenting'
+    PURPOSE_CHOICES = [
+        (PUBLIC_SPEAKING, 'Public_speaking'),
+        (PITCH, 'Pitch'),
+        (PRESENTING, 'Presenting'),
+    ]
+    purpose = models.CharField(
+        max_length=20,
+        choices=PURPOSE_CHOICES,
+        default=PUBLIC_SPEAKING
+    )
+
     def is_admin(self):
         return self.role == self.ADMIN
 
