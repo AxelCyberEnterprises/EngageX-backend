@@ -33,6 +33,7 @@ ALLOWED_HOSTS = [".elasticbeanstalk.com", "*"]
 # Application definition
 
 INSTALLED_APPS = [
+    "daphne",
     "django.contrib.admin",
     "django.contrib.auth",
     "django.contrib.contenttypes",
@@ -237,9 +238,64 @@ STATIC_ROOT = os.path.join(BASE_DIR, "staticfiles")
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
-MEDIA_URL = "/media/"
-MEDIA_ROOT = os.path.join(BASE_DIR, "media")
 
+USE_S3 = os.environ["USE_S3"] == "True"
+AWS_STORAGE_BUCKET_NAME = os.environ["AWS_STORAGE_BUCKET_NAME"]
+# # aws setting
+if USE_S3:
+
+    AWS_S3_REGION_NAME = os.environ["AWS_S3_REGION_NAME"]
+    AWS_S3_CUSTOM_DOMAIN = f"{AWS_STORAGE_BUCKET_NAME}.s3.amazonaws.com"
+    # s3 media settings
+    MEDIA_URL = f"https://{AWS_S3_CUSTOM_DOMAIN}/"
+
+    STORAGES = {
+        "default": {
+            "BACKEND": "storages.backends.s3boto3.S3Boto3Storage",
+            "OPTIONS": {
+                "bucket_name": AWS_STORAGE_BUCKET_NAME,
+            },
+        },
+        "staticfiles": {
+            "BACKEND": "storages.backends.s3boto3.S3Boto3Storage",  # For static files
+            "OPTIONS": {
+                "bucket_name": AWS_STORAGE_BUCKET_NAME,
+                "location": "static/",  # Stores static files in 'static/' folder in S3
+            },
+        },
+        "ProfilePicStorage": {
+            "BACKEND": "users.storages_backends.ProfilePicStorage",
+        },
+        "SlidesStorage": {
+            "BACKEND": "users.storages_backends.SlidesStorage",
+        },
+        "StaticVideosStorage": {
+            "BACKEND": "users.storages_backends.StaticVideosStorage",
+        },
+        "UserVideosStorage": {
+            "BACKEND": "users.storages_backends.StaticVideosStorage",
+        },
+    }
+
+
+else:
+    MEDIA_URL = "/media/"
+    MEDIA_ROOT = os.path.join(BASE_DIR, "media")
+
+
+# PUBLIC_MEDIA_LOCATION = "media"
+# MEDIA_URL = f"https://{AWS_S3_CUSTOM_DOMAIN}/{AWS_STORAGE_BUCKET_NAME}/"
+# DEFAULT_FILE_STORAGE = "hello_django.storage_backends.PublicMediaStorage"
+
+
+# Media files settings
+# MEDIA_URL = f"https://{AWS_S3_CUSTOM_DOMAIN}/media/"
+# STATIC_URL = f"https://{AWS_S3_CUSTOM_DOMAIN}/static/"
+CHANNEL_LAYERS = {
+    "default": {
+        "BACKEND": "channels.layers.InMemoryChannelLayer",
+    },
+}
 
 # settings.py
 
