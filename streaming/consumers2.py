@@ -104,10 +104,9 @@ def process_chunk(session_id, chunk_path, file_name):
 def run_sentiment_analysis(chunk_path):
     """Perform sentiment analysis on the video chunk."""
     print(f"Running sentiment analysis on {chunk_path}")
-    time.sleep(1.2)
-    audio_path = 'test_assets/test.mp3'
+    audio_path = 'streaming/test_assets/test.mp3'
     try:
-        analysis = analyze_results(video_path=chunk_path)
+        analysis = analyze_results(video_path=chunk_path, audio_output_path=audio_path)
         return analysis
         # TODO: Implement actual sentiment analysis logic
     except Exception as e:
