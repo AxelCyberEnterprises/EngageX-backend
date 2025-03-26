@@ -228,7 +228,8 @@ def get_pauses(audio_file):
     
     # Identify continuous pause regions
     if not pause_times:
-        return 0, 0  # No pauses detected
+        print("NO PAUSES DETECTED")
+        return 1, 1  # No pauses detected
 
     # Group pause segments into continuous pauses
     pauses = []
@@ -245,6 +246,10 @@ def get_pauses(audio_file):
     # Classify pauses
     appropriate_pauses = sum(min_pause_duration <= (end - start) < long_pause_duration for start, end in pauses)
     long_pauses = sum((end - start) >= long_pause_duration for start, end in pauses)
+
+    # Ensure at least (1,1) if both are 0
+    if appropriate_pauses == 0 and long_pauses == 0:
+        return 1, 1
 
     return appropriate_pauses, long_pauses
 
