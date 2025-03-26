@@ -10,10 +10,13 @@ import parselmouth
 import cv2
 import mediapipe as mp
 from openai import OpenAI
-import ffmpeg
+import static_ffmpeg
+
 from concurrent.futures import ThreadPoolExecutor
 
 from django.conf import settings
+
+static_ffmpeg.add_paths(weak=True)  # blocks until files are downloaded
 
 
 # load OpenAI API Key
@@ -45,11 +48,15 @@ lock = threading.Lock()
 # ---------------------- AUDIO EXTRACTION FUNCTION ----------------------
 
 def extract_audio(video_path, audio_output_path):
-    """Extracts audio from a video file using FFmpeg"""
+    """Extracts audio from a video file using FFmpeg (direct command)"""
     try:
-        ffmpeg.input(video_path).output(audio_output_path, format='mp3').run(overwrite_output=True, quiet=True)
-        print(f"Audio extracted to {audio_output_path}")
-        return audio_output_path
+        result = os.system(f'ffmpeg -i "{video_path}" -q:a 0 -map a "{audio_output_path}" -y -loglevel quiet')
+        if result == 0:
+            print(f"Audio extracted to {audio_output_path}")
+            return audio_output_path
+        else:
+            print("Error extracting audio")
+            return None
     except Exception as e:
         print(f"Error extracting audio: {e}")
         return None
