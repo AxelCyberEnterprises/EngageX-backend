@@ -49,12 +49,27 @@ def extract_audio(video_path, audio_output_path):
     """Extracts audio from a video file"""
     try:
         video = VideoFileClip(video_path)
+        print(f"VIDEO PRINTED {video} \n")
         video.audio.write_audiofile(audio_output_path)
+        print(f"PATH VIDEO PRINTED")
         video.close()
         return audio_output_path
     except Exception as e:
         print(f"Error extracting audio: {e}")
         return None
+
+# from pydub import AudioSegment
+
+# def extract_audio(video_path, audio_output_path):
+#     try:
+#         video = AudioSegment.from_file(video_path)
+#         video.export(audio_output_path, format="mp3")
+#         return audio_output_path
+#     except Exception as e:
+#         print(f"[✗] Error extracting audio: {e}")
+#         return None
+
+
 
 
 # ---------------------- SCORING FUNCTIONS ----------------------
@@ -530,7 +545,7 @@ def analyze_sentiment(transcript, metrics, posture_data):
 
 
     Engagement:
-      - How well the speaker holds audience attention. Graded on the speaker's transcript. Volume, pitch variability, pacing and pauses can boost/lower engagement. Volume_score: {metrics["Metrics"]["Volume"]}, {metrics["Metrics"]["Volume Rationale"]}, pitch_variability_score: {metrics["Scores"]["Pitch Variability Score"]} , {metrics["Metrics"]["Pitch Variability"]}, pace_score: {metrics["Scores"]["Pace Score"]} {metrics["Metrics"]["paceRationale"]}, pause_score: {metrics["Scores"]["Pause Score"]} {metrics["Metrics"]["Pause Metric Rationale"]}
+      - How well the speaker holds audience attention. Graded on the speaker's transcript. Volume, pitch variability, pacing and pauses can boost/lower engagement. Volume_score: {metrics["Metrics"]["Volume"]}, {metrics["Metrics"]["Volume Rationale"]}, pitch_variability_score: {metrics["Scores"]["Pitch Variability Score"]} , {metrics["Metrics"]["Pitch Variability"]}, pace_score: {metrics["Scores"]["Pace Score"]} {metrics["Metrics"]["Pace Rationale"]}, pause_score: {metrics["Scores"]["Pause Score"]} {metrics["Metrics"]["Pause Metric Rationale"]}
 
 
     Audience Emotion:
@@ -541,12 +556,12 @@ def analyze_sentiment(transcript, metrics, posture_data):
       - Indicates firmness and clarity of beliefs or message. Evaluates how strongly and clearly the speaker presents their beliefs and message. Dependent on Confidence score and transcript
 
     Clarity:
-      -  Measures how easily the audience can understand the speaker’s message, dependent on pace, volume consistency, effective pause usage. Volume_score: {metrics["Metrics"]["Volume"]} {metrics["Metrics"]["Volume Rationale"]}, pace_score: {metrics["Scores"]["Pace Score"]} {metrics["Metrics"]["paceRationale"]}, pause_score: {metrics["Scores"]["Pause Score"]} {metrics["Metrics"]["Pause Metric Rationale"]}
+      -  Measures how easily the audience can understand the speaker’s message, dependent on pace, volume consistency, effective pause usage. Volume_score: {metrics["Metrics"]["Volume"]} {metrics["Metrics"]["Volume Rationale"]}, pace_score: {metrics["Scores"]["Pace Score"]} {metrics["Metrics"]["Pace Rationale"]}, pause_score: {metrics["Scores"]["Pause Score"]} {metrics["Metrics"]["Pause Metric Rationale"]}
 
     Impact:
       - Overall measure of how captivating the talk is and how well the user visually presents himself.
       Volume_score: {metrics["Metrics"]["Volume"]} {metrics["Metrics"]["Volume Rationale"]}, pitch_variability_score: {metrics["Scores"]["Pitch Variability Score"]} {metrics["Metrics"]["Pitch Variability Rationale"]},
-      pace_score: {metrics["Scores"]["Pace Score"]} {metrics["Metrics"]["paceRationale"]}, pause_score: {metrics["Scores"]["Pause Score"]} {metrics["Metrics"]["paceRationale"]}.
+      pace_score: {metrics["Scores"]["Pace Score"]} {metrics["Metrics"]["Pace Rationale"]}, pause_score: {metrics["Scores"]["Pause Score"]} {metrics["Metrics"]["Pace Rationale"]}.
       Posture score: {mean_body_posture} {mean_back_rationale} {mean_neck_rationale}, stiffness score: {range_body_posture} {range_back_rationale} {range_neck_rationale}
 
     Brevity:
@@ -620,14 +635,14 @@ def analyze_sentiment(transcript, metrics, posture_data):
     return parsed_response
 
 
-def analyze_results(video_path, audio_output_path):
+def analyze_results(video_path):
     start_time = time.time()
     # audio_output_path = "test.mp3"
     # video_path = "video_3.mp4"
 
     # add try-excepts
-
-    extracted_audio_path = extract_audio(video_path, audio_output_path)
+    audio_output_path = "test_assets/test.mp3"
+    extracted_audio_path = extract_audio(video_path=video_path, audio_output_path=audio_output_path)
 
     if not extracted_audio_path:
         print("Audio extraction failed. Exiting...")

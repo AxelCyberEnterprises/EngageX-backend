@@ -22,7 +22,7 @@
 		document.getElementById("startBtn").addEventListener("click", async function () {
 			try {
 				// Request camera and microphone access
-				const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+				const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
 				document.getElementById("videoPreview").srcObject = stream;
 
 				// Initialize WebSocket
@@ -32,6 +32,9 @@
 				socket.onmessage = (e) => console.log("Server Acknowledgment:", JSON.parse(e.data));
 				socket.onerror = (error) => console.error("WebSocket Error:", error);
 				socket.onclose = () => console.log("WebSocket Disconnected");
+
+				stream.getAudioTracks().forEach(track => {console.log("Audio track:", track.label, track.enabled);});
+
 
 				// Start MediaRecorder (Continuous Recording)
 				mediaRecorder = new MediaRecorder(stream, { mimeType: "video/webm" });
