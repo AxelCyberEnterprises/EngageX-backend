@@ -10,13 +10,12 @@ import parselmouth
 import cv2
 import mediapipe as mp
 from openai import OpenAI
-import static_ffmpeg
+from audio_extract import extract_audio
+
 
 from concurrent.futures import ThreadPoolExecutor
 
 from django.conf import settings
-
-static_ffmpeg.add_paths(weak=True)  # blocks until files are downloaded
 
 
 # load OpenAI API Key
@@ -44,35 +43,6 @@ results_data = {
 }
 
 lock = threading.Lock()
-
-# ---------------------- AUDIO EXTRACTION FUNCTION ----------------------
-
-def extract_audio(video_path, audio_output_path):
-    """Extracts audio from a video file using FFmpeg (direct command)"""
-    try:
-        result = os.system(f'ffmpeg -i "{video_path}" -q:a 0 -map a "{audio_output_path}" -y -loglevel quiet')
-        if result == 0:
-            print(f"Audio extracted to {audio_output_path}")
-            return audio_output_path
-        else:
-            print("Error extracting audio")
-            return None
-    except Exception as e:
-        print(f"Error extracting audio: {e}")
-        return None
-
-# from pydub import AudioSegment
-
-# def extract_audio(video_path, audio_output_path):
-#     try:
-#         video = AudioSegment.from_file(video_path)
-#         video.export(audio_output_path, format="mp3")
-#         return audio_output_path
-#     except Exception as e:
-#         print(f"[✗] Error extracting audio: {e}")
-#         return None
-
-
 
 
 # ---------------------- SCORING FUNCTIONS ----------------------
@@ -308,18 +278,22 @@ def process_audio(audio_file, transcript):
 
     elapsed_time = time.time() - start_time
     print(f"\nElapsed time for process_audio: {elapsed_time:.2f} seconds")
-    print(f"\nMetrics: \n", results)
+    # print(f"\nMetrics: \n", results)
     return results
 
 
 # ---------------------- TRANSCRIPTION ----------------------
 
 def transcribe_audio(audio_file):
+    start_time = time.time()
+
     """transcribes audio using OpenAI Whisper-1."""
     with open(audio_file, "rb") as audio_file_obj:
         transcription = client.audio.transcriptions.create(
             model="whisper-1", file=audio_file_obj
         )
+    elapsed_time = time.time() - start_time
+    print(f"\nElapsed time for transcribe audio: {elapsed_time:.2f} seconds")
     return transcription.text
 
 
@@ -420,6 +394,8 @@ def process_frames():
 
 # Main Analysis Function
 def analyze_posture(video_path):
+    start_time = time.time()
+
     with ThreadPoolExecutor(max_workers=3) as executor:
         executor.submit(capture_frames, video_path)
         executor.submit(process_frames)
@@ -456,6 +432,9 @@ def analyze_posture(video_path):
 
         good_neck_time = (gn_time / (gn_time + bn_time)) * video_duration
         bad_neck_time = (bn_time / (gn_time + bn_time)) * video_duration
+
+    elapsed_time = time.time() - start_time
+    print(f"\nElapsed time for posture: {elapsed_time:.2f} seconds")
 
     # return results in dictionary format
     return {
@@ -581,26 +560,19 @@ def analyze_sentiment(transcript, metrics, posture_data):
 
 def analyze_results(video_path, audio_output_path):
     start_time = time.time()
-    # audio_output_path = "test.mp3"
-    # video_path = "video_3.mp4"
+  
 
-    # add try-excepts
-
-    extracted_audio_path = extract_audio(video_path, audio_output_path)
     try:
-        if not extracted_audio_path:
-            print("Audio extraction failed. Exiting...")
-            return
-    
-        # run transcription and audio analysis in parallel
         with ThreadPoolExecutor() as executor:
+            future_transcription = executor.submit(transcribe_audio, audio_output_path)
             future_analyze_posture = executor.submit(analyze_posture, video_path=video_path)
-            future_transcription = executor.submit(transcribe_audio, extracted_audio_path)
-            future_audio_analysis = executor.submit(process_audio, extracted_audio_path, future_transcription.result())
+        
 
-        posture_data = future_analyze_posture.result()
-        transcript = future_transcription.result()
-        metrics = future_audio_analysis.result()
+        # Fetch results AFTER both are submitted
+        transcript = future_transcription.result()  # Now transcription runs truly in parallel
+        posture_data = future_analyze_posture.result()  # Now posture runs in parallel
+        
+        metrics = process_audio(audio_output_path, transcript)
 
         sentiment_analysis = analyze_sentiment(transcript, metrics, posture_data)
 

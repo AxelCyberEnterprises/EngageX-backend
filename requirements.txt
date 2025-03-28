@@ -57,7 +57,6 @@ incremental==24.7.2
 inflection==0.5.1
 jaraco.classes==3.4.0
 jaraco.context==6.0.1
-jaraco.functools==4.1.0
 jax==0.5.3
 jaxlib==0.5.3
 jiter==0.9.0
@@ -81,8 +80,8 @@ opt_einsum==3.4.0
 packaging==24.2
 pandas==2.2.3
 pillow==11.1.0
+pip-autoremove==0.10.0
 praat-parselmouth==0.4.5
-progress==1.6
 prompt_toolkit==3.0.50
 protobuf==4.25.6
 psycopg==3.2.6
@@ -92,6 +91,7 @@ pyasn1_modules==0.4.1
 pycparser==2.22
 pydantic==2.10.6
 pydantic_core==2.27.2
+pydub==0.25.1
 Pygments==2.19.1
 PyJWT==2.9.0
 pyOpenSSL==25.0.0
@@ -105,10 +105,8 @@ python3-openid==3.2.0
 pytz==2025.1
 pywin32-ctypes==0.2.3
 PyYAML==6.0.2
-readme_renderer==44.0
 requests==2.32.3
 requests-oauthlib==2.0.0
-requests-toolbelt==1.0.0
 rfc3986==2.0.0
 rich==13.9.4
 rsa==4.9
@@ -123,7 +121,6 @@ social-auth-app-django==5.4.3
 social-auth-core==4.5.6
 sounddevice==0.5.1
 sqlparse==0.5.3
-static_ffmpeg==2.12
 tqdm==4.67.1
 twine==6.1.0
 Twisted==24.11.0
