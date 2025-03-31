@@ -10,7 +10,9 @@ import parselmouth
 import cv2
 import mediapipe as mp
 from openai import OpenAI
-from moviepy import VideoFileClip
+from audio_extract import extract_audio
+
+
 from concurrent.futures import ThreadPoolExecutor
 
 from django.conf import settings
@@ -42,21 +44,9 @@ results_data = {
 
 lock = threading.Lock()
 
-# ---------------------- AUDIO EXTRACTION FUNCTION ----------------------
-
-def extract_audio(video_path, audio_output_path):
-    """Extracts audio from a video file"""
-    try:
-        video = VideoFileClip(video_path)
-        video.audio.write_audiofile(audio_output_path)
-        video.close()
-        return audio_output_path
-    except Exception as e:
-        print(f"Error extracting audio: {e}")
-        return None
-
 
 # ---------------------- SCORING FUNCTIONS ----------------------
+
 
 def scale_to_score(value, min_val, max_val):
     """Scales values where min/max get exactly 70, midpoint gets 100, and outside drops smoothly to 0."""
@@ -215,7 +205,8 @@ def get_pauses(audio_file):
     
     # Identify continuous pause regions
     if not pause_times:
-        return 0, 0  # No pauses detected
+        print("NO PAUSES DETECTED")
+        return 1, 1  # No pauses detected
 
     # Group pause segments into continuous pauses
     pauses = []
@@ -232,6 +223,10 @@ def get_pauses(audio_file):
     # Classify pauses
     appropriate_pauses = sum(min_pause_duration <= (end - start) < long_pause_duration for start, end in pauses)
     long_pauses = sum((end - start) >= long_pause_duration for start, end in pauses)
+
+    # Ensure at least (1,1) if both are 0
+    if appropriate_pauses == 0 and long_pauses == 0:
+        return 1, 1
 
     return appropriate_pauses, long_pauses
 
@@ -283,25 +278,29 @@ def process_audio(audio_file, transcript):
 
     elapsed_time = time.time() - start_time
     print(f"\nElapsed time for process_audio: {elapsed_time:.2f} seconds")
-    print(f"\nMetrics: \n", results)
+    # print(f"\nMetrics: \n", results)
     return results
 
 
 # ---------------------- TRANSCRIPTION ----------------------
 
 def transcribe_audio(audio_file):
+    start_time = time.time()
+
     """transcribes audio using OpenAI Whisper-1."""
     with open(audio_file, "rb") as audio_file_obj:
         transcription = client.audio.transcriptions.create(
             model="whisper-1", file=audio_file_obj
         )
+    elapsed_time = time.time() - start_time
+    print(f"\nElapsed time for transcribe audio: {elapsed_time:.2f} seconds")
     return transcription.text
 
 
 
 # Calculate Distance
 def find_distance(x1, y1, x2, y2):
-    return m.sqrt(((x2 - x1) ** 2) + ((y2 - y1) ** 2))
+    return m.sqrt(((x2 - x1) * 2) + ((y2 - y1) * 2))
 
 # Calculate Angles
 def find_angle(x1, y1, x2, y2):
@@ -353,6 +352,7 @@ def capture_frames(video_path):
     cap.release()
     stop_flag.set()  # signal other threads to stop
 
+
 # Processing Thread
 def process_frames():
     posture_threshold = 5
@@ -394,6 +394,8 @@ def process_frames():
 
 # Main Analysis Function
 def analyze_posture(video_path):
+    start_time = time.time()
+
     with ThreadPoolExecutor(max_workers=3) as executor:
         executor.submit(capture_frames, video_path)
         executor.submit(process_frames)
@@ -431,6 +433,9 @@ def analyze_posture(video_path):
         good_neck_time = (gn_time / (gn_time + bn_time)) * video_duration
         bad_neck_time = (bn_time / (gn_time + bn_time)) * video_duration
 
+    elapsed_time = time.time() - start_time
+    print(f"\nElapsed time for posture: {elapsed_time:.2f} seconds")
+
     # return results in dictionary format
     return {
         "mean_back_inclination": mean_back,
@@ -467,7 +472,7 @@ def analyze_sentiment(transcript, metrics, posture_data):
 
 
     Engagement:
-      - How well the speaker holds audience attention. Graded on the speaker's transcript. Volume, pitch variability, pacing and pauses can boost/lower engagement. Volume_score: {metrics["Metrics"]["Volume"]}, {metrics["Metrics"]["Volume Rationale"]}, pitch_variability_score: {metrics["Scores"]["Pitch Variability Score"]} , {metrics["Metrics"]["Pitch Variability"]}, pace_score: {metrics["Scores"]["Pace Score"]} {metrics["Metrics"]["paceRationale"]}, pause_score: {metrics["Scores"]["Pause Score"]} {metrics["Metrics"]["Pause Metric Rationale"]}
+      - How well the speaker holds audience attention. Graded on the speaker's transcript. Volume, pitch variability, pacing and pauses can boost/lower engagement. Volume_score: {metrics["Metrics"]["Volume"]}, {metrics["Metrics"]["Volume Rationale"]}, pitch_variability_score: {metrics["Scores"]["Pitch Variability Score"]} , {metrics["Metrics"]["Pitch Variability"]}, pace_score: {metrics["Scores"]["Pace Score"]} {metrics["Metrics"]["Pace Rationale"]}, pause_score: {metrics["Scores"]["Pause Score"]} {metrics["Metrics"]["Pause Metric Rationale"]}
 
 
     Audience Emotion:
@@ -478,12 +483,12 @@ def analyze_sentiment(transcript, metrics, posture_data):
       - Indicates firmness and clarity of beliefs or message. Evaluates how strongly and clearly the speaker presents their beliefs and message. Dependent on Confidence score and transcript
 
     Clarity:
-      -  Measures how easily the audience can understand the speaker’s message, dependent on pace, volume consistency, effective pause usage. Volume_score: {metrics["Metrics"]["Volume"]} {metrics["Metrics"]["Volume Rationale"]}, pace_score: {metrics["Scores"]["Pace Score"]} {metrics["Metrics"]["paceRationale"]}, pause_score: {metrics["Scores"]["Pause Score"]} {metrics["Metrics"]["Pause Metric Rationale"]}
+      -  Measures how easily the audience can understand the speaker’s message, dependent on pace, volume consistency, effective pause usage. Volume_score: {metrics["Metrics"]["Volume"]} {metrics["Metrics"]["Volume Rationale"]}, pace_score: {metrics["Scores"]["Pace Score"]} {metrics["Metrics"]["Pace Rationale"]}, pause_score: {metrics["Scores"]["Pause Score"]} {metrics["Metrics"]["Pause Metric Rationale"]}
       
     Impact:
       - Overall measure of how captivating the talk is and how well the user visually presents himself. 
       Volume_score: {metrics["Metrics"]["Volume"]} {metrics["Metrics"]["Volume Rationale"]}, pitch_variability_score: {metrics["Scores"]["Pitch Variability Score"]} {metrics["Metrics"]["Pitch Variability Rationale"]}, 
-      pace_score: {metrics["Scores"]["Pace Score"]} {metrics["Metrics"]["paceRationale"]}, pause_score: {metrics["Scores"]["Pause Score"]} {metrics["Metrics"]["paceRationale"]}.
+      pace_score: {metrics["Scores"]["Pace Score"]} {metrics["Metrics"]["Pace Rationale"]}, pause_score: {metrics["Scores"]["Pause Score"]} {metrics["Metrics"]["Pause Metric Rationale"]}.
       Posture score: {mean_body_posture} {mean_back_rationale} {mean_neck_rationale}, stiffness score: {range_body_posture} {range_back_rationale} {range_neck_rationale}
 
     Brevity:
@@ -555,26 +560,19 @@ def analyze_sentiment(transcript, metrics, posture_data):
 
 def analyze_results(video_path, audio_output_path):
     start_time = time.time()
-    # audio_output_path = "test.mp3"
-    # video_path = "video_3.mp4"
+  
 
-    # add try-excepts
-
-    extracted_audio_path = extract_audio(video_path, audio_output_path)
-
-        if not extracted_audio_path:
-            print("Audio extraction failed. Exiting...")
-            return
-    
-        # run transcription and audio analysis in parallel
+    try:
         with ThreadPoolExecutor() as executor:
+            future_transcription = executor.submit(transcribe_audio, audio_output_path)
             future_analyze_posture = executor.submit(analyze_posture, video_path=video_path)
-            future_transcription = executor.submit(transcribe_audio, extracted_audio_path)
-            future_audio_analysis = executor.submit(process_audio, extracted_audio_path, future_transcription.result())
+        
 
-        posture_data = future_analyze_posture.result()
-        transcript = future_transcription.result()
-        metrics = future_audio_analysis.result()
+        # Fetch results AFTER both are submitted
+        transcript = future_transcription.result()  # Now transcription runs truly in parallel
+        posture_data = future_analyze_posture.result()  # Now posture runs in parallel
+        
+        metrics = process_audio(audio_output_path, transcript)
 
         sentiment_analysis = analyze_sentiment(transcript, metrics, posture_data)
 

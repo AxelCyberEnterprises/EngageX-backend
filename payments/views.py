@@ -15,6 +15,35 @@ TIER_CREDITS = {
     "ultimate": 12,
 }
 
+# {
+#   "Payment": {
+#     "SyncToken": "0", 
+#     "domain": "QBO", 
+#     "DepositToAccountRef": {
+#       "value": "4"
+#     }, 
+#     "UnappliedAmt": 25.0, 
+#     "TxnDate": "2014-12-30", 
+#     "TotalAmt": 25.0, 
+#     "ProjectRef": {
+#       "value": "39298034"
+#     }, 
+#     "ProcessPayment": false, 
+#     "sparse": false, 
+#     "Line": [], 
+#     "CustomerRef": {
+#       "name": "Red Rock Diner", 
+#       "value": "20"
+#     }, 
+#     "Id": "154", 
+#     "MetaData": {
+#       "CreateTime": "2014-12-30T10:26:03-08:00", 
+#       "LastUpdatedTime": "2014-12-30T10:26:03-08:00"
+#     }
+#   }, 
+#   "time": "2014-12-30T10:26:03.668-08:00"
+# }
+
 class PaymentCallbackView(APIView):
     """
     Endpoint to be called after a payment is processed.
@@ -29,17 +58,28 @@ class PaymentCallbackView(APIView):
     }
     """
     permission_classes = [IsAuthenticated]  # Adjust if needed
-    
+
     def post(self, request):
         data = request.data
-        transaction_id = data.get("transaction_id")
-        status_str = data.get("status")
+        transaction_date = data.get("TxnDate")
+        transaction_id = data.get("Payment", {}).get("Id")
+        amount = data.get("TotalAmt")
+        transaction_date = data.get("TxnDate")
+        status_str = "success" if data.get("ProcessPayment", False) else "failed"
         tier = data.get("tier")
         user_email = data.get("user_email")
         gateway_response = data.get("gateway_response", {})
 
+
+        # transaction_id = data.get("transaction_id")
+        # status_str = data.get("status")
+        # customer_id = data.get("customer_id")
+        # amount = data.get("amount")
+        # currency = data.get("currency")
+        # payment_method = data.get("payment_method")
+
         # Validate required fields
-        if not transaction_id or not status_str or not tier or not user_email:
+        if not transaction_id or not status_str or not tier:
             return Response({"error": "Missing required fields."}, status=status.HTTP_400_BAD_REQUEST)
         
         tier = tier.lower()
@@ -57,10 +97,10 @@ class PaymentCallbackView(APIView):
         transaction, created = PaymentTransaction.objects.update_or_create(
             transaction_id=transaction_id,
             defaults={
-                "user": user,
                 "status": status_str.lower(),
                 "gateway_response": gateway_response,
-                "credits": credits_to_add,
+                "amount": amount,
+                "credits": credits_to_add
             }
         )
 
@@ -72,6 +112,7 @@ class PaymentCallbackView(APIView):
         
         serializer = PaymentTransactionSerializer(transaction)
         return Response(serializer.data, status=status.HTTP_200_OK)
+        
 
 
 class PaymentTransactionViewSet(viewsets.ModelViewSet):
