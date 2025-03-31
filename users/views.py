@@ -2,10 +2,11 @@ from django.shortcuts import render, get_object_or_404
 from django.core.exceptions import ValidationError
 from djoser.views import UserViewSet, TokenCreateView
 from django.core.cache import cache
-from django.core.mail import EmailMessage
+from django.core.mail import EmailMessage, send_mail
 from django.conf import settings
 from django.contrib.auth import get_user_model, authenticate
 from django.utils import timezone
+from django.db import transaction, IntegrityError
 
 from rest_framework.authtoken.models import Token
 from rest_framework import viewsets, status, permissions
@@ -23,6 +24,7 @@ from .models import (UserProfile, CustomUser, UserAssignment)
 from .permissions import IsAdmin
 
 import random, tempfile, os
+import secrets
 
 from google.oauth2 import id_token
 from google.auth.transport import requests
@@ -44,67 +46,67 @@ class UserCreateViewSet(viewsets.ModelViewSet):
 
     def create(self, request, *args, **kwargs):
         try:
-            # Check for existing user with the same email
             if CustomUser.objects.filter(email=request.data.get('email')).exists():
                 raise ValidationError("User with this email already exists.")
 
             serializer = self.get_serializer(data=request.data)
             serializer.is_valid(raise_exception=True)
 
-            # Save the user but set them inactive until they verify
-            user = serializer.save(is_active=False)
-            user.verification_code = str(random.randint(100000, 999999))
-            print(user.verification_code)  # Debug: print the verification code
-            user.save()
+            with transaction.atomic():
+                # Save user but keep them inactive
+                user = serializer.save(is_active=False)
+                user.verification_code = str(secrets.randbelow(9000) + 1000)  # Secure 4-digit OTP
+                user.save()
 
-            # Not sending email for now since we haven't set up the email sending backend
-            # Send the verification email
-            # email = EmailMessage(
-            #     subject='Verify your account',
-            #     body=f'Your verification code is {user.verification_code}',
-            #     from_email=settings.DEFAULT_FROM_EMAIL,
-            #     to=[user.email],
-            # )
-            # email.extra_headers = {'X-PM-Message-Stream': 'outbound'}
-            # email.send(fail_silently=False)
+                # Send verification email using AWS SES
+                subject = "Verify your account"
+                message = f"Your verification code is {user.verification_code}"
+                from_email = settings.DEFAULT_FROM_EMAIL
+                recipient_list = [user.email]
+
+                try:
+                    send_mail(
+                        subject,
+                        message,
+                        from_email,
+                        recipient_list,
+                        fail_silently=False,
+                    )
+                except Exception as e:
+                    print(f"Error sending email: {e}")
+                    raise IntegrityError("Email sending failed.")  # Trigger rollback if email fails
 
             response_data = {
                 "status": "success",
                 "message": "Verification code sent to your email.",
                 "data": {
                     "user": {
+                        "id": user.id,
                         "email": user.email,
                         "username": user.first_name,
-                        "otp": user.verification_code,
                         "first_name": user.first_name,
                         "last_name": user.last_name,
-                        # "role": user.user_profile.role,
-                        # "career_stage": user.user_profile.user_intent
                     }
                 }
             }
             return Response(response_data, status=status.HTTP_201_CREATED)
 
         except ValidationError as e:
-            # Handle validation errors (e.g., user already exists)
-            response_data = {
-                "status": "fail",
-                "message": str(e),
-                "data": {}
-            }
-            return Response(response_data, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"status": "fail", "message": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+        except IntegrityError:
+            return Response(
+                {"status": "fail", "message": "Error sending verification email. Please try again."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
         except Exception as e:
-            # import traceback
-            print(f"Error sending email: {e}")
-            
-            response_data = {
-                "status": "fail",
-                "message": "Error sending verification email.",
-                "data": {}
-            }
-            return Response(response_data, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-        
+            print(f"Unexpected error: {e}")
+            return Response(
+                {"status": "fail", "message": "Something went wrong."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
 
 class VerifyEmailView(APIView):
     """
