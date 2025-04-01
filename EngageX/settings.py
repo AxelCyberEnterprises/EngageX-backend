@@ -132,6 +132,7 @@ SOCKETIO = {
     "ASYNC_MODE": "asgi",
 }
 CORS_ALLOWED_ORIGINS = [
+    "https://main.d2wwdi7x8g70xe.amplifyapp.com",
     "https://www.engagexai.io",
     "http://localhost:5173",
     "https://main.d2wwdi7x8g70xe.amplifyapp.com",
