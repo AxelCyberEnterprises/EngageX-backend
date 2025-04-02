@@ -1,9 +1,12 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from .views import PracticeSessionViewSet, SessionDashboardView, UploadSessionSlidesView
+from .views import PracticeSessionViewSet, SessionDashboardView, UploadSessionSlidesView, ChunkSentimentAnalysisViewSet, SessionChunkViewSet
 
 router = DefaultRouter()
 router.register(r'sessions', PracticeSessionViewSet, basename='practice-session')
+
+router.register(r'session_chunks', SessionChunkViewSet, basename='session-chunk') # Register the new ViewSet
+router.register(r'chunk_sentiment_analysis', ChunkSentimentAnalysisViewSet, basename='chunk-sentiment-analysis')
 
 urlpatterns = [
     path('', include(router.urls)),

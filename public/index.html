@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!-- <!DOCTYPE html>
 <html lang="en">
 
 <head>
@@ -62,7 +62,7 @@
                 setInterval(() => {
                     videoRecorder.requestData();
                     audioRecorder.requestData();
-                }, 15000); // Adjust timing if needed
+                }, 10000); // Adjust timing if needed
 
                 // UI updates
                 document.getElementById("startBtn").disabled = true;
@@ -127,4 +127,248 @@
             document.getElementById("stopBtn").disabled = true;
         });
     </script>
+</body> -->
+
+
+<!-- Second Failed Attempt -->
+
+<!-- 
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Improved WebSocket Video & Audio Streaming</title>
+</head>
+
+<body>
+    <h2>WebSocket Video Streaming</h2>
+    <video id="videoPreview" autoplay></video>
+    <button id="startBtn">Start Recording</button>
+    <button id="stopBtn" disabled>Stop Recording</button>
+    <p id="status">Status: Waiting...</p>
+
+    <script>
+        let videoRecorder, audioRecorder;
+        let socket;
+        let currentVideoChunk = null;
+        let currentAudioChunk = null;
+        let isRecording = false;
+        let sendInterval;
+
+        document.getElementById("startBtn").addEventListener("click", async function () {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+                document.getElementById("videoPreview").srcObject = stream;
+
+                const audioStream = new MediaStream(stream.getAudioTracks());
+
+                socket = new WebSocket("ws://localhost:8000/ws/socket_server/");
+                socket.binaryType = 'arraybuffer';
+
+                socket.onopen = () => console.log("WebSocket Connected");
+                socket.onmessage = (e) => console.log("Server:", e.data);
+                socket.onerror = (error) => console.error("WebSocket Error:", error);
+                socket.onclose = () => console.log("WebSocket Disconnected");
+
+                videoRecorder = new MediaRecorder(stream, { mimeType: "video/webm" });
+                audioRecorder = new MediaRecorder(audioStream, { mimeType: 'audio/webm; codecs=opus' }); // Changed audio mimeType
+
+                videoRecorder.ondataavailable = (event) => {
+                    if (event.data && event.data.size > 0) {
+                        currentVideoChunk = event.data;
+                        attemptToSend();
+                    }
+                };
+
+                audioRecorder.ondataavailable = (event) => {
+                    if (event.data && event.data.size > 0) {
+                        currentAudioChunk = event.data;
+                        attemptToSend();
+                    }
+                };
+
+                const timeslice = 5000; // Send data every 5 seconds
+                videoRecorder.start(timeslice);
+                audioRecorder.start(timeslice);
+                isRecording = true;
+
+                document.getElementById("startBtn").disabled = true;
+                document.getElementById("stopBtn").disabled = false;
+
+            } catch (error) {
+                console.error("Camera Access Error:", error);
+            }
+        });
+
+        async function attemptToSend() {
+            if (currentVideoChunk && currentAudioChunk && socket && socket.readyState === WebSocket.OPEN && isRecording) {
+                const videoBuffer = await currentVideoChunk.arrayBuffer();
+                const audioBuffer = await currentAudioChunk.arrayBuffer();
+
+                const videoBase64 = arrayBufferToBase64(videoBuffer);
+                const audioBase64 = arrayBufferToBase64(audioBuffer);
+
+                socket.send(JSON.stringify({
+                    type: "video_audio",
+                    video: videoBase64,
+                    audio: audioBase64,
+                }));
+
+                console.log("Sent video and audio chunk together.");
+                currentVideoChunk = null;
+                currentAudioChunk = null;
+            }
+        }
+
+        function arrayBufferToBase64(buffer) {
+            let binary = '';
+            const bytes = new Uint8Array(buffer);
+            const len = bytes.byteLength;
+            for (let i = 0; i < len; i++) {
+                binary += String.fromCharCode(bytes[i]);
+            }
+            return btoa(binary);
+        }
+
+        document.getElementById("stopBtn").addEventListener("click", function () {
+            if (videoRecorder && videoRecorder.state !== 'inactive') videoRecorder.stop();
+            if (audioRecorder && audioRecorder.state !== 'inactive') audioRecorder.stop();
+            isRecording = false;
+
+            if (socket) socket.close();
+
+            if (document.getElementById("videoPreview").srcObject) {
+                document.getElementById("videoPreview").srcObject.getTracks().forEach(track => track.stop());
+            }
+
+            document.getElementById("status").textContent = "Status: Stopped";
+            document.getElementById("startBtn").disabled = false;
+            document.getElementById("stopBtn").disabled = true;
+        });
+    </script>
 </body>
+
+</html> -->
+
+
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Improved WebSocket Video & Audio Streaming</title>
+</head>
+
+<body>
+    <h2>WebSocket Video Streaming</h2>
+    <video id="videoPreview" autoplay></video>
+    <button id="startBtn">Start Recording</button>
+    <button id="stopBtn" disabled>Stop Recording</button>
+    <p id="status">Status: Waiting...</p>
+
+    <script>
+        let videoRecorder, audioRecorder;
+        let socket;
+        let currentVideoChunk = null;
+        let currentAudioChunk = null;
+        let isRecording = false;
+
+        document.getElementById("startBtn").addEventListener("click", async function () {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+                document.getElementById("videoPreview").srcObject = stream;
+
+                const audioStream = new MediaStream(stream.getAudioTracks());
+
+                socket = new WebSocket("ws://localhost:8000/ws/socket_server/");
+                socket.binaryType = 'arraybuffer';
+
+                socket.onopen = () => console.log("WebSocket Connected");
+                socket.onmessage = (e) => console.log("Server:", e.data);
+                socket.onerror = (error) => console.error("WebSocket Error:", error);
+                socket.onclose = () => console.log("WebSocket Disconnected");
+
+                videoRecorder = new MediaRecorder(stream, { mimeType: "video/webm" });
+                audioRecorder = new MediaRecorder(audioStream, { mimeType: 'audio/webm; codecs=opus' });
+
+                videoRecorder.ondataavailable = (event) => {
+                    if (event.data && event.data.size > 0) {
+                        console.log("Video chunk size:", event.data.size);
+                        currentVideoChunk = event.data;
+                        attemptToSend();
+                    }
+                };
+
+                audioRecorder.ondataavailable = (event) => {
+                    if (event.data && event.data.size > 0) {
+                        console.log("Audio chunk size:", event.data.size);
+                        currentAudioChunk = event.data;
+                        attemptToSend();
+                    }
+                };
+
+                const timeslice = 7000; // Increased timeslice for testing
+                videoRecorder.start(timeslice);
+                audioRecorder.start(timeslice);
+                isRecording = true;
+
+                document.getElementById("startBtn").disabled = true;
+                document.getElementById("stopBtn").disabled = false;
+
+            } catch (error) {
+                console.error("Camera Access Error:", error);
+            }
+        });
+
+        async function attemptToSend() {
+            if (currentVideoChunk && currentAudioChunk && socket && socket.readyState === WebSocket.OPEN && isRecording) {
+                const videoBuffer = await currentVideoChunk.arrayBuffer();
+                const audioBuffer = await currentAudioChunk.arrayBuffer();
+
+                const videoBase64 = arrayBufferToBase64(videoBuffer);
+                const audioBase64 = arrayBufferToBase64(audioBuffer);
+
+                socket.send(JSON.stringify({
+                    type: "video_audio",
+                    video: videoBase64,
+                    audio: audioBase64,
+                }));
+
+                console.log("Sent video and audio chunk together.");
+                currentVideoChunk = null;
+                currentAudioChunk = null;
+            }
+        }
+
+        function arrayBufferToBase64(buffer) {
+            let binary = '';
+            const bytes = new Uint8Array(buffer);
+            const len = bytes.byteLength;
+            for (let i = 0; i < len; i++) {
+                binary += String.fromCharCode(bytes[i]);
+            }
+            return btoa(binary);
+        }
+
+        document.getElementById("stopBtn").addEventListener("click", function () {
+            if (videoRecorder && videoRecorder.state !== 'inactive') videoRecorder.stop();
+            if (audioRecorder && audioRecorder.state !== 'inactive') audioRecorder.stop();
+            isRecording = false;
+
+            if (socket) socket.close();
+
+            if (document.getElementById("videoPreview").srcObject) {
+                document.getElementById("videoPreview").srcObject.getTracks().forEach(track => track.stop());
+            }
+
+            document.getElementById("status").textContent = "Status: Stopped";
+            document.getElementById("startBtn").disabled = false;
+            document.getElementById("stopBtn").disabled = true;
+        });
+    </script>
+</body>
+
+</html>

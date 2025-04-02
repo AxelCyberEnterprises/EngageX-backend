@@ -4,6 +4,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.parsers import MultiPartParser, FormParser
+from rest_framework.exceptions import PermissionDenied
 
 from django.conf import settings
 from django.conf import settings
@@ -19,11 +20,13 @@ from collections import Counter
 from openai import OpenAI
 
 
-from .models import PracticeSession, PracticeSequence, ChunkSentimentAnalysis
+from .models import PracticeSession, PracticeSequence, ChunkSentimentAnalysis, SessionChunk
 from .serializers import (
     PracticeSessionSerializer,
     PracticeSessionSlidesSerializer,
     PracticeSequenceSerializer,
+    ChunkSentimentAnalysisSerializer,
+    SessionChunkSerializer
 )
 
 
@@ -74,6 +77,9 @@ class PracticeSessionViewSet(viewsets.ModelViewSet):
 
         return PracticeSession.objects.filter(user=user).order_by("-date")
 
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)
+
     @action(detail=True, methods=["get"])
     def report(self, request, pk=None):
         """
@@ -83,73 +89,6 @@ class PracticeSessionViewSet(viewsets.ModelViewSet):
         session = self.get_object()
         serializer = PracticeSessionSerializer(session)
         return Response(serializer.data)
-
-
-# class SessionDashboardView(APIView):
-#     """
-#     Dashboard endpoint that returns different aggregated data depending on user role.
-
-#     For admin users:
-#       - Total sessions
-#       - Breakdown of sessions by type (pitch, public speaking, presentation)
-#       - Sessions over time (for graphing purposes)
-#       - Recent sessions
-
-#     For regular users:
-#       - Latest session aggregated data (pauses, tone, emotional_impact, audience_engagement)
-#       - Average aggregated data across all their sessions
-#     """
-#     permission_classes = [IsAuthenticated]
-
-#     def get(self, request):
-#         user = request.user
-#         data = {}
-#         if hasattr(user, 'userprofile') and user.userprofile.is_admin():
-#             sessions = PracticeSession.objects.all()
-#             total_sessions = sessions.count()
-#             breakdown = sessions.values('session_type').annotate(count=Count('id'))
-#             last_30_days = now() - timedelta(days=30)
-#             sessions_over_time = (sessions.filter(date__gte=last_30_days)
-#                                     .extra(select={'day': "date(date)"})
-#                                     .values('day')
-#                                     .annotate(count=Count('id'))
-#                                     .order_by('day'))
-#             recent_sessions = sessions.order_by('-date')[:5].values('session_name', 'session_type', 'date')
-#             data = {
-#                 "total_sessions": total_sessions,
-#                 "session_breakdown": list(breakdown),
-#                 "sessions_over_time": list(sessions_over_time),
-#                 "recent_sessions": list(recent_sessions),
-#                 "credits": user.userprofile.available_credits,
-#             }
-#         else:
-#             latest_session = PracticeSession.objects.filter(user=user).order_by('-date').first()
-#             latest_aggregated_data = {}
-#             if latest_session:
-#                 latest_aggregated_data = {
-#                     "impact": latest_session.impact,
-#                     "volume": latest_session.volume,
-#                     "pace": latest_session.pace,
-#                     "clarity": latest_session.clarity,
-#                     "engagement": latest_session.audience_engagement,
-#                     "credits": user.userprofile.available_credits,
-#                     # Add other relevant aggregated fields here
-#                 }
-
-#             # Calculate averages of the aggregated fields across all user sessions
-#             aggregated_averages = PracticeSession.objects.filter(user=user).aggregate(
-#                 avg_pauses=Avg('pauses'),
-#                 avg_emotional_impact=Avg('emotional_impact'),
-#                 avg_audience_engagement=Avg('audience_engagement'),
-#                 # Add averages for other relevant aggregated fields
-#             )
-
-#             data = {
-#                 "latest_session_data": latest_aggregated_data,
-#                 "average_performance": aggregated_averages,
-#             }
-#         return Response(data, status=status.HTTP_200_OK)
-
 
 User = get_user_model()
 
@@ -323,7 +262,7 @@ class SessionDashboardView(APIView):
                             "volume": chunk_data["avg_volume"],
                             "articulation": chunk_data["avg_articulation"],
                             "confidence": chunk_data["avg_confidence"],
-                            # You might want to include pace in the historical data as well
+                            #might want to include pace in the historical data as well
                         }
                     )
 
@@ -332,7 +271,7 @@ class SessionDashboardView(APIView):
                 avg_pauses=Avg("pauses"),
                 avg_emotional_impact=Avg(
                     "emotional_expression"
-                ),  # Assuming emotional_expression is the correct field
+                ),
                 avg_audience_engagement=Avg("audience_engagement"),
                 # Add averages for other relevant aggregated fields
             )
@@ -488,3 +427,44 @@ class ChunkSentimentAnalysisView(APIView):
             {"average_scores": averages, "full_summary": full_summary},
             status=status.HTTP_200_OK,
         )
+
+
+
+class SessionChunkViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for handling individual session chunks.
+    """
+    serializer_class = SessionChunkSerializer
+    permission_classes = [IsAuthenticated] # You might want to adjust permissions
+
+    def get_queryset(self):
+        user = self.request.user
+        if getattr(self, "swagger_fake_view", False) or user.is_anonymous:
+            return SessionChunk.objects.none()
+        # Consider filtering by user's sessions if needed
+        return SessionChunk.objects.all()
+
+    def perform_create(self, serializer):
+        # Ensure the session belongs to the user making the request (optional security)
+        session = serializer.validated_data['session']
+        if session.user != self.request.user:
+            raise PermissionDenied("Session does not belong to this user.")
+        serializer.save()
+
+class ChunkSentimentAnalysisViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for handling sentiment analysis results for each chunk.
+    """
+    serializer_class = ChunkSentimentAnalysisSerializer
+    permission_classes = [IsAuthenticated] # You might want to adjust permissions
+
+    def get_queryset(self):
+        user = self.request.user
+        if getattr(self, "swagger_fake_view", False) or user.is_anonymous:
+            return ChunkSentimentAnalysis.objects.none()
+        # Consider filtering by user's sessions if needed
+        return ChunkSentimentAnalysis.objects.all()
+
+    def perform_create(self, serializer):
+        # Optionally add checks here, e.g., ensure the chunk belongs to a user's session
+        serializer.save()
