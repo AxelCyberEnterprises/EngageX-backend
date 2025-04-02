@@ -13,9 +13,9 @@ https://docs.djangoproject.com/en/4.2/ref/settings/
 from pathlib import Path
 import os
 from decouple import config
-# from dotenv import load_dotenv
+from dotenv import load_dotenv
 
-# load_dotenv()
+load_dotenv()
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -131,6 +131,8 @@ SOCKETIO = {
     "CORS_ALLOWED_ORIGINS": "*",  # Configure this appropriately in production
     "ASYNC_MODE": "asgi",
 }
+
+CORS_ALLOW_ALL_ORIGINS = True
 CORS_ALLOWED_ORIGINS = [
     "https://www.engagexai.io",
     "http://localhost:5173",
@@ -184,6 +186,15 @@ if "RDS_HOSTNAME" in os.environ:
         }
     }
     OPENAI_API_KEY = os.environ["OPENAI_API_KEY"]
+
+    EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
+    EMAIL_HOST = os.environ('EMAIL_HOST')
+    EMAIL_PORT = 587
+    EMAIL_USE_TLS = True
+    EMAIL_HOST_USER = os.environ('EMAIL_HOST_USER')
+    EMAIL_HOST_PASSWORD = os.environ('EMAIL_HOST_PASSWORD')
+    DEFAULT_FROM_EMAIL = os.environ('DEFAULT_FROM_EMAIL')
+
 else:
     # Local development settings (PostgreSQL)
     DATABASES = {
@@ -250,6 +261,8 @@ STATIC_ROOT = os.path.join(BASE_DIR, "staticfiles")
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 
+AUTH_TOKEN_FOR_WEBSOCKET = os.environ["AUTH_TOKEN_FOR_WEBSOCKET"]
+
 USE_S3 = os.environ["USE_S3"] == "True"
 AWS_STORAGE_BUCKET_NAME = os.environ["AWS_STORAGE_BUCKET_NAME"]
 # # aws setting
@@ -257,6 +270,10 @@ if USE_S3:
 
     AWS_S3_REGION_NAME = os.environ["AWS_S3_REGION_NAME"]
     AWS_S3_CUSTOM_DOMAIN = f"{AWS_STORAGE_BUCKET_NAME}.s3.amazonaws.com"
+
+    AWS_ACCESS_KEY_ID = os.environ.get('AWS_ACCESS_KEY_ID')
+    AWS_SECRET_ACCESS_KEY = os.environ.get('AWS_SECRET_ACCESS_KEY')
+    
     # s3 media settings
     MEDIA_URL = f"https://{AWS_S3_CUSTOM_DOMAIN}/"
 
