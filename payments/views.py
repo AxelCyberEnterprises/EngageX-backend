@@ -57,11 +57,10 @@ class PaymentCallbackView(APIView):
        "gateway_response": { ... }
     }
     """
-    permission_classes = [IsAuthenticated]  # Adjust if needed
+    permission_classes = [IsAuthenticated]
 
     def post(self, request):
         data = request.data
-        transaction_date = data.get("TxnDate")
         transaction_id = data.get("Payment", {}).get("Id")
         amount = data.get("TotalAmt")
         transaction_date = data.get("TxnDate")
@@ -69,14 +68,6 @@ class PaymentCallbackView(APIView):
         tier = data.get("tier")
         user_email = data.get("user_email")
         gateway_response = data.get("gateway_response", {})
-
-
-        # transaction_id = data.get("transaction_id")
-        # status_str = data.get("status")
-        # customer_id = data.get("customer_id")
-        # amount = data.get("amount")
-        # currency = data.get("currency")
-        # payment_method = data.get("payment_method")
 
         # Validate required fields
         if not transaction_id or not status_str or not tier:
@@ -89,9 +80,6 @@ class PaymentCallbackView(APIView):
         # Determine credits based on tier if payment succeeded; else, no credits.
         credits_to_add = TIER_CREDITS[tier] if status_str.lower() == "success" else 0
 
-        # Locate the user by email
-        User = get_user_model()
-        user = get_object_or_404(User, email=user_email)
 
         # Create or update the PaymentTransaction record.
         transaction, created = PaymentTransaction.objects.update_or_create(
@@ -106,7 +94,7 @@ class PaymentCallbackView(APIView):
 
         # On successful payment, update the user's available credits.
         if status_str.lower() == "success":
-            profile = user.userprofile
+            profile = user_email.userprofile
             profile.available_credits += credits_to_add
             profile.save()
         

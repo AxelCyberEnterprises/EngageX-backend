@@ -37,7 +37,7 @@ class PracticeSession(models.Model):
     session_name = models.CharField(max_length=100)
     session_type = models.CharField(max_length=20, choices=SESSION_TYPE_CHOICES)
     date = models.DateTimeField(auto_now_add=True)
-    duration = models.DurationField(help_text="Duration of the session")
+    duration = models.DurationField(help_text="Duration of the session", null=True, blank=True)
     note = models.TextField(
         blank=True, null=True, help_text="Optional note (for users)"
     )
@@ -91,12 +91,12 @@ class SessionChunk(models.Model):
     session = models.ForeignKey(
         PracticeSession, on_delete=models.CASCADE, related_name="chunks"
     )
-    start_time = models.FloatField(
-        help_text="Start time of the chunk in the session (in seconds)"
-    )
-    end_time = models.FloatField(
-        help_text="End time of the chunk in the session (in seconds)"
-    )
+    # start_time = models.FloatField(
+    #     help_text="Start time of the chunk in the session (in seconds)"
+    # )
+    # end_time = models.FloatField(
+    #     help_text="End time of the chunk in the session (in seconds)"
+    # )
     video_file = models.FileField(
         upload_to="session_chunks/%Y/%m/%d/",
         blank=True,

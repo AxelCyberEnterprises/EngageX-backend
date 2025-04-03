@@ -10,7 +10,7 @@ import parselmouth
 import cv2
 import mediapipe as mp
 from openai import OpenAI
-from audio_extract import extract_audio
+import subprocess
 
 
 from concurrent.futures import ThreadPoolExecutor
@@ -395,6 +395,7 @@ def process_frames():
 # Main Analysis Function
 def analyze_posture(video_path):
     start_time = time.time()
+    print(f"analyze_posture called with video_path: {video_path}", flush=True) # Added logging
 
     with ThreadPoolExecutor(max_workers=3) as executor:
         executor.submit(capture_frames, video_path)
@@ -402,6 +403,7 @@ def analyze_posture(video_path):
 
     # Final results calculation
     with lock:
+        print("Inside the lock in analyze_posture", flush=True) # Added logging
         mean_back = np.mean(results_data["back_angles"]) if results_data["back_angles"] else 0
         range_back = np.max(results_data["back_angles"]) - np.min(results_data["back_angles"]) if results_data["back_angles"] else 0
 
@@ -422,6 +424,8 @@ def analyze_posture(video_path):
         back_feedback = results_data["back_feedback"]
         neck_feedback = results_data["neck_feedback"]
 
+        print(f"gb_time: {gb_time}, bb_time: {bb_time}, gn_time: {gn_time}, bn_time: {bn_time}", flush=True) # Added logging
+
         # calculate normalized time
         if (gb_time + bb_time) > 0:
             good_back_time = (gb_time / (gb_time + bb_time)) * video_duration
@@ -430,25 +434,29 @@ def analyze_posture(video_path):
             good_back_time = 0
             bad_back_time = 0
 
-        good_neck_time = (gn_time / (gn_time + bn_time)) * video_duration
-        bad_neck_time = (bn_time / (gn_time + bn_time)) * video_duration
+        if (gn_time + bn_time) > 0:
+            good_neck_time = (gn_time / (gn_time + bn_time)) * video_duration
+            bad_neck_time = (bn_time / (gn_time + bn_time)) * video_duration
+        else:
+            good_neck_time = 0
+            bad_neck_time = 0
 
-    elapsed_time = time.time() - start_time
-    print(f"\nElapsed time for posture: {elapsed_time:.2f} seconds")
+        elapsed_time = time.time() - start_time
+        print(f"\nElapsed time for posture: {elapsed_time:.2f} seconds")
 
-    # return results in dictionary format
-    return {
-        "mean_back_inclination": mean_back,
-        "range_back_inclination": range_back,
-        "mean_neck_inclination": mean_neck,
-        "range_neck_inclination": range_neck, # body fluidity (range)
-        "back_feedback": back_feedback,
-        "neck_feedback": neck_feedback,
-        "good_back_time": round(good_back_time, 2), # body posture score (time)
-        "bad_back_time": round(bad_back_time, 2),
-        "good_neck_time": round(good_neck_time, 2),
-        "bad_neck_time": round(bad_neck_time, 2)
-    }
+        # return results in dictionary format
+        return {
+            "mean_back_inclination": mean_back,
+            "range_back_inclination": range_back,
+            "mean_neck_inclination": mean_neck,
+            "range_neck_inclination": range_neck, # body fluidity (range)
+            "back_feedback": back_feedback,
+            "neck_feedback": neck_feedback,
+            "good_back_time": round(good_back_time, 2), # body posture score (time)
+            "bad_back_time": round(bad_back_time, 2),
+            "good_neck_time": round(good_neck_time, 2),
+            "bad_neck_time": round(bad_neck_time, 2)
+        }
 
 
 # ---------------------- SENTIMENT ANALYSIS ----------------------
@@ -558,35 +566,145 @@ def analyze_sentiment(transcript, metrics, posture_data):
     return parsed_response
 
 
-def analyze_results(video_path, audio_output_path):
-    start_time = time.time()
+# def analyze_results(video_path, audio_output_path):
+#     start_time = time.time()
+#     print(f"video_path: {video_path}, audio_output: {audio_output_path}")
   
+
+#     try:
+#         with ThreadPoolExecutor() as executor:
+#             future_transcription = executor.submit(transcribe_audio, audio_output_path)
+#             future_analyze_posture = executor.submit(analyze_posture, video_path=video_path)
+        
+
+#         # Fetch results AFTER both are submitted
+#         transcript = future_transcription.result()  # Now transcription runs truly in parallel
+#         posture_data = future_analyze_posture.result()  # Now posture runs in parallel
+#         print(f"posture_data: {posture_data}")
+        
+#         metrics = process_audio(audio_output_path, transcript)
+#         print(f"process audio metrics: {metrics}")
+
+#         sentiment_analysis = analyze_sentiment(transcript, metrics, posture_data)
+
+#         final_json = {
+#             'Feedback': sentiment_analysis.get('Feedback'),
+#             'Scores': metrics.get('Scores', {}),
+#             'Transcript': transcript
+#         }
+
+#         print(f"\nSentiment Analysis for {audio_output_path}:\n\n", sentiment_analysis)
+#         elapsed_time = time.time() - start_time
+#         print(f"\nElapsed time for everything: {elapsed_time:.2f} seconds")
+
+#     except Exception as e:
+#         print(f"Error during audio extraction: {e}")
+
+#     return final_json
+
+
+def convert_webm_audio_to_mp3(webm_file_path, mp3_output_path):
+    command = [
+        'ffmpeg',
+        '-i', webm_file_path,
+        '-vn',  # No video
+        '-acodec', 'libmp3lame',  # Use MP3 encoder
+        '-ab', '128k',  # Audio bitrate
+        mp3_output_path
+    ]
+    try:
+        print(f"Attempting to convert: {' '.join(command)}", flush=True)
+        print(f"System PATH: {os.environ.get('PATH')}", flush=True)
+        subprocess.run(command, check=True, capture_output=True)
+        print(f"Successfully converted to: {mp3_output_path}", flush=True)
+        return mp3_output_path
+    except subprocess.CalledProcessError as e:
+        error_message = f"Error converting audio: {e.stderr.decode()}"
+        print(f"FFmpeg Conversion Error: {error_message}", flush=True)
+        return None
+    except FileNotFoundError:
+        print("Error: ffmpeg command not found. Make sure it's installed and in your PATH.", flush=True)
+        return None
+
+# def analyze_results(video_path, audio_output_path):
+#     start_time = time.time()
+#     print(f"video_path: {video_path}, audio_output: {audio_output_path}", flush=True)
+#     print(f"Checking if original audio file exists: {os.path.exists(audio_output_path)}", flush=True)
+
+#     # Convert audio to MP3 before transcription
+#     mp3_output_path = audio_output_path.replace(".webm", ".mp3")
+#     converted_audio_path = convert_webm_audio_to_mp3(audio_output_path, mp3_output_path)
+
+#     if converted_audio_path:
+#         audio_path_for_transcription = converted_audio_path
+#         print(f"Using converted audio for transcription: {audio_path_for_transcription}", flush=True)
+#         print(f"Checking if converted audio file exists: {os.path.exists(converted_audio_path)}", flush=True)
+#     else:
+#         audio_path_for_transcription = audio_output_path
+#         print(f"Audio conversion failed!", flush=True)
+#         print(f"Attempting transcription with original audio: {audio_path_for_transcription}", flush=True)
+#         print(f"Checking if original audio file exists (fallback): {os.path.exists(audio_path_for_transcription)}", flush=True)
+
+#     try:
+#         with ThreadPoolExecutor() as executor:
+#             print(f"Submitting transcription task with: {audio_path_for_transcription}", flush=True)
+#             future_transcription = executor.submit(transcribe_audio, audio_path_for_transcription)
+#             future_analyze_posture = executor.submit(analyze_posture, video_path=video_path)
+
+#         # Fetch results AFTER both are submitted
+#         transcript = future_transcription.result()  # Now transcription runs truly in parallel
+#         posture_data = future_analyze_posture.result()  # Now posture runs in parallel
+#         print(f"posture_data: {posture_data}", flush=True)
+
+#         metrics = process_audio(audio_path_for_transcription, transcript) # Use the path of the audio used for transcription
+#         print(f"process audio metrics: {metrics}", flush=True)
+
+#         sentiment_analysis = analyze_sentiment(transcript, metrics, posture_data)
+
+#         final_json = {
+#             'Feedback': sentiment_analysis.get('Feedback'),
+#             'Scores': metrics.get('Scores', {}),
+#             'Transcript': transcript
+#         }
+
+#         print(f"\nSentiment Analysis for {audio_path_for_transcription}:\n\n", sentiment_analysis, flush=True)
+#         elapsed_time = time.time() - start_time
+#         print(f"\nElapsed time for everything: {elapsed_time:.2f} seconds", flush=True)
+
+#     except Exception as e:
+#         print(f"Error during audio extraction or analysis: {e}", flush=True)
+
+#     return final_json
+
+def analyze_results(transcript_text, video_path, audio_path_for_metrics):
+    start_time = time.time()
+    print(f"Transcript: {transcript_text}", flush=True)
+    print(f"video_path: {video_path}, audio_path_for_metrics: {audio_path_for_metrics}", flush=True)
 
     try:
         with ThreadPoolExecutor() as executor:
-            future_transcription = executor.submit(transcribe_audio, audio_output_path)
             future_analyze_posture = executor.submit(analyze_posture, video_path=video_path)
-        
 
-        # Fetch results AFTER both are submitted
-        transcript = future_transcription.result()  # Now transcription runs truly in parallel
-        posture_data = future_analyze_posture.result()  # Now posture runs in parallel
-        
-        metrics = process_audio(audio_output_path, transcript)
+        posture_data = future_analyze_posture.result()
+        print(f"posture_data: {posture_data}", flush=True)
 
-        sentiment_analysis = analyze_sentiment(transcript, metrics, posture_data)
+        metrics = process_audio(audio_path_for_metrics, transcript_text) # Use the audio path for metrics calculation
+        print(f"process audio metrics: {metrics}", flush=True)
+
+        sentiment_analysis = analyze_sentiment(transcript_text, metrics, posture_data)
 
         final_json = {
             'Feedback': sentiment_analysis.get('Feedback'),
             'Scores': metrics.get('Scores', {}),
-            'Transcript': transcript
+            'Transcript': transcript_text
         }
 
-        print(f"\nSentiment Analysis for {audio_output_path}:\n\n", sentiment_analysis)
+        print(f"\nSentiment Analysis for transcript:\n\n", sentiment_analysis, flush=True)
         elapsed_time = time.time() - start_time
-        print(f"\nElapsed time for everything: {elapsed_time:.2f} seconds")
+        print(f"\nElapsed time for everything: {elapsed_time:.2f} seconds", flush=True)
 
     except Exception as e:
-        print(f"Error during audio extraction: {e}")
+        print(f"Error during analysis: {e}", flush=True)
+        return {'error': str(e)} # Return an error dictionary
 
     return final_json

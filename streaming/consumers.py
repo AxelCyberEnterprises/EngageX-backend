@@ -1,234 +1,248 @@
-import socketio
 import json
 import os
+import time
+import asyncio
 import tempfile
-import asyncio  # For asynchronous tasks
-import random  # Mock sentiment analysis (for demonstration)
-from django.conf import settings
-from django.contrib.auth import get_user_model
-from django.core.files import File
-from sentiment_analysis import analyze_results
-
-# Initialize Socket.IO ASGI server, allowing CORS for development.
-sio = socketio.AsyncServer(async_mode="asgi", cors_allowed_origins="*")
-
-# Create a Socket.IO ASGI application.
-app = socketio.ASGIApp(sio)
-
-# Session data storage (in-memory dictionary)
-client_sessions = {}
-
-ANALYSIS_INTERVAL_SECONDS = (
-    60  # Interval for performing video sentiment analysis (seconds)
-)
+import threading
+import boto3
+import logging
+import concurrent.futures
+from botocore.exceptions import ClientError
+from asgiref.sync import async_to_sync
+from channels.generic.websocket import AsyncWebsocketConsumer
+from .sentiment_analysis import analyze_results
+from base64 import b64decode
+import subprocess
+import openai
 
 
-@sio.event
-async def connect(sid, environ):
-    """Handles WebSocket connection from a client."""
-    print(f"Client connected: {sid}")
-    # session_temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".webm")
-    client_sessions[sid] = {
-        "temp_video_file": tempfile.NamedTemporaryFile(
-            delete=False, suffix=".webm"
-        ),  # Temp file for video chunks (consider .mp4, .webm based on frontend encoding)
-        "accumulated_video_data": b"",  # Buffer for accumulating video data for analysis intervals
-        "frame_count": 0,  # Frame counter for the session
-        "analysis_timer": None,  # Asynchronous task for periodic analysis
-    }
-    await sio.emit(
-        "connection_established",
-        {"message": "WebSocket connection established for video stream"},
-        to=sid,
-    )
-    await start_analysis_timer(sid)  # Begin periodic analysis scheduling
+openai.api_key = os.environ.get("OPENAI_API_KEY")
+client = openai.OpenAI()
 
+s3 = boto3.client("s3", region_name=os.environ.get('AWS_REGION'))
+BUCKET_NAME = "engagex-user-content-1234"
+BASE_FOLDER = "user-videos/UserID/"
 
-async def start_analysis_timer(sid):
-    """
-    Starts a recurring timer that triggers video sentiment analysis at intervals.
+class LiveSessionConsumer(AsyncWebsocketConsumer):
+    async def connect(self):
+        """Initialize session storage for the connected client."""
+        await self.accept()
 
-    Analysis is performed every ANALYSIS_INTERVAL_SECONDS.
-    """
+        # Create unique temporary files for each client
+        self.session_data = {
+            "video_temp_file": tempfile.NamedTemporaryFile(delete=False, suffix=".webm"),
+            "audio_temp_file": tempfile.NamedTemporaryFile(delete=False, suffix=".webm"),
+            "client_id": self.scope["client"],
+        }
 
-    async def trigger_analysis():
-        """Inner task to trigger and reschedule analysis."""
-        if sid in client_sessions:
-            await perform_video_sentiment_analysis(sid)
-            client_sessions[sid]["analysis_timer"] = asyncio.create_task(
-                trigger_analysis()
-            )  # Reschedule itself
+        self.chunk_counter = 0
+        self.session_id = str(self.scope["client"][-1])
+        print(f"Client {self.session_data['client_id']} connected. Video File: {self.session_data['video_temp_file'].name}, Audio File: {self.session_data['audio_temp_file'].name}")
 
-    client_sessions[sid]["analysis_timer"] = asyncio.create_task(
-        trigger_analysis()
-    )  # Initial timer start
-
-
-async def stop_analysis_timer(sid):
-    """
-    Stops the periodic video sentiment analysis timer for a session.
-
-    This is called upon client disconnection or stream end.
-    """
-    if sid in client_sessions and client_sessions[sid]["analysis_timer"]:
-        client_sessions[sid]["analysis_timer"].cancel()
-        try:
-            await client_sessions[sid][
-                "analysis_timer"
-            ]  # Await cancellation for clean shutdown
-        except asyncio.CancelledError:
-            pass  # Expected exception when task is cancelled
-
-
-@sio.event
-async def disconnect(sid):
-    """Handles client disconnection."""
-    print(f"Client disconnected: {sid}")
-    await stop_analysis_timer(sid)  # Stop analysis timer on disconnect
-    if sid in client_sessions:
-        session = client_sessions[sid]
-        if session["temp_video_file"]:
-            session["temp_video_file"].close()
-            os.unlink(session["temp_video_file"].name)  # Delete temporary video file
-        del client_sessions[sid]  # Remove session data
-
-
-@sio.event
-async def video_chunk(sid, data):
-    """Handles incoming video data chunks from a client."""
-    if sid not in client_sessions:
-        return
-
-    session = client_sessions[sid]
-    frame_bytes = data["frame"]  # Assumes frontend sends encoded video frame as bytes
-
-    session["accumulated_video_data"] += frame_bytes  # Accumulate video frame data
-    session["frame_count"] += 1  # Increment frame count
-
-
-async def perform_video_sentiment_analysis(sid):
-    """Performs video sentiment analysis on accumulated video data for a session."""
-    if sid not in client_sessions:
-        return
-
-    session = client_sessions[sid]
-    video_data_for_analysis = session[
-        "accumulated_video_data"
-    ]  # Get accumulated video data
-
-    # save to temp file
-    audio_data_for_analysis = session[
-        "accumulated_audio_data"
-    ]  # Path for extarcted audio
-
-    if not video_data_for_analysis:
-        print(
-            f"No video data to analyze for session {sid} in this interval."
-        )  # Log if no data
-        return  # No data to analyze in this interval
-
-    print(
-        f"Performing video sentiment analysis for interval {session['frame_count'] // (ANALYSIS_INTERVAL_SECONDS * 30) + 1}, session {sid}"
-    )  # Example interval count log (assuming ~30fps)
-
-    # *** REPLACE THIS MOCK ANALYSIS WITH YOUR ACTUAL VIDEO SENTIMENT ANALYSIS LOGIC ***
-    # analysis_result = await mock_video_sentiment_analysis(video_data_for_analysis, audio_data_for_analysis)  # Placeholder analysis
-
-    analysis_result = await analyze_results(
-        video_path=video_data_for_analysis, audio_output_path=audio_data_for_analysis
-    )
-
-    # Emit sentiment analysis result back to the specific client
-    await sio.emit(
-        "video_analysis_result",
-        {
-            "interval_number": session["frame_count"]
-            // (ANALYSIS_INTERVAL_SECONDS * 30)
-            + 1,  # Example interval number
-            "sentiment_analysis": analysis_result,  # Analysis result dictionary (structure depends on your AI model)
-        },
-        to=sid,
-    )
-
-    session["accumulated_video_data"] = (
-        b""  # Reset accumulated video data buffer after analysis
-    )
-
-
-@sio.event
-async def start_stream(sid, data):
-    """Handles 'start_stream' event from the client (optional signaling)."""
-    print(f"Video stream started by client: {sid}")
-    await sio.emit(
-        "stream_started",
-        {"message": "Video stream recording started on server"},
-        to=sid,
-    )
-    await start_analysis_timer(sid)  # Ensure analysis timer starts
-
-
-@sio.event
-async def end_stream(sid, data):
-    """
-    Handles 'end_stream' event from the client.
-
-    Finalizes the video stream recording, performs any final tasks, and cleans up session resources.
-    """
-    print(f"Video stream ended by client: {sid}")
-    await stop_analysis_timer(sid)  # Stop the analysis timer
-
-    if sid in client_sessions:
-        session = client_sessions[sid]
-        if session["temp_video_file"]:
-            session["temp_video_file"].close()
-            # In a real application, you would process the temp video file here:
-            # - Save to permanent storage (S3, database, etc.)
-            # - Trigger final, more comprehensive video analysis
-            print(
-                f"Temporary video file saved: {session['temp_video_file'].name}"
-            )  # Log saved file path
-
-        await sio.emit(
-            "stream_ended",
-            {
-                "message": "Video stream recording completed and processed",
-                "total_frames": session["frame_count"],
-                "analysis_intervals": session["frame_count"]
-                // (
-                    ANALYSIS_INTERVAL_SECONDS * 30
-                ),  # Example interval count assuming ~30fps
-            },
-            to=sid,
+        await self.send(
+            text_data=json.dumps({
+                "type": "connection_established",
+                "message": "You are now connected",
+            })
         )
-        del client_sessions[sid]  # Clean up session data
+
+    async def disconnect(self, close_code):
+        """Cleanup session storage when the client disconnects."""
+        if "video_temp_file" in self.session_data:
+            self.session_data["video_temp_file"].close()
+            os.remove(self.session_data["video_temp_file"].name)
+
+        if "audio_temp_file" in self.session_data:
+            self.session_data["audio_temp_file"].close()
+            os.remove(self.session_data["audio_temp_file"].name)
+
+        print(f"Client {self.session_data['client_id']} disconnected. Temporary files removed.")
+
+    # 3rd attempt
+    async def receive(self, text_data=None, bytes_data=None):
+        """Receive a message from the WebSocket, which could be text or binary data."""
+        try:
+            if text_data:
+                # Handle text messages (JSON formatted)
+                data = json.loads(text_data)
+                message_type = data.get("type")
+                print(f"Received message type: {message_type}") # Added logging for message type
+
+                if message_type == "video":
+                    self.chunk_counter += 1
+                    video_blob = data.get("data")
+                    if video_blob:
+                        video_bytes = b64decode(video_blob)
+                        video_chunk_path = os.path.join(tempfile.gettempdir(), f"{self.session_id}_{self.chunk_counter}_video.webm")
+                        with open(video_chunk_path, "wb") as vf:
+                            vf.write(video_bytes)
+                        print(f"Received video chunk {self.chunk_counter} for Session {self.session_id}. Saved to {video_chunk_path}")
+                        await self.send(json.dumps({
+                            "status": "received",
+                            "session_id": self.session_id,
+                            "chunk_number": self.chunk_counter,
+                            "media_type": "video"
+                        }))
+                        asyncio.create_task(asyncio.to_thread(self.process_chunk_sync, video_chunk_path, None))
+                elif message_type == "audio":
+                    self.chunk_counter += 1
+                    audio_blob = data.get("data")
+                    if audio_blob:
+                        audio_bytes = b64decode(audio_blob)
+                        print(f"Audio chunk size (bytes): {len(audio_bytes)}") # Added logging for audio chunk size
+                        audio_chunk_path = os.path.join(tempfile.gettempdir(), f"{self.session_id}_{self.chunk_counter}_audio.webm")
+                        with open(audio_chunk_path, "wb") as af:
+                            af.write(audio_bytes)
+                        print(f"Received audio chunk {self.chunk_counter} for Session {self.session_id}. Saved to {audio_chunk_path}")
+                        await self.send(json.dumps({
+                            "status": "received",
+                            "session_id": self.session_id,
+                            "chunk_number": self.chunk_counter,
+                            "media_type": "audio"
+                        }))
+                        # For now, let's just print that it's received. Processing will need to be defined.
+                        print("Audio chunk received and saved. Processing needs to be defined for individual audio.")
+                elif message_type == "video_audio":
+                    self.chunk_counter += 1
+                    video_blob = data.get("video")
+                    audio_blob = data.get("audio")
+
+                    if video_blob and audio_blob:
+                        # Convert Base64 blobs to binary and save them
+                        video_bytes = b64decode(video_blob)
+                        audio_bytes = b64decode(audio_blob)
+                        print(f"Audio chunk size (bytes) in video_audio: {len(audio_bytes)}") # Added logging for audio chunk size
+
+                        video_chunk_path = os.path.join(tempfile.gettempdir(), f"{self.session_id}_{self.chunk_counter}_video.webm")
+                        audio_chunk_path = os.path.join(tempfile.gettempdir(), f"{self.session_id}_{self.chunk_counter}_audio.webm")
+
+                        with open(video_chunk_path, "wb") as vf:
+                            vf.write(video_bytes)
+
+                        with open(audio_chunk_path, "wb") as af:
+                            af.write(audio_bytes)
+
+                        print(f"Received chunk {self.chunk_counter} for Session {self.session_id}. Video: {video_chunk_path}, Audio: {audio_chunk_path}")
+
+                        await self.send(json.dumps({
+                            "status": "received",
+                            "session_id": self.session_id,
+                            "chunk_number": self.chunk_counter,
+                            "media_type": "video_audio"
+                        }))
+
+                        asyncio.create_task(asyncio.to_thread(self.process_chunk_sync, video_chunk_path, audio_chunk_path))
+
+            elif bytes_data:
+                # Handle binary data received from the frontend
+                self.chunk_counter += 1
+                file_path = os.path.join(tempfile.gettempdir(), f"{self.session_id}_{self.chunk_counter}.webm")
+                with open(file_path, "wb") as f:
+                    f.write(bytes_data)
+                print(f"Received binary chunk {self.chunk_counter} for Session {self.session_id}. Saved to {file_path}")
+                await self.send(json.dumps({
+                    "status": "received",
+                    "session_id": self.session_id,
+                    "chunk_number": self.chunk_counter,
+                }))
+                asyncio.create_task(asyncio.to_thread(self.process_chunk_sync, file_path, None))
+
+        except Exception as e:
+            print(f"Error processing received data: {e}")
+
+    def process_chunk_sync(self, video_chunk_path, audio_chunk_path):
+        """Runs sentiment analysis after audio extraction, while S3 upload happens in parallel."""
+        print(f"Processing video: {video_chunk_path}, audio: {audio_chunk_path} in a separate thread")
+
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            futures = []
+            if video_chunk_path:
+                futures.append(executor.submit(self.upload_to_s3, video_chunk_path))
+            else:
+                print("No video chunk path provided for S3 upload.")
+
+            if video_chunk_path and audio_chunk_path:
+                futures.append(executor.submit(self.run_sentiment_analysis, video_chunk_path, audio_chunk_path))
+            elif video_chunk_path:
+                print("Audio chunk missing, sentiment analysis will not be performed.")
+            elif audio_chunk_path:
+                print("Video chunk missing, sentiment analysis will not be performed as currently configured.")
+
+            for future in concurrent.futures.as_completed(futures):
+                try:
+                    future.result()
+                except Exception as e:
+                    print(f"Task failed: {e}")
 
 
-# async def mock_video_sentiment_analysis(video_frame_data):
-#     """
-#     Placeholder for AI-powered video sentiment analysis.
-#     REPLACE THIS ENTIRE FUNCTION with your actual video sentiment analysis implementation.
+    def upload_to_s3(self, chunk_path):
+        """Upload the video chunk to AWS S3."""
+        file_name = os.path.basename(chunk_path)
+        print(f"file_name: {file_name}")
 
-#     This mock function simulates analyzing video frame data (which would ideally be
-#     processed to extract relevant features like facial landmarks, body pose, etc.).
+        folder_path = f"{BASE_FOLDER}{self.session_id}/"
+        print(f"folder_path: {folder_path}")
 
-#     Args:
-#         video_frame_data (bytes): Encoded video frame data (or features extracted from video).
+        s3_key = f"{folder_path}{file_name}"
+        print(f"s3_key: {s3_key}")
 
-#     Returns:
-#         dict: Mock video sentiment analysis result.
-#               Structure of this dict should reflect the output of your actual AI model.
-#               Example: {'overall_sentiment': 'neutral', 'facial_expression': 'happy', 'body_language': 'confident'}.
-#     """
+        print(f"Uploading {chunk_path} to S3...")
 
+        try:
+            s3.upload_file(chunk_path, BUCKET_NAME, s3_key)
+            print(f"Uploaded {chunk_path} to {s3_key}")
+        except Exception as e:
+            print("S3 upload failed: ",e)
 
-#     await asyncio.sleep(0.02)  # Simulate processing time for video analysis (could be longer in reality)
-#     sentiments = ['positive', 'neutral', 'negative']
-#     emotions = ['happy', 'sad', 'angry', 'neutral', 'surprised'] # Example facial expressions
+    def run_sentiment_analysis(self, video_chunk_path, audio_chunk_path):
+        """Perform sentiment analysis using the extracted audio."""
+        try:
+            transcript_text = None # Initialize transcript_text
 
-#     return {
-#         'overall_sentiment': random.choice(sentiments),
-#         'facial_expression': random.choice(emotions),
-#         'body_language': random.choice(['confident', 'hesitant', 'engaged', 'disengaged']), # Example body language
-#         'confidence_score': random.uniform(0.6, 0.95), # Example confidence score
-#         'processing_time_ms': random.randint(20, 150) # Mock processing time in milliseconds
-#     }
+            if audio_chunk_path:
+                audio_base, audio_ext = os.path.splitext(audio_chunk_path)
+                audio_mp3_path = f"{audio_base}.mp3"
+                print(f"video_path: {video_chunk_path}, audio_output: {audio_mp3_path}")
+                print("Checking if original audio file exists:", os.path.exists(audio_chunk_path))
+                print(f"Attempting to convert: ffmpeg -i {audio_chunk_path} -vn -acodec libmp3lame -ab 128k {audio_mp3_path}")
+
+                ffmpeg_command = f"ffmpeg -i {audio_chunk_path} -vn -acodec libmp3lame -ab 128k {audio_mp3_path}"
+                process = subprocess.Popen(ffmpeg_command, shell=True, stderr=subprocess.PIPE, stdout=subprocess.PIPE)
+                stdout, stderr = process.communicate()
+
+                transcription_file = None
+                if process.returncode == 0:
+                    print(f"Successfully converted to: {audio_mp3_path}")
+                    print("Using converted audio for transcription:", audio_mp3_path)
+                    transcription_file = audio_mp3_path
+                else:
+                    print(f"FFmpeg Conversion Error: Error converting audio: {stderr.decode()}")
+                    print("Attempting transcription with original audio:", audio_chunk_path)
+                    print("Checking if original audio file exists (fallback):", os.path.exists(audio_chunk_path))
+                    transcription_file = audio_chunk_path
+
+                if transcription_file:
+                    try:
+                        print("Submitting transcription task with:", transcription_file)
+                        with open(transcription_file, 'rb') as audio_file:
+                            transcript = client.audio.transcriptions.create(
+                                model="whisper-1",
+                                file=audio_file
+                            )
+                            transcript_text = transcript.text
+                            print(f"Transcription Result: {transcript_text}")
+                    except Exception as e:
+                        print(f"Error during audio transcription: {e}")
+                else:
+                    print("No audio file available for transcription.")
+            else:
+                print("No audio chunk provided for sentiment analysis.")
+
+            if transcript_text is not None:
+                analysis_result = analyze_results(transcript_text, video_chunk_path, audio_mp3_path if os.path.exists(audio_mp3_path) else audio_chunk_path)
+                print(f"Final Analysis Result: {analysis_result}")
+            else:
+                print("No transcript available, skipping final analysis.")
+
+        except Exception as e:
+            print(f"Error in sentiment analysis: {e}")

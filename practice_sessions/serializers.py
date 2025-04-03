@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import PracticeSession, PracticeSequence
+from .models import PracticeSession, PracticeSequence, ChunkSentimentAnalysis, SessionChunk
 
 
 class PracticeSequenceSerializer(serializers.ModelSerializer):
@@ -58,3 +58,21 @@ class PracticeSessionSlidesSerializer(serializers.ModelSerializer):
     class Meta:
         model = PracticeSession
         fields = ['slides'] # Only include the slides field
+
+
+class SessionChunkSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = SessionChunk
+        fields = ['id', 'session','video_file']
+        read_only_fields = ['id']
+
+class ChunkSentimentAnalysisSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ChunkSentimentAnalysis
+        fields = [
+            'id', 'chunk', 'engagement', 'audience_emotion', 'conviction', 'clarity',
+            'impact', 'brevity', 'transformative_potential', 'body_posture',
+            'volume', 'pitch_variability', 'pace', 'chunk_transcript',
+            'general_feedback_summary'
+        ]
+        read_only_fields = ['id']
