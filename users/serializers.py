@@ -119,28 +119,43 @@ class UserSerializer(serializers.ModelSerializer):
         user = CustomUser(**validated_data)
         user.set_password(validated_data["password"])  # Hash the password
 
-    user_intent = serializers.ChoiceField(choices=UserProfile.INTENT_CHOICES, required=False, allow_null=True)
-    role = serializers.ChoiceField(choices=UserProfile.ROLE_CHOICES, required=False, allow_null=True)
-    purpose = serializers.ChoiceField(choices=UserProfile.PURPOSE_CHOICES, required=False, allow_null=True)
+    user_intent = serializers.ChoiceField(
+        choices=UserProfile.INTENT_CHOICES, required=False, allow_null=True
+    )
+    role = serializers.ChoiceField(
+        choices=UserProfile.ROLE_CHOICES, required=False, allow_null=True
+    )
+    purpose = serializers.ChoiceField(
+        choices=UserProfile.PURPOSE_CHOICES, required=False, allow_null=True
+    )
 
     class Meta:
         model = CustomUser
-        fields = ['id', 'email', 'first_name', 'last_name', 'password', 'user_intent', 'role', 'purpose']
+        fields = [
+            "id",
+            "email",
+            "first_name",
+            "last_name",
+            "password",
+            "user_intent",
+            "role",
+            "purpose",
+        ]
         extra_kwargs = {
-            'password': {'write_only': True, 'required': True},
-            'email': {'required': True},
-            'first_name': {'required': False},
-            'last_name': {'required': False},
+            "password": {"write_only": True, "required": True},
+            "email": {"required": True},
+            "first_name": {"required": False},
+            "last_name": {"required": False},
         }
 
     def create(self, validated_data):
-        user_intent = validated_data.pop('user_intent', None)
-        role = validated_data.pop('role', None)
-        purpose = validated_data.pop('pupose', None)
+        user_intent = validated_data.pop("user_intent", None)
+        role = validated_data.pop("role", None)
+        purpose = validated_data.pop("pupose", None)
 
-        validated_data['username'] = validated_data.get('first_name')
+        validated_data["username"] = validated_data.get("first_name")
         user = CustomUser.objects.create(**validated_data)
-        user.set_password(validated_data['password'])
+        user.set_password(validated_data["password"])
 
         user.save()
 
@@ -168,9 +183,29 @@ class UpdateProfileSerializer(serializers.ModelSerializer):
 
 
 class UserProfileSerializer(serializers.ModelSerializer):
+    first_name = serializers.CharField(source="user.first_name")
+    last_name = serializers.CharField(source="user.last_name")
+    email = serializers.EmailField(source="user.email")
+
     class Meta:
         model = UserProfile
-        fields = ["date_of_birth", "gender", "profile_picture", "country"]
+        exclude = ["user"]
+        # fields = "__all__"
+
+    def update(self, instance, validated_data):
+        print(validated_data)
+        user_data = validated_data.pop("user", {})
+
+        # Update the related User model
+        user = instance.user
+
+        for attr, val in user_data.items():
+            setattr(user, attr, val)
+
+        user.save()
+
+        # Update the UserProfile model
+        return super().update(instance, validated_data)
 
 
 class ChangePasswordSerializer(serializers.Serializer):
