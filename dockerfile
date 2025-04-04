@@ -63,6 +63,9 @@ ENV AWS_ACCESS_KEY_ID=""
 ENV AWS_SECRET_ACCESS_KEY=""
 ENV AUTH_TOKEN_FOR_WEBSOCKET=""
 
+ENV DJANGO_SETTINGS_MODULE="EngageX.settings"
+
+
 # Command to run the application
 CMD ["daphne", "-b", "0.0.0.0", "-p", "8000", "EngageX.asgi:application"]
 
