@@ -9,6 +9,7 @@ from .serializers import PaymentTransactionSerializer
 
 # Fixed credits for each payment tier
 TIER_CREDITS = {
+    "tester": 1,
     "starter": 4,
     "growth": 6,
     "pro": 8,
