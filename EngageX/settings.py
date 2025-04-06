@@ -133,19 +133,19 @@ SOCKETIO = {
 }
 
 CORS_ALLOW_ALL_ORIGINS = True
-CORS_ALLOWED_ORIGINS = [
-    "https://www.engagexai.io",
-    "http://localhost:5173",
-    "https://main.d2wwdi7x8g70xe.amplifyapp.com",
-]
+# CORS_ALLOWED_ORIGINS = [
+#     "https://www.engagexai.io",
+#     "http://localhost:5173",
+#     "https://main.d2wwdi7x8g70xe.amplifyapp.com",
+# ]
 
 EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
-EMAIL_HOST = config('EMAIL_HOST') 
+EMAIL_HOST = config("EMAIL_HOST")
 EMAIL_PORT = 587
 EMAIL_USE_TLS = True
-EMAIL_HOST_USER = config('EMAIL_HOST_USER')
-EMAIL_HOST_PASSWORD = config('EMAIL_HOST_PASSWORD')
-DEFAULT_FROM_EMAIL = config('DEFAULT_FROM_EMAIL')
+EMAIL_HOST_USER = config("EMAIL_HOST_USER")
+EMAIL_HOST_PASSWORD = config("EMAIL_HOST_PASSWORD")
+DEFAULT_FROM_EMAIL = config("DEFAULT_FROM_EMAIL")
 
 
 # Database
@@ -188,12 +188,12 @@ if "RDS_HOSTNAME" in os.environ:
     OPENAI_API_KEY = os.environ["OPENAI_API_KEY"]
 
     EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
-    EMAIL_HOST = os.environ('EMAIL_HOST')
+    EMAIL_HOST = os.environ("EMAIL_HOST")
     EMAIL_PORT = 587
     EMAIL_USE_TLS = True
-    EMAIL_HOST_USER = os.environ('EMAIL_HOST_USER')
-    EMAIL_HOST_PASSWORD = os.environ('EMAIL_HOST_PASSWORD')
-    DEFAULT_FROM_EMAIL = os.environ('DEFAULT_FROM_EMAIL')
+    EMAIL_HOST_USER = os.environ("EMAIL_HOST_USER")
+    EMAIL_HOST_PASSWORD = os.environ("EMAIL_HOST_PASSWORD")
+    DEFAULT_FROM_EMAIL = os.environ("DEFAULT_FROM_EMAIL")
 
 else:
     # Local development settings (PostgreSQL)
@@ -249,8 +249,6 @@ USE_I18N = True
 USE_TZ = True
 
 
-
-
 # Default primary key field type
 # https://docs.djangoproject.com/en/4.2/ref/settings/#default-auto-field
 
@@ -267,10 +265,9 @@ if USE_S3:
     AWS_S3_REGION_NAME = os.environ["AWS_S3_REGION_NAME"]
     AWS_S3_CUSTOM_DOMAIN = f"{AWS_STORAGE_BUCKET_NAME}.s3.amazonaws.com"
 
-    AWS_ACCESS_KEY_ID = os.environ.get('AWS_ACCESS_KEY_ID')
-    AWS_SECRET_ACCESS_KEY = os.environ.get('AWS_SECRET_ACCESS_KEY')
-    
-    
+    AWS_ACCESS_KEY_ID = os.environ.get("AWS_ACCESS_KEY_ID")
+    AWS_SECRET_ACCESS_KEY = os.environ.get("AWS_SECRET_ACCESS_KEY")
+
     # s3 media settings
     MEDIA_URL = f"https://{AWS_S3_CUSTOM_DOMAIN}/"
     STATIC_URL = f"https://{AWS_S3_CUSTOM_DOMAIN}/static/"
