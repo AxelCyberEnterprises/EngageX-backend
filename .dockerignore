@@ -1,0 +1,11 @@
+.git/
+.github/
+.platform/
+.vscode/
+.gitignore
+venv/
+error.log
+DEPLOY.md
+README.md
+*.jpeg
+.ebextensions/
