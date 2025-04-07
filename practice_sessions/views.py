@@ -16,17 +16,23 @@ from django.contrib.auth import get_user_model
 import os
 import json
 from datetime import timedelta
+from datetime import datetime, timedelta
 from collections import Counter
 from openai import OpenAI
 
 
-from .models import PracticeSession, PracticeSequence, ChunkSentimentAnalysis, SessionChunk
+from .models import (
+    PracticeSession,
+    PracticeSequence,
+    ChunkSentimentAnalysis,
+    SessionChunk,
+)
 from .serializers import (
     PracticeSessionSerializer,
     PracticeSessionSlidesSerializer,
     PracticeSequenceSerializer,
     ChunkSentimentAnalysisSerializer,
-    SessionChunkSerializer
+    SessionChunkSerializer,
 )
 
 
@@ -90,6 +96,7 @@ class PracticeSessionViewSet(viewsets.ModelViewSet):
         serializer = PracticeSessionSerializer(session)
         return Response(serializer.data)
 
+
 User = get_user_model()
 
 
@@ -106,6 +113,8 @@ class SessionDashboardView(APIView):
       - Session category breakdown with percentage difference from yesterday
       - User growth per day
       - Number of active and inactive users
+      - parameter to filter with(start_date, end_date, section)
+      - section in the parameter can be (total_session,no_of_session,user_growth)
 
     For regular users:
       - Latest session aggregated data (pauses, tone, emotional_impact, audience_engagement)
@@ -121,16 +130,92 @@ class SessionDashboardView(APIView):
         data = {}
         today = now().date()
         yesterday = today - timedelta(days=1)
+        # Get filter parameters from query params
+        dashboard_section = request.query_params.get("section")
+        start_date_str = request.query_params.get("start_date")
+        end_date_str = request.query_params.get("end_date")
 
         if hasattr(user, "userprofile") and user.userprofile.is_admin():
             sessions = PracticeSession.objects.all()
-            total_sessions = sessions.count()
-            breakdown = sessions.values("session_type").annotate(count=Count("id"))
+            filtered_sessions = sessions
+
+            # Filtering all session base on start date and time and  dashboard section
+            if start_date_str and end_date_str:
+                filtered_sessions = sessions.filter(
+                    date__date__range=[start_date_str, end_date_str]
+                )
+
+                # parsed the start date and end date
+                parsed_start = datetime.strptime(start_date_str, "%Y-%m-%d").date()
+                parsed_end = datetime.strptime(end_date_str, "%Y-%m-%d").date()
+
+                # Step 2: Calculate the previous interval
+                interval_length = (parsed_start - parsed_end).days + 1
+                prev_start_date = parsed_start - timedelta(days=interval_length)
+                prev_end_date = parsed_end - timedelta(days=interval_length)
+                previous_sessions = PracticeSession.objects.filter(
+                    date__date__range=(prev_start_date, prev_end_date)
+                )
+            # if not query parameter is provided use yesterday
+            previous_sessions = PracticeSession.objects.filter(
+                date__date__range=(yesterday, yesterday)
+            )
+            total_sessions_qs = (
+                filtered_sessions
+                if dashboard_section == "total_session"
+                else PracticeSession.objects.filter(date__date__range=(today, today))
+            )
+            no_of_sessions_qs = (
+                filtered_sessions
+                if dashboard_section == "no_of_session"
+                else PracticeSession.objects.filter(date__date__range=(today, today))
+            )
+            user_growth_qs = (
+                filtered_sessions if dashboard_section == "user_growth" else sessions
+            )
+
+            current_breakdown = total_sessions_qs.values("session_type").annotate(
+                count=Count("id")
+            )
+            previous_breakdown = previous_sessions.values("session_type").annotate(
+                count=Count("id")
+            )
+
+            # Convert previous breakdown to dict for fast lookup
+            previous_counts = {
+                entry["session_type"]: entry["count"] for entry in previous_breakdown
+            }
+            # Final list with percentage differences
+            breakdown_with_difference = []
+            for entry in current_breakdown:
+                session_type = entry["session_type"]
+                current_count = entry["count"]
+                previous_count = previous_counts.get(session_type, 0)
+                percentage_diff = self.calculate_percentage_difference(
+                    current_count, previous_count
+                )
+                breakdown_with_difference.append(
+                    {
+                        "session_type": session_type,
+                        "current_count": current_count,
+                        "previous_count": previous_count,
+                        "percentage_difference": percentage_diff,
+                    }
+                )
+
+            total_sessions = total_sessions_qs.count()
+
+            breakdown = breakdown_with_difference
+            # breakdown = filtered_sessions.values("session_type").annotate(
+            #     count=Count("id")
+            # )
             last_30_days = now() - timedelta(days=30)
             sessions_over_time = (
-                sessions.filter(date__gte=last_30_days)
+                no_of_sessions_qs.filter(
+                    date__date__range=(start_date_str, end_date_str)
+                )
                 .extra(select={"day": "date(date)"})
-                .values("day")
+                .values("day", "session_type")
                 .annotate(count=Count("id"))
                 .order_by("day")
             )
@@ -139,36 +224,36 @@ class SessionDashboardView(APIView):
             )
 
             # Total new sessions (per day) and the percentage difference from yesterday
-            today_new_sessions_count = PracticeSession.objects.filter(
-                date__date=today
-            ).count()
-            yesterday_new_sessions_count = PracticeSession.objects.filter(
-                date__date=yesterday
-            ).count()
-            new_sessions_percentage_difference = self.calculate_percentage_difference(
-                today_new_sessions_count, yesterday_new_sessions_count
-            )
+            # today_new_sessions_count = PracticeSession.objects.filter(
+            #     date__date=today
+            # ).count()
+            # yesterday_new_sessions_count = PracticeSession.objects.filter(
+            #     date__date=yesterday
+            # ).count()
+            # new_sessions_percentage_difference = self.calculate_percentage_difference(
+            #     today_new_sessions_count, yesterday_new_sessions_count
+            # )
 
             # Session category breakdown with percentage difference from yesterday
-            session_types = ["public", "pitch", "presentation"]
-            session_breakdown_with_diff = []
-            for session_type in session_types:
-                today_count = PracticeSession.objects.filter(
-                    date__date=today, session_type=session_type
-                ).count()
-                yesterday_count = PracticeSession.objects.filter(
-                    date__date=yesterday, session_type=session_type
-                ).count()
-                percentage_difference = self.calculate_percentage_difference(
-                    today_count, yesterday_count
-                )
-                session_breakdown_with_diff.append(
-                    {
-                        "session_type": session_type,
-                        "today_count": today_count,
-                        "percentage_difference": percentage_difference,
-                    }
-                )
+            # session_types = ["public", "pitch", "presentation"]
+            # session_breakdown_with_diff = []
+            # for session_type in session_types:
+            #     today_count = PracticeSession.objects.filter(
+            #         date__date=today, session_type=session_type
+            #     ).count()
+            #     yesterday_count = PracticeSession.objects.filter(
+            #         date__date=yesterday, session_type=session_type
+            #     ).count()
+            #     percentage_difference = self.calculate_percentage_difference(
+            #         today_count, yesterday_count
+            #     )
+            #     session_breakdown_with_diff.append(
+            #         {
+            #             "session_type": session_type,
+            #             "today_count": today_count,
+            #             "percentage_difference": percentage_difference,
+            #         }
+            #     )
 
             # User growth per day
             today_new_users_count = User.objects.filter(date_joined__date=today).count()
@@ -192,9 +277,9 @@ class SessionDashboardView(APIView):
                 "sessions_over_time": list(sessions_over_time),
                 "recent_sessions": list(recent_sessions),
                 "credits": user.userprofile.available_credits,
-                "today_new_sessions_count": today_new_sessions_count,
-                "new_sessions_percentage_difference": new_sessions_percentage_difference,
-                "session_breakdown_with_difference": session_breakdown_with_diff,
+                # "today_new_sessions_count": today_new_sessions_count,
+                # "new_sessions_percentage_difference": new_sessions_percentage_difference,
+                # "session_breakdown_with_difference": session_breakdown_with_diff,
                 "today_new_users_count": today_new_users_count,
                 "user_growth_percentage_difference": user_growth_percentage_difference,
                 "active_users_count": active_users_count,
@@ -262,16 +347,14 @@ class SessionDashboardView(APIView):
                             "volume": chunk_data["avg_volume"],
                             "articulation": chunk_data["avg_articulation"],
                             "confidence": chunk_data["avg_confidence"],
-                            #might want to include pace in the historical data as well
+                            # might want to include pace in the historical data as well
                         }
                     )
 
             # Calculate averages of the aggregated fields across all user sessions
             aggregated_averages = PracticeSession.objects.filter(user=user).aggregate(
                 avg_pauses=Avg("pauses"),
-                avg_emotional_impact=Avg(
-                    "emotional_expression"
-                ),
+                avg_emotional_impact=Avg("emotional_expression"),
                 avg_audience_engagement=Avg("audience_engagement"),
                 # Add averages for other relevant aggregated fields
             )
@@ -345,7 +428,6 @@ class ChunkSentimentAnalysisView(APIView):
 
     permission_classes = [IsAuthenticated]
 
-
     def generate_full_summary(self, session_id):
         """Creates a cohesive summary for Strengths, Improvements, and Feedback."""
         client = OpenAI(api_key=settings.OPENAI_API_KEY)
@@ -361,7 +443,7 @@ class ChunkSentimentAnalysisView(APIView):
 
         prompt = f"""
         Using the following presentation evaluation data, provide a structured JSON response containing three key elements:
-        
+
         1. **Strength**: Identify the speaker’s most notable strengths based on their delivery, clarity, and engagement.
         2. **Area of Improvement**: Provide actionable and specific recommendations for improving the speaker’s performance.
         3. **General Feedback Summary**: Summarize the presentation’s overall effectiveness, balancing positive feedback with constructive advice.
@@ -373,10 +455,8 @@ class ChunkSentimentAnalysisView(APIView):
         try:
             completion = client.chat.completions.create(
                 model="gpt-4o-mini",
-                messages=[{
-                    "role": "user", "content": prompt
-                }],
-                response_format = {
+                messages=[{"role": "user", "content": prompt}],
+                response_format={
                     "type": "json_schema",
                     "json_schema": {
                         "name": "Feedback",
@@ -385,11 +465,11 @@ class ChunkSentimentAnalysisView(APIView):
                             "properties": {
                                 "Strength": {"type": "string"},
                                 "Area of Improvement": {"type": "string"},
-                                "General Feedback Summary": {"type": "string"}
-                            }
-                        }
-                    }
-                }
+                                "General Feedback Summary": {"type": "string"},
+                            },
+                        },
+                    },
+                },
             )
 
             refined_summary = completion.choices[0].message.content
@@ -400,25 +480,26 @@ class ChunkSentimentAnalysisView(APIView):
             parsed_data = {
                 "Strength": "N/A",
                 "Area of Improvement": "N/A",
-                "General Feedback Summary": combined_feedback
+                "General Feedback Summary": combined_feedback,
             }
         return parsed_summary
 
-    
     def get(self, request, session_id):
         session = get_object_or_404(PracticeSession, id=session_id, user=request.user)
 
-        averages = ChunkSentimentAnalysis.objects.filter(chunk__session=session).aggregate(
-            avg_engagement=Avg('engagement'),
-            avg_conviction=Avg('conviction'),
-            avg_clarity=Avg('clarity'),
-            avg_impact=Avg('impact'),
-            avg_brevity=Avg('brevity'),
-            avg_transformative_potential=Avg('transformative_potential'),
-            avg_body_posture=Avg('body_posture'),
-            avg_volume=Avg('volume'),
-            avg_pitch=Avg('pitch_variability'),
-            avg_pace=Avg('pace'),
+        averages = ChunkSentimentAnalysis.objects.filter(
+            chunk__session=session
+        ).aggregate(
+            avg_engagement=Avg("engagement"),
+            avg_conviction=Avg("conviction"),
+            avg_clarity=Avg("clarity"),
+            avg_impact=Avg("impact"),
+            avg_brevity=Avg("brevity"),
+            avg_transformative_potential=Avg("transformative_potential"),
+            avg_body_posture=Avg("body_posture"),
+            avg_volume=Avg("volume"),
+            avg_pitch=Avg("pitch_variability"),
+            avg_pace=Avg("pace"),
         )
 
         full_summary = self.generate_full_summary(session_id)
@@ -429,13 +510,13 @@ class ChunkSentimentAnalysisView(APIView):
         )
 
 
-
 class SessionChunkViewSet(viewsets.ModelViewSet):
     """
     ViewSet for handling individual session chunks.
     """
+
     serializer_class = SessionChunkSerializer
-    permission_classes = [IsAuthenticated] # You might want to adjust permissions
+    permission_classes = [IsAuthenticated]  # You might want to adjust permissions
 
     def get_queryset(self):
         user = self.request.user
@@ -446,17 +527,19 @@ class SessionChunkViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         # Ensure the session belongs to the user making the request (optional security)
-        session = serializer.validated_data['session']
+        session = serializer.validated_data["session"]
         if session.user != self.request.user:
             raise PermissionDenied("Session does not belong to this user.")
         serializer.save()
+
 
 class ChunkSentimentAnalysisViewSet(viewsets.ModelViewSet):
     """
     ViewSet for handling sentiment analysis results for each chunk.
     """
+
     serializer_class = ChunkSentimentAnalysisSerializer
-    permission_classes = [IsAuthenticated] # You might want to adjust permissions
+    permission_classes = [IsAuthenticated]  # You might want to adjust permissions
 
     def get_queryset(self):
         user = self.request.user
