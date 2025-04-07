@@ -21,13 +21,18 @@ from collections import Counter
 from openai import OpenAI
 
 
-from .models import PracticeSession, PracticeSequence, ChunkSentimentAnalysis, SessionChunk
+from .models import (
+    PracticeSession,
+    PracticeSequence,
+    ChunkSentimentAnalysis,
+    SessionChunk,
+)
 from .serializers import (
     PracticeSessionSerializer,
     PracticeSessionSlidesSerializer,
     PracticeSequenceSerializer,
     ChunkSentimentAnalysisSerializer,
-    SessionChunkSerializer
+    SessionChunkSerializer,
 )
 
 
@@ -91,6 +96,7 @@ class PracticeSessionViewSet(viewsets.ModelViewSet):
         serializer = PracticeSessionSerializer(session)
         return Response(serializer.data)
 
+
 User = get_user_model()
 
 
@@ -107,6 +113,8 @@ class SessionDashboardView(APIView):
       - Session category breakdown with percentage difference from yesterday
       - User growth per day
       - Number of active and inactive users
+      - parameter to filter with(start_date, end_date, section)
+      - section in the parameter can be (total_session,no_of_session,user_growth)
 
     For regular users:
       - Latest session aggregated data (pauses, tone, emotional_impact, audience_engagement)
@@ -339,16 +347,14 @@ class SessionDashboardView(APIView):
                             "volume": chunk_data["avg_volume"],
                             "articulation": chunk_data["avg_articulation"],
                             "confidence": chunk_data["avg_confidence"],
-                            #might want to include pace in the historical data as well
+                            # might want to include pace in the historical data as well
                         }
                     )
 
             # Calculate averages of the aggregated fields across all user sessions
             aggregated_averages = PracticeSession.objects.filter(user=user).aggregate(
                 avg_pauses=Avg("pauses"),
-                avg_emotional_impact=Avg(
-                    "emotional_expression"
-                ),
+                avg_emotional_impact=Avg("emotional_expression"),
                 avg_audience_engagement=Avg("audience_engagement"),
                 # Add averages for other relevant aggregated fields
             )
@@ -504,13 +510,13 @@ class ChunkSentimentAnalysisView(APIView):
         )
 
 
-
 class SessionChunkViewSet(viewsets.ModelViewSet):
     """
     ViewSet for handling individual session chunks.
     """
+
     serializer_class = SessionChunkSerializer
-    permission_classes = [IsAuthenticated] # You might want to adjust permissions
+    permission_classes = [IsAuthenticated]  # You might want to adjust permissions
 
     def get_queryset(self):
         user = self.request.user
@@ -521,17 +527,19 @@ class SessionChunkViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         # Ensure the session belongs to the user making the request (optional security)
-        session = serializer.validated_data['session']
+        session = serializer.validated_data["session"]
         if session.user != self.request.user:
             raise PermissionDenied("Session does not belong to this user.")
         serializer.save()
+
 
 class ChunkSentimentAnalysisViewSet(viewsets.ModelViewSet):
     """
     ViewSet for handling sentiment analysis results for each chunk.
     """
+
     serializer_class = ChunkSentimentAnalysisSerializer
-    permission_classes = [IsAuthenticated] # You might want to adjust permissions
+    permission_classes = [IsAuthenticated]  # You might want to adjust permissions
 
     def get_queryset(self):
         user = self.request.user

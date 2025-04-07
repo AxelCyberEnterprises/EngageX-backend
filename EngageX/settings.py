@@ -133,11 +133,11 @@ SOCKETIO = {
 }
 
 CORS_ALLOW_ALL_ORIGINS = True
-# CORS_ALLOWED_ORIGINS = [
-#     "https://www.engagexai.io",
-#     "http://localhost:5173",
-#     "https://main.d2wwdi7x8g70xe.amplifyapp.com",
-# ]
+CORS_ALLOWED_ORIGINS = [
+    "https://www.engagexai.io",
+    "http://localhost:5173",
+    "https://main.d2wwdi7x8g70xe.amplifyapp.com",
+]
 
 EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
 EMAIL_HOST = config("EMAIL_HOST")
