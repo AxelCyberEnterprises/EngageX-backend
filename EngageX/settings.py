@@ -146,6 +146,9 @@ EMAIL_USE_TLS = True
 EMAIL_HOST_USER = config("EMAIL_HOST_USER")
 EMAIL_HOST_PASSWORD = config("EMAIL_HOST_PASSWORD")
 DEFAULT_FROM_EMAIL = config("DEFAULT_FROM_EMAIL")
+AWS_ACCESS_KEY_ID = config('AWS_ACCESS_KEY_ID')
+AWS_SECRET_ACCESS_KEY = config('AWS_SECRET_ACCESS_KEY')
+AWS_SES_REGION = config('AWS_SES_REGION', 'us-west-1')
 
 
 # Database
@@ -194,6 +197,11 @@ if "RDS_HOSTNAME" in os.environ:
     EMAIL_HOST_USER = os.environ("EMAIL_HOST_USER")
     EMAIL_HOST_PASSWORD = os.environ("EMAIL_HOST_PASSWORD")
     DEFAULT_FROM_EMAIL = os.environ("DEFAULT_FROM_EMAIL")
+
+
+    AWS_ACCESS_KEY_ID = os.environ('AWS_ACCESS_KEY_ID')
+    AWS_SECRET_ACCESS_KEY = os.environ('AWS_SECRET_ACCESS_KEY')
+    AWS_SES_REGION = os.environ('AWS_SES_REGION', 'us-west-1')
 
 else:
     # Local development settings (PostgreSQL)

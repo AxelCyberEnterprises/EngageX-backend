@@ -33,15 +33,102 @@ import secrets
 from google.oauth2 import id_token
 from google.auth.transport import requests
 import boto3
+from .utils.email import send_email_via_ses
 
 # Authentication
+
+
+# class UserCreateViewSet(viewsets.ModelViewSet):
+#     """
+#     Handles user creation with email verification.
+#     """
+
+#     serializer_class = UserSerializer
+#     queryset = CustomUser.objects.all()
+
+#     def get_permissions(self):
+#         if self.action == "create":
+#             return [AllowAny()]
+#         return [IsAuthenticated()]
+
+#     def create(self, request, *args, **kwargs):
+#         try:
+#             if CustomUser.objects.filter(email=request.data.get("email")).exists():
+#                 raise ValidationError("User with this email already exists.")
+
+#             serializer = self.get_serializer(data=request.data)
+#             serializer.is_valid(raise_exception=True)
+
+#             with transaction.atomic():
+#                 # Save user but keep them inactive
+#                 user = serializer.save(is_active=False)
+#                 user.verification_code = str(
+#                     secrets.randbelow(9000) + 1000
+#                 )  # Secure 4-digit OTP
+#                 user.save()
+
+#                 # Send verification email using AWS SES
+#                 subject = "Verify your account"
+#                 message = f"Your verification code is {user.verification_code}"
+#                 from_email = settings.DEFAULT_FROM_EMAIL
+#                 recipient_list = [user.email]
+
+#                 try:
+#                     send_mail(
+#                         subject,
+#                         message,
+#                         from_email,
+#                         recipient_list,
+#                         fail_silently=False,
+#                     )
+#                 except Exception as e:
+#                     print(f"Error sending email: {e}")
+#                     raise IntegrityError(
+#                         "Email sending failed."
+#                     )  # Trigger rollback if email fails
+
+#             response_data = {
+#                 "status": "success",
+#                 "message": "Verification code sent to your email.",
+#                 "data": {
+#                     "user": {
+#                         "id": user.id,
+#                         "email": user.email,
+#                         "username": user.first_name,
+#                         "first_name": user.first_name,
+#                         "last_name": user.last_name,
+#                     }
+#                 },
+#             }
+#             return Response(response_data, status=status.HTTP_201_CREATED)
+
+#         except ValidationError as e:
+#             return Response(
+#                 {"status": "fail", "message": str(e)},
+#                 status=status.HTTP_400_BAD_REQUEST,
+#             )
+
+#         except IntegrityError:
+#             return Response(
+#                 {
+#                     "status": "fail",
+#                     "message": "Error sending verification email. Please try again.",
+#                 },
+#                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+#             )
+
+#         except Exception as e:
+#             print(f"Unexpected error: {e}")
+#             return Response(
+#                 {"status": "fail", "message": "Something went wrong."},
+#                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+#             )
 
 
 class UserCreateViewSet(viewsets.ModelViewSet):
     """
     Handles user creation with email verification.
     """
-
     serializer_class = UserSerializer
     queryset = CustomUser.objects.all()
 
@@ -61,30 +148,22 @@ class UserCreateViewSet(viewsets.ModelViewSet):
             with transaction.atomic():
                 # Save user but keep them inactive
                 user = serializer.save(is_active=False)
-                user.verification_code = str(
-                    secrets.randbelow(9000) + 1000
-                )  # Secure 4-digit OTP
+                user.verification_code = str(secrets.randbelow(9000) + 1000)
                 user.save()
 
-                # Send verification email using AWS SES
+                # Send verification email via AWS SES
                 subject = "Verify your account"
                 message = f"Your verification code is {user.verification_code}"
-                from_email = settings.DEFAULT_FROM_EMAIL
                 recipient_list = [user.email]
 
-                try:
-                    send_mail(
-                        subject,
-                        message,
-                        from_email,
-                        recipient_list,
-                        fail_silently=False,
-                    )
-                except Exception as e:
-                    print(f"Error sending email: {e}")
-                    raise IntegrityError(
-                        "Email sending failed."
-                    )  # Trigger rollback if email fails
+                email_response = send_email_via_ses(
+                    subject=subject,
+                    body=message,
+                    to_emails=recipient_list
+                )
+
+                if not email_response:
+                    raise IntegrityError("Email sending failed.")
 
             response_data = {
                 "status": "success",
@@ -278,10 +357,8 @@ class PasswordResetRequestView(APIView):
     permission_classes = [AllowAny]
 
     def post(self, request):
-        # Extract email from request
         email = request.data.get("email")
 
-        # Validate email field
         if not email:
             return Response(
                 {"status": "error", "message": "Email is required"},
@@ -289,35 +366,34 @@ class PasswordResetRequestView(APIView):
             )
 
         try:
-            # Attempt to retrieve user by email
             user = CustomUser.objects.get(email=email)
 
-            # Generate a 6-digit OTP and store it in cache for 5 minutes
             otp = random.randint(100000, 999999)
             cache.set(f"password_reset_otp_{user.id}", otp, timeout=300)
 
-            # Prepare and send email with OTP
-            # email_message = EmailMessage(
-            #     subject='Password Reset Verification Code',
-            #     body=f'Your OTP code is {otp}',
-            #     from_email=settings.DEFAULT_FROM_EMAIL,
-            #     to=[user.email],
-            # )
-            # email_message.extra_headers = {'X-PM-Message-Stream': 'outbound'}
-            # email_message.send(fail_silently=False)
+            subject = "Password Reset Verification Code"
+            body = f"Your OTP code is {otp}"
 
-            # Success response
+            try:
+                send_email_via_ses(subject, body, [user.email])
+            except Exception as e:
+                print(f"Error sending OTP email via SES: {e}")
+                return Response(
+                    {"status": "error", "message": "Failed to send OTP email"},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                )
+
             return Response(
                 {"status": "success", "message": "OTP sent to email", "otp": otp},
                 status=status.HTTP_200_OK,
             )
 
         except CustomUser.DoesNotExist:
-            # Error response if user is not found
             return Response(
                 {"status": "error", "message": "User with this email does not exist"},
                 status=status.HTTP_404_NOT_FOUND,
             )
+
 
 
 class PasswordResetConfirmView(APIView):
