@@ -8,10 +8,11 @@ from rest_framework.exceptions import PermissionDenied
 
 from django.conf import settings
 from django.conf import settings
-from django.db.models import Count, Avg
+from django.db.models import Count, Avg, Case, When, Value, CharField
 from django.utils.timezone import now
 from django.shortcuts import get_object_or_404
 from django.contrib.auth import get_user_model
+from django.db.models.functions import Cast
 
 import os
 import json
@@ -219,8 +220,28 @@ class SessionDashboardView(APIView):
                 .annotate(count=Count("id"))
                 .order_by("day")
             )
-            recent_sessions = sessions.order_by("-date")[:5].values(
-                "session_name", "session_type", "date", "duration"
+            # recent_sessions = sessions.order_by("-date")[:5].values(
+            #     "id", "session_name", "session_type", "date", "duration"
+            # )
+
+            recent_sessions = (
+                sessions.annotate(
+                    session_type_display=Case(
+                        When(session_type="pitch", then=Value("Pitch Practice")),
+                        When(session_type="public", then=Value("Public Speaking")),
+                        When(session_type="presentation", then=Value("Presentation")),
+                        output_field=CharField(),
+                    ),
+                    formatted_duration=Cast("duration", output_field=CharField()),
+                )
+                .order_by("-date")[:5]
+                .values(
+                    "id",
+                    "session_name",
+                    "session_type_display",
+                    "date",
+                    "formatted_duration",
+                )
             )
 
             # Total new sessions (per day) and the percentage difference from yesterday

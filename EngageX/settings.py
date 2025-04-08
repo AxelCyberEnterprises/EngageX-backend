@@ -30,7 +30,7 @@ SECRET_KEY = "django-insecure-wfl*mho^tyaghxhwx4p^2u8)yl#gw+^ub&(=!m#=!x3rrqo1og
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = [".elasticbeanstalk.com", "*"]
+ALLOWED_HOSTS = [".elasticbeanstalk.com", "api.engagexai.io", "*"]
 
 
 # Application definition
@@ -58,6 +58,7 @@ INSTALLED_APPS = [
 ]
 
 MIDDLEWARE = [
+    "corsheaders.middleware.CorsMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
@@ -65,8 +66,6 @@ MIDDLEWARE = [
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
-    # Middleware I added
-    "corsheaders.middleware.CorsMiddleware",
 ]
 
 
@@ -133,10 +132,15 @@ SOCKETIO = {
 }
 
 CORS_ALLOW_ALL_ORIGINS = True
-CORS_ALLOWED_ORIGINS = [
-    "https://www.engagexai.io",
-    "http://localhost:5173",
-    "https://main.d2wwdi7x8g70xe.amplifyapp.com",
+# CORS_ALLOWED_ORIGINS = [
+#     "https://www.engagexai.io",
+#     "http://localhost:5173",
+#     "https://api.engagexai.io",
+#     "https://main.d2wwdi7x8g70xe.amplifyapp.com",
+# ]
+
+CSRF_TRUSTED_ORIGINS = [
+    "https://api.engagexai.io",
 ]
 
 EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"

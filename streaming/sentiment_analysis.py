@@ -86,9 +86,9 @@ def score_volume(volume):
 def score_pauses(appropriate_pauses, long_pauses):
     """scores pauses using discrete buckets."""
     # call scale_to_score after getting rationale
-    score = scale_to_score(appropriate_pauses, 12, 30)
+    score = scale_to_score(appropriate_pauses, 8, 20) # adjusted for 40 seconds
 
-    if 12 <= appropriate_pauses <= 30:
+    if 8 <= appropriate_pauses <= 20:
         rationale = "Ideal pause frequency; pauses enhance clarity without disrupting flow."
     elif appropriate_pauses < 12:
         rationale = "Insufficient pauses; speech may be rushed and less clear."
@@ -97,7 +97,7 @@ def score_pauses(appropriate_pauses, long_pauses):
 
 
     # apply penalty for long pauses: each long pause beyond 3 reduces the score by 1.
-    if long_pauses > 3:
+    if long_pauses > 2:
         penalty = (long_pauses -3) * 10
         score = max(0, score - penalty)
         rationale += f", with {long_pauses} long pauses (>2s) penalizing flow"
