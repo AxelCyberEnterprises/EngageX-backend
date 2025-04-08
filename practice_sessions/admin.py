@@ -53,6 +53,7 @@ class ChunkSentimentAnalysisAdmin(admin.ModelAdmin):
 
 @admin.register(SessionChunk)
 class SessionChunkAdmin(admin.ModelAdmin):
-    list_display = ("session", "start_time", "end_time")
+    # list_display = ("session", "start_time", "end_time")
+    list_display = ("session",)
     list_filter = ("session",)
     search_fields = ("session__session_name",)

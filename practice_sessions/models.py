@@ -37,7 +37,7 @@ class PracticeSession(models.Model):
     session_name = models.CharField(max_length=100)
     session_type = models.CharField(max_length=20, choices=SESSION_TYPE_CHOICES)
     date = models.DateTimeField(auto_now_add=True)
-    duration = models.DurationField(help_text="Duration of the session")
+    duration = models.DurationField(help_text="Duration of the session", null=True, blank=True)
     note = models.TextField(
         blank=True, null=True, help_text="Optional note (for users)"
     )
@@ -92,13 +92,17 @@ class SessionChunk(models.Model):
         PracticeSession, on_delete=models.CASCADE, related_name="chunks"
     )
     start_time = models.FloatField(
+        blank=True,
+        null=True,
         help_text="Start time of the chunk in the session (in seconds)"
     )
     end_time = models.FloatField(
+        blank=True,
+        null=True,
         help_text="End time of the chunk in the session (in seconds)"
     )
-    video_file = models.FileField(
-        upload_to="session_chunks/%Y/%m/%d/",
+    video_file = models.CharField(
+        max_length=255,
         blank=True,
         null=True,
         help_text="Video file for this chunk",
@@ -118,7 +122,7 @@ class ChunkSentimentAnalysis(models.Model):
 
     # Scores from OpenAI's GPT model
     engagement = models.PositiveIntegerField(default=0, validators=[MinValueValidator(0), MaxValueValidator(100)], help_text="Engagement Heatmap")
-    audience_emotion = models.PositiveIntegerField(default=0, validators=[MinValueValidator(0), MaxValueValidator(100)], help_text="Audience Emotion")
+    audience_emotion = models.CharField(max_length=50, blank=True, null=True, help_text="Audience Emotion")
     conviction = models.PositiveIntegerField(default=0, validators=[MinValueValidator(0), MaxValueValidator(100)], help_text="Convictions")
     clarity = models.PositiveIntegerField(default=0, validators=[MinValueValidator(0), MaxValueValidator(100)], help_text="Clarity")
     impact = models.PositiveIntegerField(default=0, validators=[MinValueValidator(0), MaxValueValidator(100)], help_text="impact")
@@ -127,13 +131,11 @@ class ChunkSentimentAnalysis(models.Model):
     body_posture = models.PositiveIntegerField(default=0, validators=[MinValueValidator(0), MaxValueValidator(100)], help_text="Body posture")
     general_feedback_summary = models.TextField(blank=True, null=True)
 
-
     # Metrics from audio analysis
     volume = models.FloatField(null=True, blank=True, help_text="Volume")
     pitch_variability = models.FloatField(null=True, blank=True, help_text="Pitch variability")
     pace = models.FloatField(null=True, blank=True, help_text="Pace")
     chunk_transcript = models.TextField(blank=True, null=True, help_text="Transcript")
-
 
     def __str__(self):
         return f"Sentiment Analysis for Chunk {self.chunk.start_time}-{self.chunk.end_time} of {self.chunk.session.session_name}"

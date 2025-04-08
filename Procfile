@@ -1,1 +1,1 @@
-web: gunicorn EngageX.wsgi:application --bind 0.0.0.0:8000 --workers 4
+web: daphne -b 0.0.0.0 -p 8000 EngageX.asgi:application
