@@ -33,6 +33,7 @@ class PracticeSessionSerializer(serializers.ModelSerializer):
             "id",
             "session_name",
             "session_type",
+            "goals",
             "session_type_display",
             "date",
             "duration",
@@ -81,6 +82,7 @@ class PracticeSessionSerializer(serializers.ModelSerializer):
         instance.session_type = validated_data.get(
             "session_type", instance.session_type
         )
+        instance.goals = validated_data.get("goals", instance.goals)
         instance.note = validated_data.get("note", instance.note)
         instance.sequence = validated_data.get("sequence", instance.sequence)
         instance.allow_ai_questions = validated_data.get(
