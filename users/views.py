@@ -8,6 +8,7 @@ from django.contrib.auth import get_user_model, authenticate
 from django.utils import timezone
 from django.db import transaction, IntegrityError
 
+
 from rest_framework.authtoken.models import Token
 from rest_framework import viewsets, status, permissions
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -23,9 +24,13 @@ from .serializers import (
     UpdateProfileSerializer,
     ChangePasswordSerializer,
     UserAssignmentSerializer,
+    VerifyEmailSerializer,
+    PasswordResetRequestSerializer,
+    PasswordResetConfirmSerializer,
 )
 from .models import UserProfile, CustomUser, UserAssignment
 from .permissions import IsAdmin
+from drf_yasg.utils import swagger_auto_schema
 
 import random, tempfile, os
 import secrets
@@ -34,6 +39,9 @@ from google.oauth2 import id_token
 from google.auth.transport import requests
 import boto3
 from .utils.email import send_email_via_ses
+
+User = get_user_model()
+
 
 # Authentication
 
@@ -129,6 +137,7 @@ class UserCreateViewSet(viewsets.ModelViewSet):
     """
     Handles user creation with email verification.
     """
+
     serializer_class = UserSerializer
     queryset = CustomUser.objects.all()
 
@@ -148,7 +157,7 @@ class UserCreateViewSet(viewsets.ModelViewSet):
             with transaction.atomic():
                 # Save user but keep them inactive
                 user = serializer.save(is_active=False)
-                user.verification_code = str(secrets.randbelow(9000) + 1000)
+                user.verification_code = str(secrets.randbelow(900000) + 100000)
                 user.save()
 
                 # Send verification email via AWS SES
@@ -157,9 +166,7 @@ class UserCreateViewSet(viewsets.ModelViewSet):
                 recipient_list = [user.email]
 
                 email_response = send_email_via_ses(
-                    subject=subject,
-                    body=message,
-                    to_emails=recipient_list
+                    subject=subject, body=message, to_emails=recipient_list
                 )
 
                 if not email_response:
@@ -210,6 +217,14 @@ class VerifyEmailView(APIView):
 
     permission_classes = [AllowAny]  # Allow access without authentication
 
+    @swagger_auto_schema(
+        operation_description="Register a Vendor user ",
+        request_body=VerifyEmailSerializer,
+        responses={
+            200: "OTP sent successfully",
+            400: "OTP not sent successfully",
+        },
+    )
     def post(self, request, *args, **kwargs):
         email = request.data.get("email")
         verification_code = request.data.get("verification_code")
@@ -302,10 +317,23 @@ class CustomTokenCreateView(TokenCreateView):
         try:
             # Attempt to retrieve user by email
             user = CustomUser.objects.get(email=email)
+            # Check incoorect password
+            if not user.check_password(password):
+                return Response(
+                    {"status": "fail", "detail": "Incorrect password."},
+                    status=status.HTTP_401_UNAUTHORIZED,
+                )
+
+            if not user.is_active:
+                return Response(
+                    {"status": "fail", "detail": "User not verified "},
+                    status=status.HTTP_401_UNAUTHORIZED,
+                )
 
             # Validate and create the token using the custom serializer
             serializer.is_valid(raise_exception=True)
             token = serializer.validated_data["auth_token"]
+
             response_data = {
                 "status": "success",
                 "message": "Login successful.",
@@ -320,32 +348,10 @@ class CustomTokenCreateView(TokenCreateView):
             }
             return Response(response_data, status=status.HTTP_200_OK)
 
-        except ValidationError as e:
-            # Handle validation errors and construct a clear response
-            print("Login failed. Errors:", e.detail)
-            error_messages = e.detail
-            response_data = {
-                "status": "fail",
-                "message": error_messages.get(
-                    "message", "Unable to log in with provided credentials."
-                ),
-                "data": {
-                    "error": error_messages.get("email", ["Invalid credentials."])[
-                        0
-                    ]  # Get specific email error
-                },
-            }
-            return Response(response_data, status=status.HTTP_400_BAD_REQUEST)
-
-        except Exception as e:
-            print("An unexpected error occurred:", str(e))
+        except CustomUser.DoesNotExist as e:
             return Response(
-                {
-                    "status": "fail",
-                    "message": "An unexpected error occurred.",
-                    "data": {"error": "Internal server error. Please try again later."},
-                },
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                {"status": "fail", "detail": "No User associated with this email"},
+                status=status.HTTP_404_NOT_FOUND,
             )
 
 
@@ -356,9 +362,13 @@ class PasswordResetRequestView(APIView):
 
     permission_classes = [AllowAny]
 
+    @swagger_auto_schema(
+        operation_description="View to handle password reset requests by sending an OTP to the user's email",
+        request_body=PasswordResetRequestSerializer,
+        responses={},
+    )
     def post(self, request):
         email = request.data.get("email")
-
         if not email:
             return Response(
                 {"status": "error", "message": "Email is required"},
@@ -395,7 +405,6 @@ class PasswordResetRequestView(APIView):
             )
 
 
-
 class PasswordResetConfirmView(APIView):
     """
     View to handle password reset confirmation by validating OTP and setting a new password.
@@ -403,6 +412,11 @@ class PasswordResetConfirmView(APIView):
 
     permission_classes = [AllowAny]
 
+    @swagger_auto_schema(
+        operation_description=" View to handle password reset confirmation by validating OTP and setting a new password.",
+        request_body=PasswordResetConfirmSerializer,
+        responses={},
+    )
     def post(self, request):
         # Extract fields from request
         email = request.data.get("email")
@@ -719,7 +733,7 @@ class GoogleLoginView(APIView):
                 )
 
             # Create user if they don't exist
-            User = get_user_model()
+
             user, created = User.objects.get_or_create(
                 email=email,
                 defaults={

@@ -173,6 +173,21 @@ class UserSerializer(serializers.ModelSerializer):
         return user
 
 
+class VerifyEmailSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+    verification_code = serializers.CharField(max_length=6)
+
+
+class PasswordResetRequestSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+
+
+class PasswordResetConfirmSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+    otp = serializers.CharField()
+    new_password = serializers.CharField()
+
+
 class UpdateProfileSerializer(serializers.ModelSerializer):
     profile_picture = serializers.ImageField(
         required=False
