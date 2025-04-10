@@ -36,8 +36,11 @@ class PracticeSession(models.Model):
     )
     session_name = models.CharField(max_length=100)
     session_type = models.CharField(max_length=20, choices=SESSION_TYPE_CHOICES)
+    goals = models.TextField(null=True, blank=True, default="Just practicing")
     date = models.DateTimeField(auto_now_add=True)
-    duration = models.DurationField(help_text="Duration of the session", null=True, blank=True)
+    duration = models.DurationField(
+        help_text="Duration of the session", null=True, blank=True
+    )
     note = models.TextField(
         blank=True, null=True, help_text="Optional note (for users)"
     )
@@ -70,6 +73,8 @@ class PracticeSession(models.Model):
     VIRTUAL_ENVIRONMENT_CHOICES = [
         ("conference_room", "Conference Room"),
         ("seminar_room", "Seminar Room"),
+        ("board_room_1", "Board Room 1"),
+        ("board_room_2", "Board Room 2"),
     ]
     virtual_environment = models.CharField(
         max_length=50,
@@ -94,12 +99,12 @@ class SessionChunk(models.Model):
     start_time = models.FloatField(
         blank=True,
         null=True,
-        help_text="Start time of the chunk in the session (in seconds)"
+        help_text="Start time of the chunk in the session (in seconds)",
     )
     end_time = models.FloatField(
         blank=True,
         null=True,
-        help_text="End time of the chunk in the session (in seconds)"
+        help_text="End time of the chunk in the session (in seconds)",
     )
     video_file = models.CharField(
         max_length=255,
@@ -121,19 +126,51 @@ class ChunkSentimentAnalysis(models.Model):
     )
 
     # Scores from OpenAI's GPT model
-    engagement = models.PositiveIntegerField(default=0, validators=[MinValueValidator(0), MaxValueValidator(100)], help_text="Engagement Heatmap")
-    audience_emotion = models.CharField(max_length=50, blank=True, null=True, help_text="Audience Emotion")
-    conviction = models.PositiveIntegerField(default=0, validators=[MinValueValidator(0), MaxValueValidator(100)], help_text="Convictions")
-    clarity = models.PositiveIntegerField(default=0, validators=[MinValueValidator(0), MaxValueValidator(100)], help_text="Clarity")
-    impact = models.PositiveIntegerField(default=0, validators=[MinValueValidator(0), MaxValueValidator(100)], help_text="impact")
-    brevity = models.PositiveIntegerField(default=0, validators=[MinValueValidator(0), MaxValueValidator(100)], help_text="Brevity")
-    transformative_potential = models.PositiveIntegerField(default=0, validators=[MinValueValidator(0), MaxValueValidator(100)], help_text="transformative potential")
-    body_posture = models.PositiveIntegerField(default=0, validators=[MinValueValidator(0), MaxValueValidator(100)], help_text="Body posture")
+    engagement = models.PositiveIntegerField(
+        default=0,
+        validators=[MinValueValidator(0), MaxValueValidator(100)],
+        help_text="Engagement Heatmap",
+    )
+    audience_emotion = models.CharField(
+        max_length=50, blank=True, null=True, help_text="Audience Emotion"
+    )
+    conviction = models.PositiveIntegerField(
+        default=0,
+        validators=[MinValueValidator(0), MaxValueValidator(100)],
+        help_text="Convictions",
+    )
+    clarity = models.PositiveIntegerField(
+        default=0,
+        validators=[MinValueValidator(0), MaxValueValidator(100)],
+        help_text="Clarity",
+    )
+    impact = models.PositiveIntegerField(
+        default=0,
+        validators=[MinValueValidator(0), MaxValueValidator(100)],
+        help_text="impact",
+    )
+    brevity = models.PositiveIntegerField(
+        default=0,
+        validators=[MinValueValidator(0), MaxValueValidator(100)],
+        help_text="Brevity",
+    )
+    transformative_potential = models.PositiveIntegerField(
+        default=0,
+        validators=[MinValueValidator(0), MaxValueValidator(100)],
+        help_text="transformative potential",
+    )
+    body_posture = models.PositiveIntegerField(
+        default=0,
+        validators=[MinValueValidator(0), MaxValueValidator(100)],
+        help_text="Body posture",
+    )
     general_feedback_summary = models.TextField(blank=True, null=True)
 
     # Metrics from audio analysis
     volume = models.FloatField(null=True, blank=True, help_text="Volume")
-    pitch_variability = models.FloatField(null=True, blank=True, help_text="Pitch variability")
+    pitch_variability = models.FloatField(
+        null=True, blank=True, help_text="Pitch variability"
+    )
     pace = models.FloatField(null=True, blank=True, help_text="Pace")
     chunk_transcript = models.TextField(blank=True, null=True, help_text="Transcript")
 

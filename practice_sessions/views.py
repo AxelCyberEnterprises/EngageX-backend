@@ -572,3 +572,69 @@ class ChunkSentimentAnalysisViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         # Optionally add checks here, e.g., ensure the chunk belongs to a user's session
         serializer.save()
+
+
+class SessionReportView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, session_id):
+        try:
+            session = PracticeSession.objects.get(id=session_id, user=request.user)
+        except PracticeSession.DoesNotExist:
+            return Response(
+                {"error": "Session not found"}, status=status.HTTP_404_NOT_FOUND
+            )
+
+        chunks = session.chunks.select_related("sentiment_analysis").all()
+
+        data = []
+        graph_data = []
+        all_brevity = []
+        all_transformative_potential = []
+        all_impact = []
+        all_clarity = []
+        all_volume = []
+        all_pitch = []
+        all_pace = []
+        all_pauses = []
+
+        for index, chunk in enumerate(chunks, start=1):
+            if hasattr(chunk, "sentiment_analysis"):
+                analysis = chunk.sentiment_analysis
+                # graph dict
+                graph_data.append(
+                    {
+                        "chuck_no": f"Chunk {index}",
+                        "start_time": chunk.start_time,
+                        "end_time": chunk.end_time,
+                        "brevity": analysis.brevity,
+                        "conviction": analysis.conviction,
+                        "impact": analysis.impact,
+                    }
+                )
+                # Collecting for avg
+                all_brevity.append(analysis.brevity)
+                all_transformative_potential.append(analysis.transformative_potential)
+                all_impact.append(analysis.impact)
+                all_clarity.append(analysis.clarity)
+                all_volume.append(analysis.volume)
+                all_pitch.append(analysis.pitch_variability)
+                all_pace.append(analysis.pace)
+                all_pauses.append(session.pauses)
+
+        # Compute averages
+        def safe_avg(lst):
+            return round(sum(lst) / len(lst), 2) if lst else None
+
+        averages = {
+            "brevity": safe_avg(all_brevity),
+            "all_transformative_potential": safe_avg(all_transformative_potential),
+            "impact": safe_avg(all_impact),
+            "clarity": safe_avg(all_clarity),
+            "volume": safe_avg(all_volume),
+            "pitch": safe_avg(all_pitch),
+            "pace": safe_avg(all_pace),
+            "pauses": safe_avg(all_pauses),
+        }
+
+        return Response({"graph_data": graph_data, "averages": averages})
