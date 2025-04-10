@@ -188,6 +188,21 @@ class PasswordResetConfirmSerializer(serializers.Serializer):
     new_password = serializers.CharField()
 
 
+class ContactUsSerializer(serializers.Serializer):
+    first_name = serializers.CharField()
+    last_name = serializers.CharField()
+    email = serializers.EmailField()
+    message = serializers.CharField()
+    agreed_to_policy = serializers.BooleanField()
+
+    def validate_agreed_to_policy(self, value):
+        if not value:
+            raise serializers.ValidationError(
+                "You must agree to the privacy policy to submit this form."
+            )
+        return value
+
+
 class UpdateProfileSerializer(serializers.ModelSerializer):
     profile_picture = serializers.ImageField(
         required=False

@@ -12,6 +12,7 @@ from .views import (
     UpdateProfileView,
     ChangePasswordView,
     UserAssignmentViewSet,
+    ContactUsView,
 )
 
 router = DefaultRouter()
@@ -42,5 +43,5 @@ urlpatterns = [
     ),
     path("password/change/", ChangePasswordView.as_view(), name="password-change"),
     path("auth/verify-email/", VerifyEmailView.as_view(), name="verify-email"),
-    # path('profile/update/', UpdateProfileView.as_view(), name='profile-update'),
+    path("contact-us/", ContactUsView.as_view(), name="contact-us"),
 ]

@@ -27,6 +27,7 @@ from .serializers import (
     VerifyEmailSerializer,
     PasswordResetRequestSerializer,
     PasswordResetConfirmSerializer,
+    ContactUsSerializer,
 )
 from .models import UserProfile, CustomUser, UserAssignment
 from .permissions import IsAdmin
@@ -915,3 +916,49 @@ class UserAssignmentViewSet(viewsets.ModelViewSet):
                 {"error": "No admin assigned for this user."},
                 status=status.HTTP_404_NOT_FOUND,
             )
+
+
+class ContactUsView(APIView):
+    permission_classes = [AllowAny]
+
+    @swagger_auto_schema(
+        operation_description="View for Contact us",
+        request_body=ContactUsSerializer,
+        responses={},
+    )
+    def post(self, request):
+        serializer = ContactUsSerializer(data=request.data)
+        if serializer.is_valid():
+            data = serializer.validated_data
+
+            # Build email content
+            subject = "New Contact Us Submission"
+            message = f"""
+New Contact Us Submission
+
+First Name: {data['first_name']}
+Last Name: {data['last_name']}
+Email: {data['email']}
+
+Message:
+{data['message']}
+
+Agreed to Privacy Policy: {"Yes" if data['agreed_to_policy'] else "No"}
+
+-------------------------------
+This message was sent via the Contact Us form on your website.
+            """
+
+            email_response = send_email_via_ses(
+                subject=subject, body=message, to_emails=[settings.DEFAULT_FROM_EMAIL]
+            )
+
+            if not email_response:
+                raise IntegrityError("Email sending failed.")
+
+            return Response(
+                {"message": "Your message has been sent successfully."},
+                status=status.HTTP_200_OK,
+            )
+
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
