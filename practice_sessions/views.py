@@ -644,7 +644,7 @@ class PerformanceAnalyticsView(APIView):
     def get(self, request):
         data = (
             ChunkSentimentAnalysis.objects.select_related("chunk__session")
-            .filter(chunk__session__user=request.user)
+            .all()
             .annotate(month=TruncMonth("chunk__session__date"))
             .values("month")
             .annotate(

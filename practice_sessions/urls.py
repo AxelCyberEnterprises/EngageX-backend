@@ -31,7 +31,7 @@ urlpatterns = [
         name="practice-session-upload-slides",
     ),
     path(
-        "sessions-report/<int:session_id>/chunk-summary/",
+        "sessions-report/<int:session_id>/",
         SessionReportView.as_view(),
         name="chunk-summary",
     ),
