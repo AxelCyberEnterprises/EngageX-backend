@@ -8,11 +8,12 @@ from rest_framework.exceptions import PermissionDenied
 
 from django.conf import settings
 from django.conf import settings
-from django.db.models import Count, Avg, Case, When, Value, CharField
+from django.db.models import Count, Avg, Case, When, Value, CharField, Sum
 from django.utils.timezone import now
 from django.shortcuts import get_object_or_404
 from django.contrib.auth import get_user_model
-from django.db.models.functions import Cast
+from django.db.models.functions import Cast, TruncMonth
+
 
 import os
 import json
@@ -35,6 +36,8 @@ from .serializers import (
     ChunkSentimentAnalysisSerializer,
     SessionChunkSerializer,
 )
+
+User = get_user_model()
 
 
 class PracticeSequenceViewSet(viewsets.ModelViewSet):
@@ -96,9 +99,6 @@ class PracticeSessionViewSet(viewsets.ModelViewSet):
         session = self.get_object()
         serializer = PracticeSessionSerializer(session)
         return Response(serializer.data)
-
-
-User = get_user_model()
 
 
 class SessionDashboardView(APIView):
@@ -638,3 +638,29 @@ class SessionReportView(APIView):
         }
 
         return Response({"graph_data": graph_data, "averages": averages})
+
+
+class PerformanceAnalyticsView(APIView):
+    def get(self, request):
+        data = (
+            ChunkSentimentAnalysis.objects.select_related("chunk__session")
+            .filter(chunk__session__user=request.user)
+            .annotate(month=TruncMonth("chunk__session__date"))
+            .values("month")
+            .annotate(
+                total_brevity=Sum("brevity"),
+                total_impact=Sum("impact"),
+                total_conviction=Sum("conviction"),
+            )
+            .order_by("month")
+        )
+        result = [
+            {
+                "month": item["month"].strftime("%Y-%m"),
+                "brevity": item["total_brevity"] or 0,
+                "impact": item["total_impact"] or 0,
+                "conviction": item["total_conviction"] or 0,
+            }
+            for item in data
+        ]
+        return Response(result)

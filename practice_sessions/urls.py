@@ -7,6 +7,7 @@ from .views import (
     ChunkSentimentAnalysisViewSet,
     SessionChunkViewSet,
     SessionReportView,
+    PerformanceAnalyticsView,
 )
 
 router = DefaultRouter()
@@ -33,5 +34,10 @@ urlpatterns = [
         "sessions-report/<int:session_id>/chunk-summary/",
         SessionReportView.as_view(),
         name="chunk-summary",
+    ),
+    path(
+        "performance-analytics/",
+        PerformanceAnalyticsView.as_view(),
+        name="performance-analytics",
     ),
 ]

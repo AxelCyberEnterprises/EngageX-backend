@@ -20,9 +20,9 @@ class PracticeSequenceSerializer(serializers.ModelSerializer):
 
 class PracticeSessionSerializer(serializers.ModelSerializer):
     user_email = serializers.EmailField(source="user.email", read_only=True)
-
     full_name = serializers.SerializerMethodField()
     session_type_display = serializers.SerializerMethodField()
+    latest_score = serializers.SerializerMethodField()
     sequence = serializers.PrimaryKeyRelatedField(
         queryset=PracticeSequence.objects.all(), allow_null=True, required=False
     )
@@ -35,6 +35,7 @@ class PracticeSessionSerializer(serializers.ModelSerializer):
             "session_type",
             "goals",
             "session_type_display",
+            "latest_score",
             "date",
             "duration",
             "note",
@@ -55,6 +56,7 @@ class PracticeSessionSerializer(serializers.ModelSerializer):
             "duration",
             "user_email",
             "full_name",
+            "latest_score",
             "session_type_display",
             "pauses",
             "tone",
@@ -69,6 +71,9 @@ class PracticeSessionSerializer(serializers.ModelSerializer):
 
     def get_session_type_display(self, obj):
         return obj.get_session_type_display()
+
+    def get_latest_score(self, obj):
+        return obj.impact
 
     def create(self, validated_data):
         # We are no longer creating SessionDetail here
