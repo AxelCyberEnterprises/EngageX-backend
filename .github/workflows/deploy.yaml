@@ -13,31 +13,28 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v2
         with:
-          python-version: "3.11"  # Change this to your app's Python version
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Install AWS CLI
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ secrets.DOCKERHUB_USERNAME }}/engagex:latest
+            ${{ secrets.DOCKERHUB_USERNAME }}/engagex:v1.${{ github.run_number }}
+
+      - name: Set image tag variables
+        id: vars
+        run: echo "IMAGE_TAG_VERSIONED=${{ secrets.DOCKERHUB_USERNAME }}/engagex:v1.${{ github.run_number }}" >> $GITHUB_ENV
+
+      - name: Echo image tags
         run: |
-          curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
-          unzip -o awscliv2.zip
-          sudo ./aws/install --update
-          aws --version  # Verify installation
-
-      - name: Install Elastic Beanstalk CLI
-        run: |
-          pip install --upgrade awsebcli
-          eb --version  # Verify installation
-
-      - name: Deploy to Elastic Beanstalk
-        env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          AWS_REGION: ${{ secrets.AWS_REGION }}
-          EB_APPLICATION_NAME: engagex-31 #${{ secrets.EB_APPLICATION_NAME }}
-          EB_ENVIRONMENT_NAME: Engagex-31-env  #${{ secrets.EB_ENVIRONMENT_NAME }}
-        run: | 
-         eb init $EB_APPLICATION_NAME --platform "Python 3.11" --region $AWS_REGION
-         eb use $EB_ENVIRONMENT_NAME --region $AWS_REGION 
-         eb deploy --region $AWS_REGION
+          echo "Docker image (versioned): $IMAGE_TAG_VERSIONED"
