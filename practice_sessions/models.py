@@ -72,7 +72,6 @@ class PracticeSession(models.Model):
     )
     VIRTUAL_ENVIRONMENT_CHOICES = [
         ("conference_room", "Conference Room"),
-        ("seminar_room", "Seminar Room"),
         ("board_room_1", "Board Room 1"),
         ("board_room_2", "Board Room 2"),
     ]

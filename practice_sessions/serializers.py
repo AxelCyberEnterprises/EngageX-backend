@@ -53,7 +53,6 @@ class PracticeSessionSerializer(serializers.ModelSerializer):
         read_only_fields = [
             "id",
             "date",
-            "duration",
             "user_email",
             "full_name",
             "latest_score",
@@ -96,6 +95,7 @@ class PracticeSessionSerializer(serializers.ModelSerializer):
         instance.virtual_environment = validated_data.get(
             "virtual_environment", instance.virtual_environment
         )
+        instance.duration = validated_data.get("duration", instance.duration)
         instance.save()
         return instance
 
