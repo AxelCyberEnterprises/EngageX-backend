@@ -641,6 +641,7 @@ class LiveSessionConsumer(AsyncWebsocketConsumer):
             audio_path = await asyncio.to_thread(self.extract_audio, media_path)
             if audio_path:
                 try:
+                    # change transcription
                     print(f"WS: Attempting transcription for window media: {media_path}")
                     transcription_start_time = time.time()
                     with open(audio_path, 'rb') as audio_file:
@@ -666,6 +667,7 @@ class LiveSessionConsumer(AsyncWebsocketConsumer):
                             "audience_emotion": analysis_result.get('Feedback', {}).get('Audience Emotion'),
                             "impact": analysis_result.get('Feedback', {}).get('Impact'),
                             "clarity": analysis_result.get('Feedback', {}).get('Clarity'),
+                            "Body Posture": analysis_result.get('Posture', {}).get('Body Posture'), # example call for body posture
                             "transformative_potential": analysis_result.get('Feedback', {}).get('Transformative Potential'),
                             "volume": analysis_result.get('Scores', {}).get('Volume Score'),
                             "pace": analysis_result.get('Scores', {}).get('Pace Score'),
@@ -708,7 +710,7 @@ class LiveSessionConsumer(AsyncWebsocketConsumer):
                     'impact': analysis_result.get('Feedback', {}).get('Impact', 0),
                     'brevity': analysis_result.get('Feedback', {}).get('Brevity', 0),
                     'transformative_potential': analysis_result.get('Feedback', {}).get('Transformative Potential', 0),
-                    'body_posture': analysis_result.get('Feedback', {}).get('Body Posture', 0),
+                    'body_posture': analysis_result.get('Posture', {}).get('Body Posture', 0), # example call
                     'general_feedback_summary': analysis_result.get('Feedback', {}).get('General Feedback Summary', ''),
                     'volume': analysis_result.get('Scores', {}).get('Volume Score'),
                     'pitch_variability': analysis_result.get('Scores', {}).get('Pitch Variability Score'),
