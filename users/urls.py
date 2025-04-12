@@ -9,7 +9,6 @@ from .views import (
     PasswordResetRequestView,
     PasswordResetConfirmView,
     CustomUserViewSet,
-    UpdateProfileView,
     ChangePasswordView,
     UserAssignmentViewSet,
     ContactUsView,

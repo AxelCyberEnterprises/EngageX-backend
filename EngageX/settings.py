@@ -193,6 +193,7 @@ if "RDS_HOSTNAME" in os.environ:
         }
     }
     OPENAI_API_KEY = os.environ["OPENAI_API_KEY"]
+    DEEPGRAM_API_KEY = os.environ["DEEPGRAM_API_KEY"]
 
     EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
     EMAIL_HOST = os.environ("EMAIL_HOST")
@@ -224,6 +225,8 @@ else:
     }
 
     OPENAI_API_KEY = config("OPENAI_API_KEY")
+    DEEPGRAM_API_KEY = os.environ["DEEPGRAM_API_KEY"]
+
 
 
 # Password validation

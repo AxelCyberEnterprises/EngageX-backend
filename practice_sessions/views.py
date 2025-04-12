@@ -8,12 +8,21 @@ from rest_framework.exceptions import PermissionDenied
 
 from django.conf import settings
 from django.conf import settings
-from django.db.models import Count, Avg, Case, When, Value, CharField, Sum
+from django.db.models import (
+    Count,
+    Avg,
+    Case,
+    When,
+    Value,
+    CharField,
+    Sum,
+    IntegerField,
+    Q,
+)
 from django.utils.timezone import now
 from django.shortcuts import get_object_or_404
 from django.contrib.auth import get_user_model
 from django.db.models.functions import Cast, TruncMonth
-
 
 import os
 import json
@@ -131,6 +140,7 @@ class SessionDashboardView(APIView):
         data = {}
         today = now().date()
         yesterday = today - timedelta(days=1)
+
         # Get filter parameters from query params
         dashboard_section = request.query_params.get("section")
         start_date_str = request.query_params.get("start_date")
@@ -142,56 +152,88 @@ class SessionDashboardView(APIView):
 
             # Filtering all session base on start date and time and  dashboard section
             if start_date_str and end_date_str:
-                filtered_sessions = sessions.filter(
-                    date__date__range=[start_date_str, end_date_str]
-                )
-
-                # parsed the start date and end date
                 parsed_start = datetime.strptime(start_date_str, "%Y-%m-%d").date()
                 parsed_end = datetime.strptime(end_date_str, "%Y-%m-%d").date()
 
-                # Step 2: Calculate the previous interval
-                interval_length = (parsed_start - parsed_end).days + 1
+                # filtered_sessions = sessions.filter(
+                #     date__date__range=[parsed_start, parsed_end]
+                # )
+
+                # Calculate previous range
+                interval_length = (parsed_end - parsed_start).days + 1
+                print(interval_length)
                 prev_start_date = parsed_start - timedelta(days=interval_length)
                 prev_end_date = parsed_end - timedelta(days=interval_length)
-                previous_sessions = PracticeSession.objects.filter(
+                print(prev_start_date, prev_end_date)
+
+                # Previous session base on the prev date
+                previous_sessions = sessions.filter(
                     date__date__range=(prev_start_date, prev_end_date)
                 )
-            # if not query parameter is provided use yesterday
-            previous_sessions = PracticeSession.objects.filter(
-                date__date__range=(yesterday, yesterday)
-            )
+                print(previous_sessions)
+            else:
+                # use today as current and yesterday as previous (default)
+                filtered_sessions = sessions.filter(date__date=today)
+                previous_sessions = sessions.filter(date__date=yesterday)
+
+            previous_total_sessions_count = previous_sessions.count()
+
             total_sessions_qs = (
-                filtered_sessions
+                sessions.filter(date__date__range=[parsed_start, parsed_end])
                 if dashboard_section == "total_session"
                 else PracticeSession.objects.filter(date__date__range=(today, today))
             )
+
             no_of_sessions_qs = (
-                filtered_sessions
+                sessions.filter(date__date__range=[parsed_start, parsed_end])
                 if dashboard_section == "no_of_session"
                 else PracticeSession.objects.filter(date__date__range=(today, today))
             )
             user_growth_qs = (
-                filtered_sessions if dashboard_section == "user_growth" else sessions
+                sessions.filter(date__date__range=[parsed_start, parsed_end])
+                if dashboard_section == "user_growth"
+                else sessions
+            )
+
+            total_sessions_count = total_sessions_qs.count()
+
+            #  Total session percentage difference
+            total_session_diff = self.calculate_percentage_difference(
+                total_sessions_count, previous_total_sessions_count
             )
 
             current_breakdown = total_sessions_qs.values("session_type").annotate(
-                count=Count("id")
+                session_type_display=Case(
+                    When(session_type="pitch", then=Value("Pitch Practice")),
+                    When(session_type="public", then=Value("Public Speaking")),
+                    When(session_type="presentation", then=Value("Presentation")),
+                    output_field=CharField(),
+                ),
+                count=Count("id"),
             )
+            print(current_breakdown)
             previous_breakdown = previous_sessions.values("session_type").annotate(
                 count=Count("id")
             )
+            print(previous_breakdown)
 
             # Convert previous breakdown to dict for fast lookup
             previous_counts = {
                 entry["session_type"]: entry["count"] for entry in previous_breakdown
             }
+            print(previous_counts)
             # Final list with percentage differences
-            breakdown_with_difference = []
+            breakdown_with_difference = [
+                {
+                    "total_new_session": total_sessions_count,
+                    "previous_total_sessions": previous_total_sessions_count,
+                    "percentage_difference": total_session_diff,
+                }
+            ]
             for entry in current_breakdown:
-                session_type = entry["session_type"]
+                session_type = entry["session_type_display"]
                 current_count = entry["count"]
-                previous_count = previous_counts.get(session_type, 0)
+                previous_count = previous_counts.get(entry["session_type"], 0)
                 percentage_diff = self.calculate_percentage_difference(
                     current_count, previous_count
                 )
@@ -212,14 +254,21 @@ class SessionDashboardView(APIView):
             # )
             last_30_days = now() - timedelta(days=30)
             sessions_over_time = (
-                no_of_sessions_qs.filter(
-                    date__date__range=(start_date_str, end_date_str)
-                )
+                (no_of_sessions_qs)
                 .extra(select={"day": "date(date)"})
-                .values("day", "session_type")
-                .annotate(count=Count("id"))
+                .values("day")
+                .annotate(
+                    session_type=Case(
+                        When(session_type="pitch", then=Value("Pitch Practice")),
+                        When(session_type="public", then=Value("Public Speaking")),
+                        When(session_type="presentation", then=Value("Presentation")),
+                        output_field=CharField(),
+                    ),
+                    count=Count("id"),
+                )
                 .order_by("day")
             )
+
             # recent_sessions = sessions.order_by("-date")[:5].values(
             #     "id", "session_name", "session_type", "date", "duration"
             # )
@@ -293,7 +342,7 @@ class SessionDashboardView(APIView):
             inactive_users_count = total_users_count - active_users_count
 
             data = {
-                "total_sessions": total_sessions,
+                # "total_sessions": total_sessions,
                 "session_breakdown": list(breakdown),
                 "sessions_over_time": list(sessions_over_time),
                 "recent_sessions": list(recent_sessions),
@@ -310,10 +359,15 @@ class SessionDashboardView(APIView):
             latest_session = (
                 PracticeSession.objects.filter(user=user).order_by("-date").first()
             )
+            print(latest_session)
+            latest_session_chunk = ChunkSentimentAnalysis.objects.filter(
+                chunk__session=latest_session
+            )
             latest_aggregated_data = {}
             latest_session_score = None
             performance_analytics_over_time = []
 
+            print(latest_session_chunk)
             if latest_session:
                 # Calculate the average volume for the latest session
                 average_volume = ChunkSentimentAnalysis.objects.filter(
@@ -332,9 +386,9 @@ class SessionDashboardView(APIView):
                     "pace": (
                         average_pace if average_pace is not None else 0.0
                     ),  # Use average pace
-                    "clarity": latest_session.clarity,
-                    "engagement": latest_session.audience_engagement,
-                    "credits": user.userprofile.available_credits,
+                    # "clarity": latest_session.clarity,
+                    # "engagement": latest_session.audience_engagement,
+                    # "credits": user.userprofile.available_credits,
                     # Add other relevant aggregated fields here
                 }
                 # Calculate the latest session score (average impact from chunks)
@@ -352,7 +406,7 @@ class SessionDashboardView(APIView):
                 ).aggregate(
                     avg_volume=Avg("volume"),
                     avg_articulation=Avg("clarity"),
-                    avg_confidence=Avg("confidence"),
+                    # avg_confidence=Avg("confidence"),
                     avg_pace=Avg(
                         "pace"
                     ),  # Include pace here as well if needed in the historical data
@@ -360,25 +414,40 @@ class SessionDashboardView(APIView):
                 if (
                     chunk_data["avg_volume"] is not None
                     and chunk_data["avg_articulation"] is not None
-                    and chunk_data["avg_confidence"] is not None
+                    # and chunk_data["avg_confidence"] is not None
                 ):
                     performance_analytics_over_time.append(
                         {
                             "date": session.date.isoformat(),  # Use isoformat for easy handling in JavaScript
                             "volume": chunk_data["avg_volume"],
                             "articulation": chunk_data["avg_articulation"],
-                            "confidence": chunk_data["avg_confidence"],
+                            # "confidence": chunk_data["avg_confidence"],
                             # might want to include pace in the historical data as well
                         }
                     )
 
             # Calculate averages of the aggregated fields across all user sessions
-            aggregated_averages = PracticeSession.objects.filter(user=user).aggregate(
-                avg_pauses=Avg("pauses"),
-                avg_emotional_impact=Avg("emotional_expression"),
-                avg_audience_engagement=Avg("audience_engagement"),
-                # Add averages for other relevant aggregated fields
+            aggregated_averages = (
+                PracticeSession.objects.filter(
+                    user=user,
+                    audience_engagement__isnull=False,
+                    emotional_expression__isnull=False,
+                )
+                .exclude(Q(audience_engagement="") | Q(emotional_expression=""))
+                .annotate(
+                    audience_engagement_int=Cast("audience_engagement", IntegerField()),
+                    emotional_expression_int=Cast(
+                        "emotional_expression", IntegerField()
+                    ),
+                )
+                .aggregate(
+                    avg_pauses=Avg("pauses"),
+                    avg_audience_engagement=Avg("audience_engagement_int"),
+                    avg_emotional_expression=Avg("emotional_expression_int"),
+                    # Add averages for other relevant aggregated fields
+                )
             )
+            print(aggregated_averages)
 
             data = {
                 "latest_session_data": latest_aggregated_data,
@@ -518,10 +587,19 @@ class ChunkSentimentAnalysisView(APIView):
             avg_brevity=Avg("brevity"),
             avg_transformative_potential=Avg("transformative_potential"),
             avg_body_posture=Avg("body_posture"),
+            avg_trigger_response=Avg("trigger_response"),
+            avg_filler_words=Avg("filler_words"),
+            avg_grammar=Avg("grammar"),
+            avg_posture=Avg("posture"),
+            avg_motion=Avg("motion"),
+            # num_of_true/total_number_of_gestures
+            avg_gestures = Avg("gestures"),
             avg_volume=Avg("volume"),
             avg_pitch=Avg("pitch_variability"),
             avg_pace=Avg("pace"),
         )
+
+        averages["avg_gestures"] = min((averages.get("avg_gestures") or 0) * 100, 100)
 
         full_summary = self.generate_full_summary(session_id)
 
@@ -644,7 +722,7 @@ class PerformanceAnalyticsView(APIView):
     def get(self, request):
         data = (
             ChunkSentimentAnalysis.objects.select_related("chunk__session")
-            .filter(chunk__session__user=request.user)
+            .all()
             .annotate(month=TruncMonth("chunk__session__date"))
             .values("month")
             .annotate(
@@ -664,3 +742,100 @@ class PerformanceAnalyticsView(APIView):
             for item in data
         ]
         return Response(result)
+
+
+class SequenceListView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        sequences = PracticeSequence.objects.filter(user=request.user)
+        sequence_serializer = PracticeSequenceSerializer(sequences, many=True)
+        return Response({"sequences": sequence_serializer.data})
+
+
+class SessionsInSequenceView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, sequence_id):
+        sessions = PracticeSession.objects.filter(
+            sequence_id=sequence_id, user=request.user
+        )
+        session_serializer = PracticeSessionSerializer(sessions, many=True)
+        return Response({"sessions": session_serializer.data})
+
+
+class CompareSessionsView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, session1_id, session2_id):
+        session1 = get_object_or_404(PracticeSession, id=session1_id, user=request.user)
+        session2 = get_object_or_404(PracticeSession, id=session2_id, user=request.user)
+
+        def get_analysis_data(session):
+            return ChunkSentimentAnalysis.objects.filter(chunk__session=session).values(
+                "chunk__id",
+                "engagement",
+                "audience_emotion",
+                "conviction",
+                "clarity",
+                "impact",
+                "brevity",
+                "transformative_potential",
+                "body_posture",
+                "general_feedback_summary",
+                "volume",
+                "pitch_variability",
+                "pace",
+                "chunk_transcript",
+            )
+
+        data = {
+            "session1": {
+                "id": session1.id,
+                "date": session1.date,
+                "analysis": list(get_analysis_data(session1)),
+            },
+            "session2": {
+                "id": session2.id,
+                "date": session2.date,
+                "analysis": list(get_analysis_data(session2)),
+            },
+        }
+
+        return Response(data)
+        # def get_avg_metrics(session_id):
+        #     analyses = ChunkSentimentAnalysis.objects.filter(
+        #         chunk__session__id=session_id,
+        #     )
+        #     count = analyses.count()
+        #     print(analyses)
+        #     print(count)
+        #     if count == 0:
+        #         return {}
+
+        #     return {
+        #         "brevity": sum(a.brevity for a in analyses) / count,
+        #         "impact": sum(a.impact for a in analyses) / count,
+        #         "conviction": sum(a.conviction for a in analyses) / count,
+        #         "clarity": sum(a.clarity for a in analyses) / count,
+        #         "transformative_potential": sum(
+        #             a.transformative_potential for a in analyses
+        #         )
+        #         / count,
+        #     }
+
+        # session1_metrics = get_avg_metrics(session1_id)
+        # session2_metrics = get_avg_metrics(session2_id)
+        # return Response(
+        #     {
+        #         "session1": {
+        #             "id": session1_id,
+        #             "metrics": session1_metrics,
+        #         },
+        #         "session2": {
+        #             "id": session2_id,
+        #             "metrics": session2_metrics,
+        #         },
+        #     }
+        # )
+ 

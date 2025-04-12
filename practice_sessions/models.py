@@ -36,7 +36,7 @@ class PracticeSession(models.Model):
     )
     session_name = models.CharField(max_length=100)
     session_type = models.CharField(max_length=20, choices=SESSION_TYPE_CHOICES)
-    goals = models.TextField(null=True, blank=True, default="Just practicing")
+    goals = models.JSONField(default=list, blank=True, null=True)
     date = models.DateTimeField(auto_now_add=True)
     duration = models.DurationField(
         help_text="Duration of the session", null=True, blank=True
@@ -72,7 +72,6 @@ class PracticeSession(models.Model):
     )
     VIRTUAL_ENVIRONMENT_CHOICES = [
         ("conference_room", "Conference Room"),
-        ("seminar_room", "Seminar Room"),
         ("board_room_1", "Board Room 1"),
         ("board_room_2", "Board Room 2"),
     ]

@@ -15,14 +15,15 @@ django_app = get_asgi_application()
 
 from channels.routing import ProtocolTypeRouter, URLRouter
 from channels.auth import AuthMiddlewareStack
-import streaming.routing
+
+# import streaming.routing
 
 application = ProtocolTypeRouter(
     {
         "http": django_app,
-        "websocket": AuthMiddlewareStack(
-            URLRouter(streaming.routing.websocket_urlpatterns)
-        ),
+        # "websocket": AuthMiddlewareStack(
+        #     URLRouter(streaming.routing.websocket_urlpatterns)
+        # ),
     }
 )
 

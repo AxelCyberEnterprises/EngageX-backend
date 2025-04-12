@@ -186,6 +186,7 @@ class PasswordResetConfirmSerializer(serializers.Serializer):
     email = serializers.EmailField()
     otp = serializers.CharField()
     new_password = serializers.CharField()
+    confirm_new_password = serializers.CharField()
 
 
 class ContactUsSerializer(serializers.Serializer):
@@ -222,6 +223,18 @@ class UserProfileSerializer(serializers.ModelSerializer):
         model = UserProfile
         exclude = ["user"]
         # fields = "__all__"
+
+    def create(self, validated_data):
+        print(validated_data)
+        user_data = validated_data.pop("user", {})
+
+        user = self.context["request"].user  # Or create a new user here if needed
+        for attr, val in user_data.items():
+            setattr(user, attr, val)
+            user.save()
+
+        profile = UserProfile.objects.create(user=user, **validated_data)
+        return profile
 
     def update(self, instance, validated_data):
         print(validated_data)

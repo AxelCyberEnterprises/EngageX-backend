@@ -11,12 +11,19 @@ import cv2
 import mediapipe as mp
 from openai import OpenAI
 import subprocess
+from deepgram import (
+    DeepgramClient,
+    PrerecordedOptions,
+    FileSource,
+) # pip install deepgram-sdk
 
 
 from concurrent.futures import ThreadPoolExecutor
+from dotenv import load_dotenv
 
 from django.conf import settings
 
+load_dotenv()
 
 # load OpenAI API Key
 client = OpenAI(api_key=settings.OPENAI_API_KEY)
@@ -39,7 +46,8 @@ results_data = {
     "back_angles": [],
     "neck_angles": [],
     "back_feedback": "",
-    "neck_feedback": ""
+    "neck_feedback": "",
+    "is_hand_present": "",
 }
 
 lock = threading.Lock()
@@ -117,20 +125,19 @@ def score_pace(speaking_rate):
     return score, rationale
 
 def score_pv(pitch_variability):
-    """scores pitch variability with a peak at 50-60."""
-    score = scale_to_score(pitch_variability, 50, 85)
+    """scores pitch variability with a peak at 50-70."""
+    score = scale_to_score(pitch_variability, 30, 70)
 
-    if 60 <= pitch_variability <= 85:
+    if 50 <= pitch_variability <= 70:
         rationale = "Optimal pitch variability, with dynamic yet controlled expressiveness, promoting engagement and emotional impact"
-    elif 45 <= pitch_variability < 60:
+    elif 40 <= pitch_variability < 50:
         rationale = "Fair pitch variability; could benefit from more variation for expressiveness."
-    elif 30 <= pitch_variability < 45:
+    elif 30 <= pitch_variability < 40:
         rationale = "Slightly low pitch variability; the delivery sounds somewhat monotone."
     elif 15 <= pitch_variability < 30:
         rationale = "Extremely low pitch variability; speech is overly monotone and lacks expressiveness."
     else:
         rationale = "Slightly excessive pitch variability; the delivery may seem erratic."
-
 
     return score, rationale
 
@@ -284,17 +291,38 @@ def process_audio(audio_file, transcript):
 
 # ---------------------- TRANSCRIPTION ----------------------
 
+# no more whisper, change transcript to contain filler words (duplicate)
 def transcribe_audio(audio_file):
-    start_time = time.time()
+    # Path to the audio file
+    api_key=settings.DEEPGRAM_API_KEY
 
-    """transcribes audio using OpenAI Whisper-1."""
-    with open(audio_file, "rb") as audio_file_obj:
-        transcription = client.audio.transcriptions.create(
-            model="whisper-1", file=audio_file_obj
+    try:
+        # STEP 1 Create a Deepgram client using the API key
+        deepgram = DeepgramClient(api_key=api_key)
+
+        with open(audio_file, "rb") as file:
+            buffer_data = file.read()
+
+        payload: FileSource = {
+            "buffer": buffer_data,
+        }
+
+        # STEP 2: Configure Deepgram options for audio analysis
+        options = PrerecordedOptions(
+            model="nova-3",
+            smart_format=True,
+            filler_words=True,
         )
-    elapsed_time = time.time() - start_time
-    print(f"\nElapsed time for transcribe audio: {elapsed_time:.2f} seconds")
-    return transcription.text
+
+        # STEP 3: Call the transcribe_file method with the text payload and options
+        response = deepgram.listen.rest.v("1").transcribe_file(payload, options)
+
+        # STEP 4: Print the response
+        transcript = response['results']['channels'][0]['alternatives'][0]['transcript']
+        return transcript
+
+    except Exception as e:
+        print(f"Exception: {e}")
 
 
 
@@ -318,12 +346,63 @@ def extract_posture_angles(landmarks, image_width, image_height):
     def to_pixel(landmark):
         return (int(landmark.x * image_width), int(landmark.y * image_height))
 
+    
+    visibility_threshold = 0.5
+
+    left_pinky_present = right_pinky_present = left_index_present = right_index_present = left_thumb_present = right_thumb_present = left_wrist_present = right_wrist_present = False
+
     left_shoulder = to_pixel(landmarks[mp_pose.PoseLandmark.LEFT_SHOULDER.value])
     right_shoulder = to_pixel(landmarks[mp_pose.PoseLandmark.RIGHT_SHOULDER.value])
+
     left_ear = to_pixel(landmarks[mp_pose.PoseLandmark.LEFT_EAR.value])
     right_ear = to_pixel(landmarks[mp_pose.PoseLandmark.RIGHT_EAR.value])
+
     left_hip = to_pixel(landmarks[mp_pose.PoseLandmark.LEFT_HIP.value])
     right_hip = to_pixel(landmarks[mp_pose.PoseLandmark.RIGHT_HIP.value])
+
+    left_wrist = landmarks[mp_pose.PoseLandmark.LEFT_WRIST.value]
+    right_wrist = landmarks[mp_pose.PoseLandmark.RIGHT_WRIST.value]
+
+    left_pinky = (landmarks[mp_pose.PoseLandmark.LEFT_PINKY.value])
+    right_pinky = (landmarks[mp_pose.PoseLandmark.RIGHT_PINKY.value])
+
+    left_index = (landmarks[mp_pose.PoseLandmark.LEFT_INDEX.value])
+    right_index = (landmarks[mp_pose.PoseLandmark.RIGHT_INDEX.value])
+
+    left_thumb = (landmarks[mp_pose.PoseLandmark.LEFT_THUMB.value])
+    right_thumb = (landmarks[mp_pose.PoseLandmark.RIGHT_THUMB.value])
+
+    if left_wrist.visibility > visibility_threshold:
+        left_wrist_present = True
+        left_wrist = to_pixel(left_wrist)
+
+    if right_wrist.visibility > visibility_threshold:
+        right_wrist_present = True
+        right_wrist = to_pixel(right_wrist)
+
+    if left_pinky.visibility > visibility_threshold:
+        left_pinky_present = True
+        left_pinky = to_pixel(left_pinky)
+
+    if right_pinky.visibility > visibility_threshold:
+        right_pinky_present = True
+        right_pinky = to_pixel(right_pinky)
+
+    if left_index.visibility > visibility_threshold:
+        left_index_present = True
+        left_index = to_pixel(left_index)
+
+    if right_index.visibility > visibility_threshold:
+        right_index_present = True
+        right_index = to_pixel(right_index)
+
+    if left_thumb.visibility > visibility_threshold:
+        left_thumb_present = True
+        left_thumb = to_pixel(left_thumb)
+
+    if right_thumb.visibility > visibility_threshold:
+        right_thumb_present = True
+        right_thumb = to_pixel(right_thumb)
 
     shoulder_mid = ((left_shoulder[0] + right_shoulder[0]) // 2, (left_shoulder[1] + right_shoulder[1]) // 2)
     hip_mid = ((left_hip[0] + right_hip[0]) // 2, (left_hip[1] + right_hip[1]) // 2)
@@ -334,12 +413,24 @@ def extract_posture_angles(landmarks, image_width, image_height):
 
     return {
         "neck_inclination": neck_inclination,
-        "back_inclination": back_inclination
+        "back_inclination": back_inclination,
+        "left_wrist_present": left_wrist_present,
+        "right_wrist_present": right_wrist_present,
+        "left_pinky_present": left_pinky_present,
+        "right_pinky_present": right_pinky_present,
+        "left_index_present": left_index_present,
+        "right_index_present": right_index_present,
+        "left_thumb_present": left_thumb_present,
+        "right_thumb_present": right_thumb_present
     }
+
 
 # Capture Thread
 def capture_frames(video_path):
     cap = cv2.VideoCapture(video_path)
+    if not cap.isOpened():
+        print(f"Error: Could not open video file {video_path}")
+        False
     fps = cap.get(cv2.CAP_PROP_FPS)
 
     while cap.isOpened():
@@ -370,6 +461,25 @@ def process_frames():
                     results_data["back_angles"].append(angles['back_inclination'])
                     results_data["neck_angles"].append(angles['neck_inclination'])
 
+                
+                # check if any points on the hand are present
+                if (
+                    angles["left_wrist_present"] == True or
+                    angles["right_wrist_present"] == True or
+                    angles["left_pinky_present"] == True or
+                    angles["right_pinky_present"] == True or
+                    angles["left_index_present"] == True or
+                    angles["right_index_present"] == True or
+                    angles["left_thumb_present"] == True or
+                    angles["right_thumb_present"] == True
+                ):
+                    with lock:
+                        results_data["is_hand_present"] = True
+                else:
+                    with lock:
+                        results_data["is_hand_present"] = False
+                
+                # calculate time in posture
                 if angles["back_inclination"] > posture_threshold:
                     with lock:
                         results_data["bad_back_frames"] += 1
@@ -410,8 +520,10 @@ def analyze_posture(video_path):
         mean_neck = np.mean(results_data["neck_angles"]) if results_data["neck_angles"] else 0
         range_neck = np.max(results_data["neck_angles"]) - np.min(results_data["neck_angles"]) if results_data["neck_angles"] else 0
 
+        is_hand_present = results_data["is_hand_present"] if results_data["is_hand_present"] else 0
+
         # Normalize to match the known video length (60 seconds)
-        video_duration = 30
+        video_duration = 40
 
         # Time spent in good/bad posture
         gb_time = results_data["good_back_frames"] / 30
@@ -455,7 +567,8 @@ def analyze_posture(video_path):
             "good_back_time": round(good_back_time, 2), # body posture score (time)
             "bad_back_time": round(bad_back_time, 2),
             "good_neck_time": round(good_neck_time, 2),
-            "bad_neck_time": round(bad_neck_time, 2)
+            "bad_neck_time": round(bad_neck_time, 2),
+            "is_hand_present": is_hand_present
         }
 
 
@@ -471,6 +584,8 @@ def analyze_sentiment(transcript, metrics, posture_data):
     range_back_score, range_back_rationale = score_posture(posture_data["range_back_inclination"] ,1.5, 5, "Back")
     range_neck_score, range_neck_rationale = score_posture(posture_data["range_neck_inclination"] ,1.5, 5, "Neck")
     range_body_posture = (range_back_score + range_neck_score)/2
+
+    is_hand_present = posture_data["is_hand_present"]
 
     prompt = f"""
     You are an advanced presentation evaluation system. Using the provided speech metrics, their rationale and the speakers transcript, generate a performance analysis with the following scores (each on a scale of 1–100) and a general feedback summary. Return valid JSON only
@@ -506,6 +621,16 @@ def analyze_sentiment(transcript, metrics, posture_data):
     Transformative Potential:
       - Potential to motivate significant change or shift perspectives.
 
+    Trigger Response:
+      - Indicates to what extent the presentation is compelling to the audience emotions
+
+    Filler Words
+      - Filler words are bad and affect overall audience engagement. Score 100 if there are no filler words, then -10 for each filler word
+
+    Grammar
+      - Based on the transcript, grade the speaker's grammar. Score 100 if there are no grammatical errors, then -10 for each grammatical error
+   
+
     Body Posture:
      - Based on the overall quality of posture alignment and stability. A high score reflects steady posture, minimal stiffness, and low time in poor posture.
      - Posture score: {mean_body_posture} {mean_back_rationale} {mean_neck_rationale}, stiffness score: {range_body_posture} {range_back_rationale} {range_neck_rationale}
@@ -518,7 +643,7 @@ def analyze_sentiment(transcript, metrics, posture_data):
 
     Response Requirements:
     1) Output valid JSON only, no extra text.
-    2) Each required field must appear in the JSON. Scores are numeric [1–100]
+    2) Each required field must appear in the JSON. Scores are numeric [1-100]
     """
 
     completion = client.chat.completions.create(
@@ -540,13 +665,17 @@ def analyze_sentiment(transcript, metrics, posture_data):
                         "Impact": {"type": "number"},
                         "Brevity": {"type": "number"},
                         "Transformative Potential": {"type": "number"},
-                        "Body Posture": {"type": "number"},
+                        "Trigger Response": {"type": "number"},
+                        "Filler Words": {"type": "number"},
+                        "Grammar": {"type": "number"},
                         "General Feedback Summary": {"type": "string"},
                     },
                     "required": [
                         "Engagement", "Audience Emotion", "Conviction", 
                         "Clarity", "Impact", "Brevity",
-                        "Transformative Potential","Body Posture", "General Feedback Summary"
+                        "Transformative Potential","Trigger Response",
+                        "Filler Words", "Grammar", 
+                        "General Feedback Summary",
                     ]
             }
             }
@@ -559,6 +688,11 @@ def analyze_sentiment(transcript, metrics, posture_data):
     try:
         parsed_response = {}
         parsed_response['Feedback'] = json.loads(response)
+        parsed_response['Posture Scores'] = {
+            "Posture": mean_body_posture,
+            "Motion": range_body_posture,
+            "Gestures": is_hand_present
+        }        
     except json.JSONDecoder:
         print("Invalid JSON format in response.")
         return None
@@ -695,6 +829,7 @@ def analyze_results(transcript_text, video_path, audio_path_for_metrics):
 
         final_json = {
             'Feedback': sentiment_analysis.get('Feedback'),
+            'Posture': sentiment_analysis.get('Posture Scores'),
             'Scores': metrics.get('Scores', {}),
             'Transcript': transcript_text
         }

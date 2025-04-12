@@ -8,6 +8,9 @@ from .views import (
     SessionChunkViewSet,
     SessionReportView,
     PerformanceAnalyticsView,
+    SequenceListView,
+    SessionsInSequenceView,
+    CompareSessionsView,
 )
 
 router = DefaultRouter()
@@ -31,7 +34,7 @@ urlpatterns = [
         name="practice-session-upload-slides",
     ),
     path(
-        "sessions-report/<int:session_id>/chunk-summary/",
+        "sessions-report/<int:session_id>/",
         SessionReportView.as_view(),
         name="chunk-summary",
     ),
@@ -39,5 +42,16 @@ urlpatterns = [
         "performance-analytics/",
         PerformanceAnalyticsView.as_view(),
         name="performance-analytics",
+    ),
+    path("sequences/", SequenceListView.as_view(), name="sequence-list"),
+    path(
+        "sequences/<str:sequence_id>/sessions/",
+        SessionsInSequenceView.as_view(),
+        name="sessions-in-sequence",
+    ),
+    path(
+        "compare-sessions/<str:session1_id>/<str:session2_id>",
+        CompareSessionsView.as_view(),
+        name="compare-sessions",
     ),
 ]
