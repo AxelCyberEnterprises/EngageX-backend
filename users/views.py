@@ -423,6 +423,7 @@ class PasswordResetConfirmView(APIView):
         email = request.data.get("email")
         otp = request.data.get("otp")
         new_password = request.data.get("new_password")
+        confirm_new_passsword = request.data.get("confirm_new_password")
 
         # Log the incoming request data
         print(
@@ -441,6 +442,14 @@ class PasswordResetConfirmView(APIView):
                 {
                     "status": "error",
                     "message": f"Missing required fields: {', '.join(missing_fields)}",
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if new_password != confirm_new_passsword:
+            return Response(
+                {
+                    "status": "error",
+                    "message": f"Incorrect Password",
                 },
                 status=status.HTTP_400_BAD_REQUEST,
             )
@@ -582,16 +591,8 @@ class UserProfileViewSet(viewsets.ModelViewSet):
                 # Admins can see everything
                 return UserProfile.objects.all()
 
-            elif user.userprofile.is_presenter():
-                # Presenters can only see their own profile
+            elif user.userprofile.is_user():
                 return UserProfile.objects.filter(user=user)
-
-            elif user.userprofile.is_coach():
-                # Coaches can see assigned users
-                assigned_users = UserAssignment.objects.filter(coach=user).values_list(
-                    "presenter", flat=True
-                )
-                return UserProfile.objects.filter(user_id__in=assigned_users)
 
         # Default: Return an empty queryset for non-admin, non-presenter, non-coach and users without userprofile
         return UserProfile.objects.none()
@@ -603,48 +604,48 @@ class UserProfileViewSet(viewsets.ModelViewSet):
     #     return Response(serializer.data)
 
 
-class UpdateProfileView(APIView):
-    """
-    Allows users to update their profiles (UserProfile), including profile picture, fully or partially.
-    """
+# class UpdateProfileView(APIView):
+#     """
+#     Allows users to update their profiles (UserProfile), including profile picture, fully or partially.
+#     """
 
-    permission_classes = [permissions.IsAuthenticated]
+#     permission_classes = [permissions.IsAuthenticated]
 
-    def put(self, request, *args, **kwargs):
-        user = request.user
-        profile = user.userprofile  # Assuming a OneToOne relationship
+#     def put(self, request, *args, **kwargs):
+#         user = request.user
+#         profile = user.userprofile  # Assuming a OneToOne relationship
 
-        first_name = request.data.pop("first_name")
-        last_name = request.data.pop("last_name")
-        email = request.data.pop("email")
-        # Use UpdateProfileSerializer for UserProfile
-        profile_serializer = UpdateProfileSerializer(
-            profile, data=request.data, partial=True
-        )
+#         first_name = request.data.pop("first_name")
+#         last_name = request.data.pop("last_name")
+#         email = request.data.pop("email")
+#         # Use UpdateProfileSerializer for UserProfile
+#         profile_serializer = UpdateProfileSerializer(
+#             profile, data=request.data, partial=True
+#         )
 
-        if profile_serializer.is_valid():  # Only validate profile_serializer
-            profile_serializer.save()  # Only save profile_serializer
-            return Response(
-                {
-                    "status": "success",
-                    "message": "Profile updated successfully.",
-                    "data": {
-                        "profile": profile_serializer.data  # Return only profile data as we are only updating profile now in this endpoint.
-                    },
-                },
-                status=status.HTTP_200_OK,
-            )
+#         if profile_serializer.is_valid():  # Only validate profile_serializer
+#             profile_serializer.save()  # Only save profile_serializer
+#             return Response(
+#                 {
+#                     "status": "success",
+#                     "message": "Profile updated successfully.",
+#                     "data": {
+#                         "profile": profile_serializer.data  # Return only profile data as we are only updating profile now in this endpoint.
+#                     },
+#                 },
+#                 status=status.HTTP_200_OK,
+#             )
 
-        return Response(
-            {
-                "status": "fail",
-                "message": "Profile update failed.",
-                "errors": {
-                    "profile": profile_serializer.errors  # Only return profile serializer errors
-                },
-            },
-            status=status.HTTP_400_BAD_REQUEST,
-        )
+#         return Response(
+#             {
+#                 "status": "fail",
+#                 "message": "Profile update failed.",
+#                 "errors": {
+#                     "profile": profile_serializer.errors  # Only return profile serializer errors
+#                 },
+#             },
+#             status=status.HTTP_400_BAD_REQUEST,
+#         )
 
 
 class ChangePasswordView(APIView):
