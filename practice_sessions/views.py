@@ -140,6 +140,7 @@ class SessionDashboardView(APIView):
         data = {}
         today = now().date()
         yesterday = today - timedelta(days=1)
+
         # Get filter parameters from query params
         dashboard_section = request.query_params.get("section")
         start_date_str = request.query_params.get("start_date")
@@ -151,37 +152,54 @@ class SessionDashboardView(APIView):
 
             # Filtering all session base on start date and time and  dashboard section
             if start_date_str and end_date_str:
-                filtered_sessions = sessions.filter(
-                    date__date__range=[start_date_str, end_date_str]
-                )
-
-                # parsed the start date and end date
                 parsed_start = datetime.strptime(start_date_str, "%Y-%m-%d").date()
                 parsed_end = datetime.strptime(end_date_str, "%Y-%m-%d").date()
 
-                # Step 2: Calculate the previous interval
-                interval_length = (parsed_start - parsed_end).days + 1
+                # filtered_sessions = sessions.filter(
+                #     date__date__range=[parsed_start, parsed_end]
+                # )
+
+                # Calculate previous range
+                interval_length = (parsed_end - parsed_start).days + 1
+                print(interval_length)
                 prev_start_date = parsed_start - timedelta(days=interval_length)
                 prev_end_date = parsed_end - timedelta(days=interval_length)
-                previous_sessions = PracticeSession.objects.filter(
+                print(prev_start_date, prev_end_date)
+
+                # Previous session base on the prev date
+                previous_sessions = sessions.filter(
                     date__date__range=(prev_start_date, prev_end_date)
                 )
-            # if not query parameter is provided use yesterday
-            previous_sessions = PracticeSession.objects.filter(
-                date__date__range=(yesterday, yesterday)
-            )
+                print(previous_sessions)
+            else:
+                # use today as current and yesterday as previous (default)
+                filtered_sessions = sessions.filter(date__date=today)
+                previous_sessions = sessions.filter(date__date=yesterday)
+
+            previous_total_sessions_count = previous_sessions.count()
+
             total_sessions_qs = (
-                filtered_sessions
+                sessions.filter(date__date__range=[parsed_start, parsed_end])
                 if dashboard_section == "total_session"
                 else PracticeSession.objects.filter(date__date__range=(today, today))
             )
+
             no_of_sessions_qs = (
-                filtered_sessions
+                sessions.filter(date__date__range=[parsed_start, parsed_end])
                 if dashboard_section == "no_of_session"
                 else PracticeSession.objects.filter(date__date__range=(today, today))
             )
             user_growth_qs = (
-                filtered_sessions if dashboard_section == "user_growth" else sessions
+                sessions.filter(date__date__range=[parsed_start, parsed_end])
+                if dashboard_section == "user_growth"
+                else sessions
+            )
+
+            total_sessions_count = total_sessions_qs.count()
+
+            #  Total session percentage difference
+            total_session_diff = self.calculate_percentage_difference(
+                total_sessions_count, previous_total_sessions_count
             )
 
             current_breakdown = total_sessions_qs.values("session_type").annotate(
@@ -193,20 +211,29 @@ class SessionDashboardView(APIView):
                 ),
                 count=Count("id"),
             )
+            print(current_breakdown)
             previous_breakdown = previous_sessions.values("session_type").annotate(
                 count=Count("id")
             )
+            print(previous_breakdown)
 
             # Convert previous breakdown to dict for fast lookup
             previous_counts = {
                 entry["session_type"]: entry["count"] for entry in previous_breakdown
             }
+            print(previous_counts)
             # Final list with percentage differences
-            breakdown_with_difference = []
+            breakdown_with_difference = [
+                {
+                    "total_new_session": total_sessions_count,
+                    "previous_total_sessions": previous_total_sessions_count,
+                    "percentage_difference": total_session_diff,
+                }
+            ]
             for entry in current_breakdown:
                 session_type = entry["session_type_display"]
                 current_count = entry["count"]
-                previous_count = previous_counts.get(session_type, 0)
+                previous_count = previous_counts.get(entry["session_type"], 0)
                 percentage_diff = self.calculate_percentage_difference(
                     current_count, previous_count
                 )
@@ -227,14 +254,21 @@ class SessionDashboardView(APIView):
             # )
             last_30_days = now() - timedelta(days=30)
             sessions_over_time = (
-                no_of_sessions_qs.filter(
-                    date__date__range=(start_date_str, end_date_str)
-                )
+                (no_of_sessions_qs)
                 .extra(select={"day": "date(date)"})
-                .values("day", "session_type")
-                .annotate(count=Count("id"))
+                .values("day")
+                .annotate(
+                    session_type=Case(
+                        When(session_type="pitch", then=Value("Pitch Practice")),
+                        When(session_type="public", then=Value("Public Speaking")),
+                        When(session_type="presentation", then=Value("Presentation")),
+                        output_field=CharField(),
+                    ),
+                    count=Count("id"),
+                )
                 .order_by("day")
             )
+
             # recent_sessions = sessions.order_by("-date")[:5].values(
             #     "id", "session_name", "session_type", "date", "duration"
             # )
@@ -308,7 +342,7 @@ class SessionDashboardView(APIView):
             inactive_users_count = total_users_count - active_users_count
 
             data = {
-                "total_sessions": total_sessions,
+                # "total_sessions": total_sessions,
                 "session_breakdown": list(breakdown),
                 "sessions_over_time": list(sessions_over_time),
                 "recent_sessions": list(recent_sessions),
