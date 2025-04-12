@@ -294,7 +294,7 @@ def process_audio(audio_file, transcript):
 # no more whisper, change transcript to contain filler words (duplicate)
 def transcribe_audio(audio_file):
     # Path to the audio file
-    api_key=os.getenv("DEEPGRAM_API_KEY")
+    api_key=settings.DEEPGRAM_API_KEY
 
     try:
         # STEP 1 Create a Deepgram client using the API key
@@ -474,10 +474,10 @@ def process_frames():
                     angles["right_thumb_present"] == True
                 ):
                     with lock:
-                        results_data["is_hand_present"] = "Yes"
+                        results_data["is_hand_present"] = True
                 else:
                     with lock:
-                        results_data["is_hand_present"] = "No"
+                        results_data["is_hand_present"] = False
                 
                 # calculate time in posture
                 if angles["back_inclination"] > posture_threshold:
@@ -689,8 +689,8 @@ def analyze_sentiment(transcript, metrics, posture_data):
         parsed_response = {}
         parsed_response['Feedback'] = json.loads(response)
         parsed_response['Posture Scores'] = {
-            "Body Posture": mean_body_posture,
-            "Body Motion": range_body_posture,
+            "Posture": mean_body_posture,
+            "Motion": range_body_posture,
             "Gestures": is_hand_present
         }        
     except json.JSONDecoder:

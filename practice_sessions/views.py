@@ -553,10 +553,19 @@ class ChunkSentimentAnalysisView(APIView):
             avg_brevity=Avg("brevity"),
             avg_transformative_potential=Avg("transformative_potential"),
             avg_body_posture=Avg("body_posture"),
+            avg_trigger_response=Avg("trigger_response"),
+            avg_filler_words=Avg("filler_words"),
+            avg_grammar=Avg("grammar"),
+            avg_posture=Avg("posture"),
+            avg_motion=Avg("motion"),
+            # num_of_true/total_number_of_gestures
+            avg_gestures = Avg("gestures"),
             avg_volume=Avg("volume"),
             avg_pitch=Avg("pitch_variability"),
             avg_pace=Avg("pace"),
         )
+
+        averages["avg_gestures"] = min((averages.get("avg_gestures") or 0) * 100, 100)
 
         full_summary = self.generate_full_summary(session_id)
 
@@ -795,3 +804,4 @@ class CompareSessionsView(APIView):
         #         },
         #     }
         # )
+ 
