@@ -36,7 +36,7 @@ class PracticeSession(models.Model):
     )
     session_name = models.CharField(max_length=100)
     session_type = models.CharField(max_length=20, choices=SESSION_TYPE_CHOICES)
-    goals = models.JSONField(default=list, blank=True, null=True)
+    goals = models.CharField(blank=True, null=True)
     date = models.DateTimeField(auto_now_add=True)
     duration = models.DurationField(
         help_text="Duration of the session", null=True, blank=True
@@ -85,6 +85,30 @@ class PracticeSession(models.Model):
 
     allow_ai_questions = models.BooleanField(
         default=False, help_text="Allow AI to ask random questions during the session"
+    )
+
+    # New fields for sentiment analysis response (aggregated for the session)
+    trigger_response = models.IntegerField(
+        default=0, help_text="Total trigger responses detected in the session"
+    )
+    filler_words = models.IntegerField(
+        default=0, help_text="Total filler words used in the session"
+    )
+    grammar = models.IntegerField(
+        default=0, help_text="Overall grammar score or number of errors in the session"
+    )
+    posture = models.IntegerField(
+        default=0,
+        validators=[MinValueValidator(0), MaxValueValidator(100)],
+        help_text="Overall posture score for the session",
+    )
+    motion = models.IntegerField(
+        default=0,
+        validators=[MinValueValidator(0), MaxValueValidator(100)],
+        help_text="Overall motion score for the session",
+    )
+    gestures = models.BooleanField(
+        default=False, help_text="Presence of positive gestures in the session"
     )
 
     def __str__(self):
@@ -172,6 +196,28 @@ class ChunkSentimentAnalysis(models.Model):
     )
     pace = models.FloatField(null=True, blank=True, help_text="Pace")
     chunk_transcript = models.TextField(blank=True, null=True, help_text="Transcript")
+
+    # New fields for sentiment analysis response
+    trigger_response = models.IntegerField(
+        default=0, help_text="Number of trigger responses detected"
+    )
+    filler_words = models.IntegerField(
+        default=0, help_text="Number of filler words used"
+    )
+    grammar = models.IntegerField(
+        default=0, help_text="Grammar score or number of errors"
+    )
+    posture = models.IntegerField(
+        default=0,
+        validators=[MinValueValidator(0), MaxValueValidator(100)],
+        help_text="Posture score",
+    )
+    motion = models.IntegerField(
+        default=0,
+        validators=[MinValueValidator(0), MaxValueValidator(100)],
+        help_text="Motion score",
+    )
+    gestures = models.BooleanField(default=False, help_text="Presence of positive gestures")
 
     def __str__(self):
         return f"Sentiment Analysis for Chunk {self.chunk.start_time}-{self.chunk.end_time} of {self.chunk.session.session_name}"
