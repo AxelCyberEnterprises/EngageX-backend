@@ -30,6 +30,7 @@ from datetime import timedelta
 from datetime import datetime, timedelta
 from collections import Counter
 from openai import OpenAI
+from drf_yasg.utils import swagger_auto_schema
 
 
 from .models import (
@@ -44,6 +45,7 @@ from .serializers import (
     PracticeSequenceSerializer,
     ChunkSentimentAnalysisSerializer,
     SessionChunkSerializer,
+    SessionReportSerializer,
 )
 
 User = get_user_model()
@@ -593,7 +595,7 @@ class ChunkSentimentAnalysisView(APIView):
             avg_posture=Avg("posture"),
             avg_motion=Avg("motion"),
             # num_of_true/total_number_of_gestures
-            avg_gestures = Avg("gestures"),
+            avg_gestures=Avg("gestures"),
             avg_volume=Avg("volume"),
             avg_pitch=Avg("pitch_variability"),
             avg_pace=Avg("pace"),
@@ -655,9 +657,19 @@ class ChunkSentimentAnalysisViewSet(viewsets.ModelViewSet):
 class SessionReportView(APIView):
     permission_classes = [IsAuthenticated]
 
-    def get(self, request, session_id):
+    @swagger_auto_schema(
+        operation_description="update the session duration and get the session summary",
+        request_body=SessionReportSerializer,
+        responses={},
+    )
+    def post(self, request, session_id):
+        duration = request.data.get("duration")
         try:
             session = PracticeSession.objects.get(id=session_id, user=request.user)
+            if duration:
+                session.duration = duration
+                session.save()
+            print(session.duration)
         except PracticeSession.DoesNotExist:
             return Response(
                 {"error": "Session not found"}, status=status.HTTP_404_NOT_FOUND
@@ -675,6 +687,14 @@ class SessionReportView(APIView):
         all_pitch = []
         all_pace = []
         all_pauses = []
+        all_engagement = []
+        all_conviction = []
+        all_body_posture = []
+        all_posture = []
+        all_motion = []
+        all_grammar = []
+        all_filler_words = []
+        all_trigger_reponse = []
 
         for index, chunk in enumerate(chunks, start=1):
             if hasattr(chunk, "sentiment_analysis"):
@@ -699,6 +719,14 @@ class SessionReportView(APIView):
                 all_pitch.append(analysis.pitch_variability)
                 all_pace.append(analysis.pace)
                 all_pauses.append(session.pauses)
+                all_engagement.append(analysis.engagement)
+                all_conviction.append(analysis.conviction)
+                all_body_posture.append(analysis.body_posture)
+                all_posture.append(analysis.posture)
+                all_motion.append(analysis.motion)
+                all_grammar.append(analysis.grammar)
+                all_filler_words.append(analysis.filler_words)
+                all_trigger_reponse.append(analysis.trigger_response)
 
         # Compute averages
         def safe_avg(lst):
@@ -713,8 +741,26 @@ class SessionReportView(APIView):
             "pitch": safe_avg(all_pitch),
             "pace": safe_avg(all_pace),
             "pauses": safe_avg(all_pauses),
+            "trigger_response": safe_avg(all_trigger_reponse),
+            "filler_words": safe_avg(all_filler_words),
+            "grammar": safe_avg(all_grammar),
+            "posture": safe_avg(all_posture),
+            "motion": safe_avg(all_motion),
         }
 
+        try:
+            session = PracticeSession.objects.get(id=session_id, user=request.user)
+            session.impact = safe_avg(all_clarity)
+            session.trigger_response = safe_avg(all_trigger_reponse)
+            session.filler_words = safe_avg(all_filler_words)
+            session.grammar = safe_avg(all_grammar)
+            session.posture = safe_avg(all_posture)
+            session.motion = safe_avg(all_motion)
+            session.save()
+        except PracticeSession.DoesNotExist:
+            return Response(
+                {"error": "Session not found"}, status=status.HTTP_404_NOT_FOUND
+            )
         return Response({"graph_data": graph_data, "averages": averages})
 
 
@@ -838,4 +884,3 @@ class CompareSessionsView(APIView):
         #         },
         #     }
         # )
- 
