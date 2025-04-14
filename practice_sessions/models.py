@@ -36,7 +36,7 @@ class PracticeSession(models.Model):
     )
     session_name = models.CharField(max_length=100)
     session_type = models.CharField(max_length=20, choices=SESSION_TYPE_CHOICES)
-    goals = models.CharField(blank=True, null=True)
+    goals = models.JSONField(default=list, blank=True, null=True)
     date = models.DateTimeField(auto_now_add=True)
     duration = models.DurationField(
         help_text="Duration of the session", null=True, blank=True
@@ -217,7 +217,9 @@ class ChunkSentimentAnalysis(models.Model):
         validators=[MinValueValidator(0), MaxValueValidator(100)],
         help_text="Motion score",
     )
-    gestures = models.BooleanField(default=False, help_text="Presence of positive gestures")
+    gestures = models.BooleanField(
+        default=False, help_text="Presence of positive gestures"
+    )
 
     def __str__(self):
         return f"Sentiment Analysis for Chunk {self.chunk.start_time}-{self.chunk.end_time} of {self.chunk.session.session_name}"
