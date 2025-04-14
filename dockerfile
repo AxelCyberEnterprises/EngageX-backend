@@ -45,6 +45,8 @@ ENV PORT=""
 
 # # OpenAI config
 ENV OPENAI_API_KEY=""
+ENV DEEPGRAM_API_KEY=""
+
 
 # # AWS SES config
 ENV EMAIL_HOST=""

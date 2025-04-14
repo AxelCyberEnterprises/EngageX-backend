@@ -541,18 +541,18 @@ class CustomUserViewSet(UserViewSet):
 
         # Ensure required fields are present
         password = request.data.get("password")
-        re_password = request.data.get("re_password")
+        confirm_password = request.data.get("confirm_password")
 
-        if not password or not re_password:
+        if not password or not confirm_password:
             return Response(
                 {
                     "status": "fail",
-                    "message": "Both password and re_password fields are required.",
+                    "message": "Both password and confirm_password fields are required.",
                 },
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        if password != re_password:
+        if password != confirm_password:
             return Response(
                 {"status": "fail", "message": "Passwords do not match."},
                 status=status.HTTP_400_BAD_REQUEST,
