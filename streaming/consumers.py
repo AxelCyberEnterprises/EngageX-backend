@@ -775,7 +775,7 @@ class LiveSessionConsumer(AsyncWebsocketConsumer):
                     'impact': analysis_result.get('Feedback', {}).get('Impact', 0),
                     'brevity': analysis_result.get('Feedback', {}).get('Brevity', 0),
                     'transformative_potential': analysis_result.get('Feedback', {}).get('Transformative Potential', 0),
-                    'body_posture': analysis_result.get('Feedback', {}).get('Body Posture', 0),
+                    'body_posture': analysis_result.get('Posture', {}).get('Body Posture', 0), # example call
                     'general_feedback_summary': analysis_result.get('Feedback', {}).get('General Feedback Summary', ''),
                     'volume': analysis_result.get('Scores', {}).get('Volume Score'),
                     'pitch_variability': analysis_result.get('Scores', {}).get('Pitch Variability Score'),

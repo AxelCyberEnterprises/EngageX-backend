@@ -150,9 +150,9 @@ EMAIL_USE_TLS = True
 EMAIL_HOST_USER = config("EMAIL_HOST_USER")
 EMAIL_HOST_PASSWORD = config("EMAIL_HOST_PASSWORD")
 DEFAULT_FROM_EMAIL = config("DEFAULT_FROM_EMAIL")
-AWS_ACCESS_KEY_ID = config('AWS_ACCESS_KEY_ID')
-AWS_SECRET_ACCESS_KEY = config('AWS_SECRET_ACCESS_KEY')
-AWS_SES_REGION = config('AWS_SES_REGION', 'us-west-1')
+AWS_ACCESS_KEY_ID = config("AWS_ACCESS_KEY_ID")
+AWS_SECRET_ACCESS_KEY = config("AWS_SECRET_ACCESS_KEY")
+AWS_SES_REGION = config("AWS_SES_REGION", "us-west-1")
 
 
 # Database
@@ -193,6 +193,7 @@ if "RDS_HOSTNAME" in os.environ:
         }
     }
     OPENAI_API_KEY = os.environ["OPENAI_API_KEY"]
+    DEEPGRAM_API_KEY = os.environ["DEEPGRAM_API_KEY"]
 
     EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
     EMAIL_HOST = os.environ("EMAIL_HOST")
@@ -202,10 +203,9 @@ if "RDS_HOSTNAME" in os.environ:
     EMAIL_HOST_PASSWORD = os.environ("EMAIL_HOST_PASSWORD")
     DEFAULT_FROM_EMAIL = os.environ("DEFAULT_FROM_EMAIL")
 
-
-    AWS_ACCESS_KEY_ID = os.environ('AWS_ACCESS_KEY_ID')
-    AWS_SECRET_ACCESS_KEY = os.environ('AWS_SECRET_ACCESS_KEY')
-    AWS_SES_REGION = os.environ('AWS_SES_REGION', 'us-west-1')
+    AWS_ACCESS_KEY_ID = os.environ("AWS_ACCESS_KEY_ID")
+    AWS_SECRET_ACCESS_KEY = os.environ("AWS_SECRET_ACCESS_KEY")
+    AWS_SES_REGION = os.environ("AWS_SES_REGION", "us-west-1")
 
 else:
     # Local development settings (PostgreSQL)
@@ -224,6 +224,7 @@ else:
     }
 
     OPENAI_API_KEY = config("OPENAI_API_KEY")
+    DEEPGRAM_API_KEY = os.environ["DEEPGRAM_API_KEY"]
 
 
 # Password validation
@@ -337,6 +338,14 @@ CHANNEL_LAYERS = {
     },
 }
 
+CORS_ALLOW_METHODS = [
+    "DELETE",
+    "GET",
+    "OPTIONS",
+    "PATCH",
+    "POST",
+    "PUT",
+]
 # settings.py
 
 LOGGING = {
