@@ -138,3 +138,7 @@ class ChunkSentimentAnalysisSerializer(serializers.ModelSerializer):
             "general_feedback_summary",
         ]
         read_only_fields = ["id"]
+
+
+class SessionReportSerializer(serializers.Serializer):
+    duration = serializers.CharField(allow_null=True, allow_blank=True)
