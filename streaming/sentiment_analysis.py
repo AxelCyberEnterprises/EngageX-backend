@@ -594,13 +594,8 @@ def analyze_sentiment(transcript, metrics, posture_data):
     {transcript}
 
 
-    Engagement:
-      - How well the speaker holds audience attention. Graded on the speaker's transcript. Volume, pitch variability, pacing and pauses can boost/lower engagement. Volume_score: {metrics["Metrics"]["Volume"]}, {metrics["Metrics"]["Volume Rationale"]}, pitch_variability_score: {metrics["Scores"]["Pitch Variability Score"]} , {metrics["Metrics"]["Pitch Variability"]}, pace_score: {metrics["Scores"]["Pace Score"]} {metrics["Metrics"]["Pace Rationale"]}, pause_score: {metrics["Scores"]["Pause Score"]} {metrics["Metrics"]["Pause Metric Rationale"]}
-
-
     Audience Emotion:
       - Select one of these emotions that the audience will be feeling most strongly (Curiosity, Empathy, Excitement, Inspiration, Amusement, Conviction, Surprise, Hope)
-
    
     Conviction:
       - Indicates firmness and clarity of beliefs or message. Evaluates how strongly and clearly the speaker presents their beliefs and message. Dependent on Confidence score and transcript
@@ -616,7 +611,6 @@ def analyze_sentiment(transcript, metrics, posture_data):
 
     Brevity:
 	- Measure of conciseness of words. To be graded by the transcript
-
       
     Transformative Potential:
       - Potential to motivate significant change or shift perspectives.
@@ -658,7 +652,6 @@ def analyze_sentiment(transcript, metrics, posture_data):
                 "schema": {
                     "type": "object",
                     "properties": {
-                        "Engagement": {"type": "number"},
                         "Audience Emotion": {"type": "string"},
                         "Conviction": {"type": "number"},
                         "Clarity": {"type": "number"},
@@ -671,7 +664,7 @@ def analyze_sentiment(transcript, metrics, posture_data):
                         "General Feedback Summary": {"type": "string"},
                     },
                     "required": [
-                        "Engagement", "Audience Emotion", "Conviction", 
+                        "Audience Emotion", "Conviction", 
                         "Clarity", "Impact", "Brevity",
                         "Transformative Potential","Trigger Response",
                         "Filler Words", "Grammar", 

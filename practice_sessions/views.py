@@ -18,6 +18,8 @@ from django.db.models import (
     Sum,
     IntegerField,
     Q,
+    ExpressionWrapper,
+    FloatField
 )
 from django.utils.timezone import now
 from django.shortcuts import get_object_or_404
@@ -582,14 +584,12 @@ class ChunkSentimentAnalysisView(APIView):
         averages = ChunkSentimentAnalysis.objects.filter(
             chunk__session=session
         ).aggregate(
-            avg_engagement=Avg("engagement"),
             avg_conviction=Avg("conviction"),
-            avg_clarity=Avg("clarity"),
-            avg_impact=Avg("impact"),
+            structure_and_clarity=Avg("clarity"),
+            overall_captured_impact=Avg("impact"),
             avg_brevity=Avg("brevity"),
+            avg_emotional_impact=Avg("trigger_response"),
             avg_transformative_potential=Avg("transformative_potential"),
-            avg_body_posture=Avg("body_posture"),
-            avg_trigger_response=Avg("trigger_response"),
             avg_filler_words=Avg("filler_words"),
             avg_grammar=Avg("grammar"),
             avg_posture=Avg("posture"),
@@ -599,7 +599,34 @@ class ChunkSentimentAnalysisView(APIView):
             avg_volume=Avg("volume"),
             avg_pitch=Avg("pitch_variability"),
             avg_pace=Avg("pace"),
+            avg_pauses=Avg("pauses"),
+            body_language=ExpressionWrapper((
+                (Avg("posture") or 0) +
+                (Avg("motion") or 0) + 
+                (Avg("gestures") or 0)) / 3,
+                output_field=FloatField()
+            ),
+            vocal_variety=ExpressionWrapper((
+                (Avg("volume") or 0) + 
+                (Avg("pitch_variability") or 0) + 
+                (Avg("pace") or 0) + 
+                (Avg("pauses") or 0)) / 4,
+                output_field=FloatField()
+            ),
+            language_and_word_choice=ExpressionWrapper((
+            (Avg("brevity") or 0) + 
+            (Avg("filler_words") or 0) + 
+            (Avg("grammar") or 0)) / 3,
+            output_field=FloatField()
+            ),
+            audience_engagement=ExpressionWrapper((
+            (Avg("impact") or 0 ) + 
+            (Avg("trigger_response") or 0 ) + 
+            (Avg("conviction") or 0 )) / 3,
+            output_field=FloatField()
+            )
         )
+
 
         averages["avg_gestures"] = min((averages.get("avg_gestures") or 0) * 100, 100)
 

@@ -273,7 +273,6 @@ class LiveSessionConsumer(AsyncWebsocketConsumer):
 
                 sentiment_data = {
                     'chunk': session_chunk_id,
-                    'engagement': analysis_result.get('Feedback', {}).get('Engagement', 0),
                     'audience_emotion': analysis_result.get('Feedback', {}).get('Audience Emotion', 0),
                     'conviction': analysis_result.get('Feedback', {}).get('Conviction', 0),
                     'clarity': analysis_result.get('Feedback', {}).get('Clarity', 0),
