@@ -225,9 +225,6 @@
 #         return f"Sentiment Analysis for Chunk {self.chunk.start_time}-{self.chunk.end_time} of {self.chunk.session.session_name}"
 
 
-
-
-
 from django.conf import settings
 from django.db import models
 from django.core.validators import MaxValueValidator, MinValueValidator
@@ -259,7 +256,7 @@ class PracticeSession(models.Model):
         ("presentation", "Presentation"),
     ]
     # The user who created this session.
-    user_id = models.ForeignKey(  # Renamed from 'user' to 'user_id'
+    user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
         related_name="practice_sessions",
@@ -308,7 +305,9 @@ class PracticeSession(models.Model):
         default=0, help_text="Average pitch variability of the session"
     )
     pace = models.IntegerField(default=0, help_text="Average pace of the session")
-    pauses = models.IntegerField(default=0, help_text="Total number of pauses in the session")
+    pauses = models.IntegerField(
+        default=0, help_text="Total number of pauses in the session"
+    )
     conviction = models.IntegerField(
         default=0,
         validators=[MinValueValidator(0), MaxValueValidator(100)],
@@ -389,7 +388,8 @@ class PracticeSession(models.Model):
         default=0, help_text="Score derived from posture, motion, and gestures"
     )
     transformative_communication = models.FloatField(
-        default=0, help_text="Transformative communication (same as transformative potential)"
+        default=0,
+        help_text="Transformative communication (same as transformative potential)",
     )
     structure_and_clarity = models.FloatField(
         default=0, help_text="Overall score for structure and clarity"
@@ -399,7 +399,7 @@ class PracticeSession(models.Model):
     )
 
     def __str__(self):
-        return f"{self.session_name} by {self.user_id.email}"
+        return f"{self.session_name} by {self.user.email}"
 
 
 class SessionChunk(models.Model):
@@ -510,9 +510,7 @@ class ChunkSentimentAnalysis(models.Model):
     gestures = models.BooleanField(
         default=False, help_text="Presence of positive gestures"
     )
-    pauses = models.IntegerField(
-        default=0, help_text="Number of pauses in this chunk"
-    )
+    pauses = models.IntegerField(default=0, help_text="Number of pauses in this chunk")
 
     def __str__(self):
         return f"Sentiment Analysis for Chunk {self.chunk.start_time}-{self.chunk.end_time} of {self.chunk.session.session_name}"
