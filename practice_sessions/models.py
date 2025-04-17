@@ -439,11 +439,11 @@ class ChunkSentimentAnalysis(models.Model):
     )
 
     # Scores from OpenAI's GPT model
-    engagement = models.PositiveIntegerField(
-        default=0,
-        validators=[MinValueValidator(0), MaxValueValidator(100)],
-        help_text="Engagement Heatmap",
-    )
+    # engagement = models.PositiveIntegerField(
+    #     default=0,
+    #     validators=[MinValueValidator(0), MaxValueValidator(100)],
+    #     help_text="Engagement Heatmap",
+    # )
     audience_emotion = models.CharField(
         max_length=50, blank=True, null=True, help_text="Audience Emotion"
     )
@@ -472,11 +472,11 @@ class ChunkSentimentAnalysis(models.Model):
         validators=[MinValueValidator(0), MaxValueValidator(100)],
         help_text="transformative potential",
     )
-    body_posture = models.PositiveIntegerField(
-        default=0,
-        validators=[MinValueValidator(0), MaxValueValidator(100)],
-        help_text="Body posture",
-    )
+    # body_posture = models.PositiveIntegerField(
+    #     default=0,
+    #     validators=[MinValueValidator(0), MaxValueValidator(100)],
+    #     help_text="Body posture",
+    # )
     general_feedback_summary = models.TextField(blank=True, null=True)
 
     # Metrics from audio analysis

@@ -730,6 +730,16 @@ class SessionReportView(APIView):
         request_body=SessionReportSerializer,
         responses={},
     )
+    def get(self, request, session_id):
+        try:
+            session = PracticeSession.objects.get(id=session_id, user=request.user)
+            session_serializer = PracticeSessionSerializer(session)  # correct usage
+            return Response(session_serializer.data, status=status.HTTP_200_OK)
+        except PracticeSession.DoesNotExist:
+            return Response(
+                {"error": "Session not found"}, status=status.HTTP_404_NOT_FOUND
+            )
+
     def post(self, request, session_id):
         duration = request.data.get("duration")
         try:
@@ -791,9 +801,9 @@ class SessionReportView(APIView):
                 all_pitch.append(analysis.pitch_variability)
                 all_pace.append(analysis.pace)
                 all_pauses.append(session.pauses)
-                all_engagement.append(analysis.engagement)
+                # all_engagement.append(analysis.engagement)
                 all_conviction.append(analysis.conviction)
-                all_body_posture.append(analysis.body_posture)
+                # all_body_posture.append(analysis.body_posture)
                 all_posture.append(analysis.posture)
                 all_motion.append(analysis.motion)
                 all_grammar.append(analysis.grammar)
