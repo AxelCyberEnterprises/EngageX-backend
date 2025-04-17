@@ -33,6 +33,7 @@ from datetime import datetime, timedelta
 from collections import Counter
 from openai import OpenAI
 from drf_yasg.utils import swagger_auto_schema
+from collections import defaultdict
 
 
 from .models import (
@@ -762,6 +763,10 @@ class SessionReportView(APIView):
         all_grammar = []
         all_filler_words = []
         all_trigger_reponse = []
+        all_structure_and_clarity = []
+        all_transformative_communication = []
+        all_emotional_impact = []
+        all_gesture = []
 
         for index, chunk in enumerate(chunks, start=1):
             if hasattr(chunk, "sentiment_analysis"):
@@ -794,15 +799,23 @@ class SessionReportView(APIView):
                 all_grammar.append(analysis.grammar)
                 all_filler_words.append(analysis.filler_words)
                 all_trigger_reponse.append(analysis.trigger_response)
+                all_transformative_communication.append(
+                    analysis.transformative_communication
+                )
+                all_gesture.append(analysis.gestures)
+                all_structure_and_clarity.append(analysis.clarity)
 
         # Compute averages
         def safe_avg(lst):
-            return round(sum(lst) / len(lst), 2) if lst else None
+            return round(sum(lst) / len(lst), 2) if lst else 0
 
         averages = {
             "brevity": safe_avg(all_brevity),
             "all_transformative_potential": safe_avg(all_transformative_potential),
-            "impact": safe_avg(all_impact),
+            "all_transformative_communication": safe_avg(
+                all_transformative_communication
+            ),
+            "emotional_impact": safe_avg(all_impact),
             "clarity": safe_avg(all_clarity),
             "volume": safe_avg(all_volume),
             "pitch": safe_avg(all_pitch),
@@ -813,16 +826,37 @@ class SessionReportView(APIView):
             "grammar": safe_avg(all_grammar),
             "posture": safe_avg(all_posture),
             "motion": safe_avg(all_motion),
+            "brevity": safe_avg(all_brevity),
+            "pitch_variability": safe_avg(all_pitch),
+            "gestures": safe_avg(all_gesture),
+            "structure_clarity": safe_avg(all_structure_and_clarity),
         }
 
         try:
             session = PracticeSession.objects.get(id=session_id, user=request.user)
-            session.impact = safe_avg(all_clarity)
-            session.trigger_response = safe_avg(all_trigger_reponse)
-            session.filler_words = safe_avg(all_filler_words)
-            session.grammar = safe_avg(all_grammar)
+
+            # vocal
+            session.volume = safe_avg(all_volume)
+            session.pitch_variability = safe_avg(all_pitch)
+            session.pace = safe_avg(all_pace)
+            session.pauses = safe_avg(all_pauses)
+            # delivery
+            session.transformative_communication = safe_avg(
+                all_transformative_communication
+            )
+            session.emotional_impact = safe_avg(all_trigger_reponse)
+            session.structure_and_clarity = safe_avg(all_structure_and_clarity)
+
+            # body language
             session.posture = safe_avg(all_posture)
             session.motion = safe_avg(all_motion)
+            session.gestures = safe_avg(all_gesture)
+
+            # language and choice
+            session.brevity = safe_avg(all_brevity)
+            session.filler_words = safe_avg(all_filler_words)
+            session.grammar = safe_avg(all_grammar)
+
             session.save()
         except PracticeSession.DoesNotExist:
             return Response(
@@ -951,3 +985,30 @@ class CompareSessionsView(APIView):
         #         },
         #     }
         # )
+
+
+class GoalAchievementView(APIView):
+
+    def get(self, request):
+        user = request.user
+        goals = defaultdict(int)
+
+        fields = [
+            "vocal_variety",
+            "body_language",
+            "structure_and_clarity",
+            "overall_captured_impact",
+            "transformative_communication",
+            "language_and_word_choice",
+            "emotional_impact",
+            "audience_engagement",
+        ]
+        sessions = PracticeSession.objects.filter(user=user)
+
+        for session in sessions:
+            for field in fields:
+                value = getattr(session, field, 0)
+                if value >= 80:
+                    goals[field] += 1
+
+        return Response(dict(goals))
