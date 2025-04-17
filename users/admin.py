@@ -1,6 +1,6 @@
 from django.contrib import admin
 from django.contrib.auth.models import User
-from .models import (UserProfile, CustomUser, UserAssignment)
+from .models import UserProfile, CustomUser, UserAssignment
 from django.contrib.auth.admin import UserAdmin as DefaultUserAdmin
 from django import forms
 
@@ -12,7 +12,12 @@ class UserCreationForm(forms.ModelForm):
 
     class Meta:
         model = CustomUser
-        fields = ('username', 'email', 'first_name', 'last_name',)
+        fields = (
+            "username",
+            "email",
+            "first_name",
+            "last_name",
+        )
 
     def clean_password2(self):
         password1 = self.cleaned_data.get("password1")
@@ -32,7 +37,15 @@ class UserCreationForm(forms.ModelForm):
 class UserChangeForm(forms.ModelForm):
     class Meta:
         model = CustomUser
-        fields = ('username', 'email', 'first_name', 'last_name', 'is_active', 'is_staff', 'is_superuser')
+        fields = (
+            "username",
+            "email",
+            "first_name",
+            "last_name",
+            "is_active",
+            "is_staff",
+            "is_superuser",
+        )
 
 
 @admin.register(CustomUser)
@@ -40,22 +53,29 @@ class CustomUserAdmin(admin.ModelAdmin):
     form = UserChangeForm
     add_form = UserCreationForm
 
-    list_display = ('email', 'username', 'first_name', 'last_name', 'is_staff', 'is_active')
-    search_fields = ('email', 'username',  'first_name', 'last_name')
-    list_filter = ('is_staff', 'is_active')
+    list_display = (
+        "email",
+        "username",
+        "first_name",
+        "last_name",
+        "is_staff",
+        "is_active",
+    )
+    search_fields = ("email", "username", "first_name", "last_name")
+    list_filter = ("is_staff", "is_active")
 
 
 @admin.register(UserProfile)
 class UserProfileAdmin(admin.ModelAdmin):
-    list_display = ('user', 'age', 'gender', 'phone_number')
-    search_fields = ('user__username', 'gender',  'phone_number')
-    list_filter = ('gender', 'phone_number')
-
+    list_display = ("user", "age", "gender", "phone_number")
+    search_fields = ("user__username", "gender", "phone_number")
+    list_filter = ("gender", "phone_number")
 
 
 class UserAssignmentAdmin(admin.ModelAdmin):
-    list_display = ('admin', 'user')
-    search_fields = ('admin__username', 'user__username')
-    list_filter = ('admin__userprofile__role', 'user__userprofile__role')
+    list_display = ("admin", "user")
+    search_fields = ("admin__username", "user__username")
+    # list_filter = ('admin__userprofile__role', 'user__userprofile__role')
+
 
 admin.site.register(UserAssignment, UserAssignmentAdmin)

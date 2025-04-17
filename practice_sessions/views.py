@@ -19,7 +19,7 @@ from django.db.models import (
     IntegerField,
     Q,
     ExpressionWrapper,
-    FloatField
+    FloatField,
 )
 from django.utils.timezone import now
 from django.shortcuts import get_object_or_404
@@ -149,8 +149,8 @@ class SessionDashboardView(APIView):
         dashboard_section = request.query_params.get("section")
         start_date_str = request.query_params.get("start_date")
         end_date_str = request.query_params.get("end_date")
-
-        if hasattr(user, "userprofile") and user.userprofile.is_admin():
+        print(user.user_profile.is_admin())
+        if hasattr(user, "user_profile") and user.user_profile.is_admin():
             sessions = PracticeSession.objects.all()
             filtered_sessions = sessions
 
@@ -350,7 +350,7 @@ class SessionDashboardView(APIView):
                 "session_breakdown": list(breakdown),
                 "sessions_over_time": list(sessions_over_time),
                 "recent_sessions": list(recent_sessions),
-                "credits": user.userprofile.available_credits,
+                "credits": user.user_profile.available_credits,
                 # "today_new_sessions_count": today_new_sessions_count,
                 # "new_sessions_percentage_difference": new_sessions_percentage_difference,
                 # "session_breakdown_with_difference": session_breakdown_with_diff,
@@ -360,41 +360,57 @@ class SessionDashboardView(APIView):
                 "inactive_users_count": inactive_users_count,
             }
         else:
+            latest_aggregated_data = {}
+            latest_session_score = None
+            available_credit = None
+            performance_analytics_over_time = []
+            goals_and_achievment = []
+
             latest_session = (
                 PracticeSession.objects.filter(user=user).order_by("-date").first()
             )
-            print(latest_session)
+
             latest_session_chunk = ChunkSentimentAnalysis.objects.filter(
                 chunk__session=latest_session
             )
-            latest_aggregated_data = {}
-            latest_session_score = None
-            performance_analytics_over_time = []
+            if user:
+                available_credit = user.user_profile.available_credits
 
-            print(latest_session_chunk)
             if latest_session:
+                goals_and_achievment.append(
+                    {
+                        "vocal_variety": latest_session.vocal_variety,
+                        "captured_impact": latest_session.overall_captured_impact,
+                        "emotional_impact": latest_session.emotional_impact,
+                        "body_language": latest_session.body_language,
+                        "transformative_communication": latest_session.transformative_communication,
+                        "audience_engagement": latest_session.audience_engagement,
+                        "structure_and_clarity": latest_session.structure_and_clarity,
+                        "language_and_word_choice": latest_session.language_and_word_choice,
+                    }
+                )
                 # Calculate the average volume for the latest session
-                average_volume = ChunkSentimentAnalysis.objects.filter(
-                    chunk__session=latest_session
-                ).aggregate(avg_volume=Avg("volume"))["avg_volume"]
+                # average_volume = ChunkSentimentAnalysis.objects.filter(
+                #     chunk__session=latest_session
+                # ).aggregate(avg_volume=Avg("volume"))["avg_volume"]
                 # Calculate the average pace for the latest session
-                average_pace = ChunkSentimentAnalysis.objects.filter(
-                    chunk__session=latest_session
-                ).aggregate(avg_pace=Avg("pace"))["avg_pace"]
+                # average_pace = ChunkSentimentAnalysis.objects.filter(
+                #     chunk__session=latest_session
+                # ).aggregate(avg_pace=Avg("pace"))["avg_pace"]
 
-                latest_aggregated_data = {
-                    "impact": latest_session.impact,
-                    "volume": (
-                        average_volume if average_volume is not None else 0.0
-                    ),  # Use average volume
-                    "pace": (
-                        average_pace if average_pace is not None else 0.0
-                    ),  # Use average pace
-                    # "clarity": latest_session.clarity,
-                    # "engagement": latest_session.audience_engagement,
-                    # "credits": user.userprofile.available_credits,
-                    # Add other relevant aggregated fields here
-                }
+                # latest_aggregated_data = {
+                #     "impact": latest_session.impact,
+                #     "volume": (
+                #         average_volume if average_volume is not None else 0.0
+                #     ),  # Use average volume
+                #     "pace": (
+                #         average_pace if average_pace is not None else 0.0
+                #     ),  # Use average pace
+                # "clarity": latest_session.clarity,
+                # "engagement": latest_session.audience_engagement,
+                # "credits": user.userprofile.available_credits,
+                # Add other relevant aggregated fields here
+                # }
                 # Calculate the latest session score (average impact from chunks)
                 chunk_impacts = ChunkSentimentAnalysis.objects.filter(
                     chunk__session=latest_session
@@ -402,62 +418,79 @@ class SessionDashboardView(APIView):
                 if chunk_impacts:
                     latest_session_score = sum(chunk_impacts) / len(chunk_impacts)
 
-            # Prepare performance analytics data over time
-            user_sessions = PracticeSession.objects.filter(user=user).order_by("date")
-            for session in user_sessions:
-                chunk_data = ChunkSentimentAnalysis.objects.filter(
-                    chunk__session=session
-                ).aggregate(
-                    avg_volume=Avg("volume"),
-                    avg_articulation=Avg("clarity"),
-                    # avg_confidence=Avg("confidence"),
-                    avg_pace=Avg(
-                        "pace"
-                    ),  # Include pace here as well if needed in the historical data
-                )
-                if (
-                    chunk_data["avg_volume"] is not None
-                    and chunk_data["avg_articulation"] is not None
-                    # and chunk_data["avg_confidence"] is not None
-                ):
+                # Prepare performance analytics data over time
+                for chunk in latest_session_chunk:
+                    print(chunk)
                     performance_analytics_over_time.append(
                         {
-                            "date": session.date.isoformat(),  # Use isoformat for easy handling in JavaScript
-                            "volume": chunk_data["avg_volume"],
-                            "articulation": chunk_data["avg_articulation"],
-                            # "confidence": chunk_data["avg_confidence"],
-                            # might want to include pace in the historical data as well
+                            "chunk_number": chunk.chunk_number,
+                            "start_time": chunk.chunk.start_time,
+                            "end_time": chunk.chunk.end_time,
+                            "impact": chunk.impact,
+                            "trigger_reponse": chunk.trigger_response,
+                            "conviction": chunk.conviction,
                         }
                     )
 
+            # user_sessions = PracticeSession.objects.filter(user=user).order_by("date")
+            # for session in user_sessions:
+            #     chunk_data = ChunkSentimentAnalysis.objects.filter(
+            #         chunk__session=session
+            #     ).aggregate(
+            #         avg_volume=Avg("volume"),
+            #         avg_articulation=Avg("clarity"),
+            #         # avg_confidence=Avg("confidence"),
+            #         avg_pace=Avg(
+            #             "pace"
+            #         ),  # Include pace here as well if needed in the historical data
+            #     )
+            #     if (
+            #         chunk_data["avg_volume"] is not None
+            #         and chunk_data["avg_articulation"] is not None
+            #         # and chunk_data["avg_confidence"] is not None
+            #     ):
+            #         performance_analytics_over_time.append(
+            #             {
+            #                 "date": session.date.isoformat(),  # Use isoformat for easy handling in JavaScript
+            #                 "volume": chunk_data["avg_volume"],
+            #                 "articulation": chunk_data["avg_articulation"],
+            #                 # "confidence": chunk_data["avg_confidence"],
+            #                 # might want to include pace in the historical data as well
+            #             }
+            #         )
+
             # Calculate averages of the aggregated fields across all user sessions
-            aggregated_averages = (
-                PracticeSession.objects.filter(
-                    user=user,
-                    audience_engagement__isnull=False,
-                    emotional_expression__isnull=False,
-                )
-                .exclude(Q(audience_engagement="") | Q(emotional_expression=""))
-                .annotate(
-                    audience_engagement_int=Cast("audience_engagement", IntegerField()),
-                    emotional_expression_int=Cast(
-                        "emotional_expression", IntegerField()
-                    ),
-                )
-                .aggregate(
-                    avg_pauses=Avg("pauses"),
-                    avg_audience_engagement=Avg("audience_engagement_int"),
-                    avg_emotional_expression=Avg("emotional_expression_int"),
-                    # Add averages for other relevant aggregated fields
-                )
-            )
-            print(aggregated_averages)
+            # aggregated_averages = (
+            #     (
+            #         PracticeSession.objects.filter(
+            #             user=user,
+            #             audience_engagement__isnull=False,
+            #             # emotional_expression__isnull=False,
+            #         ).exclude(Q(audience_engagement=""))
+            #     )
+            #     .annotate(
+            #         audience_engagement_int=Cast("audience_engagement", IntegerField()),
+            #         # emotional_expression_int=Cast(
+            #         #     "emotional_expression", IntegerField()
+            #         # ),
+            #     )
+            #     .aggregate(
+            #         avg_pauses=Avg("pauses"),
+            #         avg_audience_engagement=Avg("audience_engagement_int"),
+            #         # avg_emotional_expression=Avg("emotional_expression_int"),
+            #         # Add averages for other relevant aggregated fields
+            #     )
+            # )
+
+            # print(aggregated_averages)
 
             data = {
-                "latest_session_data": latest_aggregated_data,
-                "average_performance": aggregated_averages,
+                # "latest_session_data": latest_aggregated_data,
+                # "average_performance": aggregated_averages,
                 "latest_session_score": latest_session_score,
+                "available_credit": available_credit,
                 "performance_analytics": performance_analytics_over_time,
+                "goals_and_achievment": goals_and_achievment,
             }
         return Response(data, status=status.HTTP_200_OK)
 
@@ -600,33 +633,40 @@ class ChunkSentimentAnalysisView(APIView):
             avg_pitch=Avg("pitch_variability"),
             avg_pace=Avg("pace"),
             avg_pauses=Avg("pauses"),
-            body_language=ExpressionWrapper((
-                (Avg("posture") or 0) +
-                (Avg("motion") or 0) + 
-                (Avg("gestures") or 0)) / 3,
-                output_field=FloatField()
+            body_language=ExpressionWrapper(
+                ((Avg("posture") or 0) + (Avg("motion") or 0) + (Avg("gestures") or 0))
+                / 3,
+                output_field=FloatField(),
             ),
-            vocal_variety=ExpressionWrapper((
-                (Avg("volume") or 0) + 
-                (Avg("pitch_variability") or 0) + 
-                (Avg("pace") or 0) + 
-                (Avg("pauses") or 0)) / 4,
-                output_field=FloatField()
+            vocal_variety=ExpressionWrapper(
+                (
+                    (Avg("volume") or 0)
+                    + (Avg("pitch_variability") or 0)
+                    + (Avg("pace") or 0)
+                    + (Avg("pauses") or 0)
+                )
+                / 4,
+                output_field=FloatField(),
             ),
-            language_and_word_choice=ExpressionWrapper((
-            (Avg("brevity") or 0) + 
-            (Avg("filler_words") or 0) + 
-            (Avg("grammar") or 0)) / 3,
-            output_field=FloatField()
+            language_and_word_choice=ExpressionWrapper(
+                (
+                    (Avg("brevity") or 0)
+                    + (Avg("filler_words") or 0)
+                    + (Avg("grammar") or 0)
+                )
+                / 3,
+                output_field=FloatField(),
             ),
-            audience_engagement=ExpressionWrapper((
-            (Avg("impact") or 0 ) + 
-            (Avg("trigger_response") or 0 ) + 
-            (Avg("conviction") or 0 )) / 3,
-            output_field=FloatField()
-            )
+            audience_engagement=ExpressionWrapper(
+                (
+                    (Avg("impact") or 0)
+                    + (Avg("trigger_response") or 0)
+                    + (Avg("conviction") or 0)
+                )
+                / 3,
+                output_field=FloatField(),
+            ),
         )
-
 
         averages["avg_gestures"] = min((averages.get("avg_gestures") or 0) * 100, 100)
 
@@ -801,7 +841,7 @@ class PerformanceAnalyticsView(APIView):
             .annotate(
                 total_brevity=Sum("brevity"),
                 total_impact=Sum("impact"),
-                total_conviction=Sum("conviction"),
+                total_engagement=Sum("engagement"),
             )
             .order_by("month")
         )
@@ -810,7 +850,7 @@ class PerformanceAnalyticsView(APIView):
                 "month": item["month"].strftime("%Y-%m"),
                 "brevity": item["total_brevity"] or 0,
                 "impact": item["total_impact"] or 0,
-                "conviction": item["total_conviction"] or 0,
+                "engagement": item["total_engagement"] or 0,
             }
             for item in data
         ]
