@@ -725,11 +725,6 @@ class ChunkSentimentAnalysisViewSet(viewsets.ModelViewSet):
 class SessionReportView(APIView):
     permission_classes = [IsAuthenticated]
 
-    @swagger_auto_schema(
-        operation_description="update the session duration and get the session summary",
-        request_body=SessionReportSerializer,
-        responses={},
-    )
     def get(self, request, session_id):
         try:
             session = PracticeSession.objects.get(id=session_id, user=request.user)
@@ -740,6 +735,11 @@ class SessionReportView(APIView):
                 {"error": "Session not found"}, status=status.HTTP_404_NOT_FOUND
             )
 
+    @swagger_auto_schema(
+        operation_description="update the session duration and get the session summary",
+        request_body=SessionReportSerializer,
+        responses={},
+    )
     def post(self, request, session_id):
         duration = request.data.get("duration")
         try:
