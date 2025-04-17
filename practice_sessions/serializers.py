@@ -125,7 +125,6 @@ class ChunkSentimentAnalysisSerializer(serializers.ModelSerializer):
         fields = [
             "id",
             "chunk",
-            "engagement",
             "audience_emotion",
             "conviction",
             "clarity",
@@ -134,7 +133,6 @@ class ChunkSentimentAnalysisSerializer(serializers.ModelSerializer):
             "transformative_potential",
             "trigger_response",
             "filler_words",
-            "body_posture",
             "grammar",
             "volume",
             "general_feedback_summary",
