@@ -54,6 +54,63 @@ from .serializers import (
 User = get_user_model()
 
 
+def generate_full_summary(self, session_id):
+    """Creates a cohesive summary for Strengths, Improvements, and Feedback."""
+    client = OpenAI(api_key=settings.OPENAI_API_KEY)
+
+    general_feedback_summary = ChunkSentimentAnalysis.objects.filter(
+        chunk__session__id=session_id
+    ).values_list("general_feedback_summary", flat=True)
+
+    combined_feedback = " ".join([g for g in general_feedback_summary if g])
+
+    # get strenghts and areas of improvements
+    # grade content_organisation (0-100), from transcript
+
+    prompt = f"""
+        Using the following presentation evaluation data, provide a structured JSON response containing three key elements:
+
+        1. **Strength**: Identify the speaker’s most notable strengths based on their delivery, clarity, and engagement.
+        2. **Area of Improvement**: Provide actionable and specific recommendations for improving the speaker’s performance.
+        3. **General Feedback Summary**: Summarize the presentation’s overall effectiveness, balancing positive feedback with constructive advice.
+
+        Data to analyze:
+        {combined_feedback}
+        """
+
+    try:
+        completion = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": prompt}],
+            response_format={
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "Feedback",
+                    "schema": {
+                        "type": "object",
+                        "properties": {
+                            "Strength": {"type": "string"},
+                            "Area of Improvement": {"type": "string"},
+                            "General Feedback Summary": {"type": "string"},
+                        },
+                    },
+                },
+            },
+        )
+
+        refined_summary = completion.choices[0].message.content
+        parsed_summary = json.loads(refined_summary)
+
+    except Exception as e:
+        print(f"Error generating summary: {e}")
+        parsed_data = {
+            "Strength": "N/A",
+            "Area of Improvement": "N/A",
+            "General Feedback Summary": combined_feedback,
+        }
+    return parsed_summary
+
+
 class PracticeSequenceViewSet(viewsets.ModelViewSet):
     """
     ViewSet for handling practice session sequences.
@@ -742,12 +799,12 @@ class SessionReportView(APIView):
     )
     def post(self, request, session_id):
         duration = request.data.get("duration")
+        summmary = generate_full_summary(self, session_id=session_id)
         try:
             session = PracticeSession.objects.get(id=session_id, user=request.user)
             if duration:
                 session.duration = duration
                 session.save()
-            print(session.duration)
         except PracticeSession.DoesNotExist:
             return Response(
                 {"error": "Session not found"}, status=status.HTTP_404_NOT_FOUND
@@ -757,26 +814,27 @@ class SessionReportView(APIView):
 
         data = []
         graph_data = []
-        all_brevity = []
-        all_transformative_potential = []
-        all_impact = []
-        all_clarity = []
+
+        # vocal varity
         all_volume = []
         all_pitch = []
         all_pace = []
         all_pauses = []
-        all_engagement = []
-        all_conviction = []
-        all_body_posture = []
-        all_posture = []
-        all_motion = []
-        all_grammar = []
-        all_filler_words = []
-        all_trigger_reponse = []
+
+        # delivery
         all_structure_and_clarity = []
         all_transformative_communication = []
         all_emotional_impact = []
+
+        # bodylang
+        all_posture = []
+        all_motion = []
         all_gesture = []
+
+        # word_choice
+        all_brevity = []
+        all_filler_words = []
+        all_grammar = []
 
         for index, chunk in enumerate(chunks, start=1):
             if hasattr(chunk, "sentiment_analysis"):
@@ -787,59 +845,54 @@ class SessionReportView(APIView):
                         "chuck_no": f"Chunk {index}",
                         "start_time": chunk.start_time,
                         "end_time": chunk.end_time,
-                        "brevity": analysis.brevity,
+                        "imapct": analysis.impact,
+                        "trigger_reponse": analysis.trigger_response,
                         "conviction": analysis.conviction,
-                        "impact": analysis.impact,
                     }
                 )
                 # Collecting for avg
-                all_brevity.append(analysis.brevity)
-                all_transformative_potential.append(analysis.transformative_potential)
-                all_impact.append(analysis.impact)
-                all_clarity.append(analysis.clarity)
                 all_volume.append(analysis.volume)
                 all_pitch.append(analysis.pitch_variability)
                 all_pace.append(analysis.pace)
                 all_pauses.append(session.pauses)
-                # all_engagement.append(analysis.engagement)
-                all_conviction.append(analysis.conviction)
-                # all_body_posture.append(analysis.body_posture)
+
+                all_structure_and_clarity.append(analysis.clarity)
+                all_transformative_communication.append(
+                    analysis.transformative_potential
+                )
+                all_emotional_impact.append(analysis.trigger_response)
+
                 all_posture.append(analysis.posture)
                 all_motion.append(analysis.motion)
-                all_grammar.append(analysis.grammar)
-                all_filler_words.append(analysis.filler_words)
-                all_trigger_reponse.append(analysis.trigger_response)
-                all_transformative_communication.append(
-                    analysis.transformative_communication
-                )
                 all_gesture.append(analysis.gestures)
-                all_structure_and_clarity.append(analysis.clarity)
+
+                all_brevity.append(analysis.brevity)
+                all_filler_words.append(analysis.filler_words)
+                all_grammar.append(analysis.grammar)
 
         # Compute averages
         def safe_avg(lst):
             return round(sum(lst) / len(lst), 2) if lst else 0
 
         averages = {
-            "brevity": safe_avg(all_brevity),
-            "all_transformative_potential": safe_avg(all_transformative_potential),
-            "all_transformative_communication": safe_avg(
-                all_transformative_communication
-            ),
-            "emotional_impact": safe_avg(all_impact),
-            "clarity": safe_avg(all_clarity),
             "volume": safe_avg(all_volume),
             "pitch": safe_avg(all_pitch),
             "pace": safe_avg(all_pace),
             "pauses": safe_avg(all_pauses),
-            "trigger_response": safe_avg(all_trigger_reponse),
-            "filler_words": safe_avg(all_filler_words),
-            "grammar": safe_avg(all_grammar),
+            "structure_clarity": safe_avg(all_structure_and_clarity),
+            "all_transformative_communication": safe_avg(
+                all_transformative_communication
+            ),
+            "all_emotional_impact": safe_avg(all_emotional_impact),
             "posture": safe_avg(all_posture),
             "motion": safe_avg(all_motion),
-            "brevity": safe_avg(all_brevity),
-            "pitch_variability": safe_avg(all_pitch),
             "gestures": safe_avg(all_gesture),
-            "structure_clarity": safe_avg(all_structure_and_clarity),
+            "brevity": safe_avg(all_brevity),
+            "filler_words": safe_avg(all_filler_words),
+            "grammar": safe_avg(all_grammar),
+            "Strength": summmary["Strength"],
+            "Area of Improvement": summmary["Area of Improvement"],
+            "General Feedback Summary": summmary["General Feedback Summary"],
         }
 
         try:
@@ -854,7 +907,7 @@ class SessionReportView(APIView):
             session.transformative_communication = safe_avg(
                 all_transformative_communication
             )
-            session.emotional_impact = safe_avg(all_trigger_reponse)
+            session.emotional_impact = safe_avg(all_emotional_impact)
             session.structure_and_clarity = safe_avg(all_structure_and_clarity)
 
             # body language
@@ -877,6 +930,10 @@ class SessionReportView(APIView):
 
 class PerformanceAnalyticsView(APIView):
     def get(self, request):
+        user = request.user
+        session = PracticeSession.objects.filter(user=user)
+        chunk = ChunkSentimentAnalysis.objects.select_related("chunk__session").all()
+        print(session)
         data = (
             ChunkSentimentAnalysis.objects.select_related("chunk__session")
             .all()
@@ -885,16 +942,16 @@ class PerformanceAnalyticsView(APIView):
             .annotate(
                 total_brevity=Sum("brevity"),
                 total_impact=Sum("impact"),
-                total_engagement=Sum("engagement"),
+                # total_engagement=Sum("engagement"),
             )
             .order_by("month")
         )
+        # print(data)
         result = [
             {
                 "month": item["month"].strftime("%Y-%m"),
                 "brevity": item["total_brevity"] or 0,
                 "impact": item["total_impact"] or 0,
-                "engagement": item["total_engagement"] or 0,
             }
             for item in data
         ]
@@ -931,7 +988,6 @@ class CompareSessionsView(APIView):
         def get_analysis_data(session):
             return ChunkSentimentAnalysis.objects.filter(chunk__session=session).values(
                 "chunk__id",
-                "engagement",
                 "audience_emotion",
                 "conviction",
                 "clarity",
@@ -1020,5 +1076,7 @@ class GoalAchievementView(APIView):
                 value = getattr(session, field, 0)
                 if value >= 80:
                     goals[field] += 1
+                else:
+                    goals[field] += 0
 
         return Response(dict(goals))
