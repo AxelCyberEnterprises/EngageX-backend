@@ -207,7 +207,6 @@ class SessionDashboardView(APIView):
         dashboard_section = request.query_params.get("section")
         start_date_str = request.query_params.get("start_date")
         end_date_str = request.query_params.get("end_date")
-        print(user.user_profile.is_admin())
         if hasattr(user, "user_profile") and user.user_profile.is_admin():
             sessions = PracticeSession.objects.all()
             filtered_sessions = sessions
@@ -418,7 +417,6 @@ class SessionDashboardView(APIView):
                 "inactive_users_count": inactive_users_count,
             }
         else:
-            latest_aggregated_data = {}
             latest_session_score = None
             available_credit = None
             performance_analytics_over_time = []
@@ -431,8 +429,8 @@ class SessionDashboardView(APIView):
             latest_session_chunk = ChunkSentimentAnalysis.objects.filter(
                 chunk__session=latest_session
             )
-            if user:
-                available_credit = user.user_profile.available_credits
+
+            available_credit = user.user_profile.available_credits if user else 0.0
 
             if latest_session:
                 goals_and_achievment.append(
@@ -470,11 +468,11 @@ class SessionDashboardView(APIView):
                 # Add other relevant aggregated fields here
                 # }
                 # Calculate the latest session score (average impact from chunks)
-                chunk_impacts = ChunkSentimentAnalysis.objects.filter(
-                    chunk__session=latest_session
-                ).values_list("impact", flat=True)
-                if chunk_impacts:
-                    latest_session_score = sum(chunk_impacts) / len(chunk_impacts)
+                chunk_impacts = latest_session_chunk.values_list("impact", flat=True)
+
+                latest_session_score = (
+                    sum(chunk_impacts) / len(chunk_impacts) if chunk_impacts else 0
+                )
 
                 # Prepare performance analytics data over time
                 for chunk in latest_session_chunk:
