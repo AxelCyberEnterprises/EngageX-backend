@@ -29,29 +29,30 @@ class PracticeSessionSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = PracticeSession
-        fields = [
-            "id",
-            "session_name",
-            "session_type",
-            "goals",
-            "session_type_display",
-            "latest_score",
-            "date",
-            "duration",
-            "note",
-            "user_email",
-            "full_name",
-            "pauses",
-            "tone",
-            "impact",
-            "audience_engagement",
-            "sequence",
-            "allow_ai_questions",
-            "virtual_environment",
-            # Add other aggregated fields here if you have them in your PracticeSession model
-        ]
+        # fields = [
+        #     "id",
+        #     "session_name",
+        #     "session_type",
+        #     "goals",
+        #     "session_type_display",
+        #     "latest_score",
+        #     "date",
+        #     "duration",
+        #     "note",
+        #     "user_email",
+        #     "full_name",
+        #     "pauses",
+        #     "impact",
+        #     "audience_engagement",
+        #     "sequence",
+        #     "allow_ai_questions",
+        #     "virtual_environment",
+        #     # Add other aggregated fields here if you have them in your PracticeSession model
+        # ]
+        fields = "__all__"
         read_only_fields = [
             "id",
+            "user",
             "date",
             "user_email",
             "full_name",
@@ -75,6 +76,7 @@ class PracticeSessionSerializer(serializers.ModelSerializer):
         return obj.impact
 
     def create(self, validated_data):
+
         # We are no longer creating SessionDetail here
         return PracticeSession.objects.create(**validated_data)
 
@@ -123,18 +125,30 @@ class ChunkSentimentAnalysisSerializer(serializers.ModelSerializer):
         fields = [
             "id",
             "chunk",
-            "engagement",
             "audience_emotion",
             "conviction",
             "clarity",
             "impact",
             "brevity",
             "transformative_potential",
-            "body_posture",
+            "trigger_response",
+            "filler_words",
+            "grammar",
             "volume",
-            "pitch_variability",
-            "pace",
-            "chunk_transcript",
             "general_feedback_summary",
+            "pitch_variability",
+            "posture",
+            "pace",
+            "motion",
+            "gestures",
+            "volume",
+            "chunk_transcript",
+            "pitch_variability",
+            "general_feedback_summary",
+            "chunk_transcript",
         ]
         read_only_fields = ["id"]
+
+
+class SessionReportSerializer(serializers.Serializer):
+    duration = serializers.CharField(allow_null=True, allow_blank=True)

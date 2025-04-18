@@ -11,6 +11,7 @@ from .views import (
     SequenceListView,
     SessionsInSequenceView,
     CompareSessionsView,
+    GoalAchievementView,
 )
 
 router = DefaultRouter()
@@ -53,5 +54,10 @@ urlpatterns = [
         "compare-sessions/<str:session1_id>/<str:session2_id>",
         CompareSessionsView.as_view(),
         name="compare-sessions",
+    ),
+    path(
+        "goals-and-achievement/",
+        GoalAchievementView.as_view(),
+        name="goals-and-achievmente",
     ),
 ]

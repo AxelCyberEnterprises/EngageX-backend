@@ -51,7 +51,9 @@ class UserProfile(models.Model):
         ("F", "Female"),
         ("P", "Prefer not to say"),
     ]
-    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="user_profile"
+    )
     date_of_birth = models.DateField(null=True, blank=True)
 
     def clean(self):

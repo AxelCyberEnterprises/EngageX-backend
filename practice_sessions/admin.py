@@ -21,20 +21,19 @@ class PracticeSessionAdmin(admin.ModelAdmin):
         "session_type",
         "date",
         "duration",
-        "user",
+        "user_id",  # Changed 'user' to 'user_id'
         "pauses",
-        "tone",
-        # 'emotional_impact',
+        # Removed 'tone' from list_display
         "audience_engagement",
         "sequence",  # Added sequence to the list display
         "allow_ai_questions",  # Added allow_ai_questions to the list display
         # Add other aggregated fields here as needed (e.g., 'pronunciation', 'content_organization')
     )
-    search_fields = ("session_name", "user__email")
+    search_fields = ("session_name", "user_id__email")  # Updated to user_id
     list_filter = (
         "session_type",
         "date",
-        "tone",
+        # Removed 'tone' from list_filter
         "sequence",
     )  # Added 'sequence' as a filter
     # You might also want to add 'allow_ai_questions' to list_filter
@@ -43,12 +42,12 @@ class PracticeSessionAdmin(admin.ModelAdmin):
 @admin.register(ChunkSentimentAnalysis)
 class ChunkSentimentAnalysisAdmin(admin.ModelAdmin):
     list_display = (
-        'chunk',
-        'engagement',
-        'impact',  
+        "chunk",
+        # 'engagement',
+        "impact",
     )
-    search_fields = ('chunk__session__session_name',)
-    list_filter = ('impact',)
+    search_fields = ("chunk__session__session_name",)
+    list_filter = ("impact",)
 
 
 @admin.register(SessionChunk)
