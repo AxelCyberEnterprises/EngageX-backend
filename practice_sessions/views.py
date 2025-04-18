@@ -979,10 +979,12 @@ class PerformanceAnalyticsView(APIView):
             )
             .order_by("-date")[:5]
             .values(
+                "id",
                 "session_name",
                 "session_type_display",
                 "date",
                 "formatted_duration",
+                "impact",
             )
         )
         graph_data = (
@@ -1027,13 +1029,11 @@ class SequenceListView(APIView):
         return Response({"sequences": sequence_serializer.data})
 
 
-class SessionsInSequenceView(APIView):
+class SessionList(APIView):
     permission_classes = [IsAuthenticated]
 
-    def get(self, request, sequence_id):
-        sessions = PracticeSession.objects.filter(
-            sequence_id=sequence_id, user=request.user
-        )
+    def get(self, request):
+        sessions = PracticeSession.objects.filter(user=request.user).order_by("-date")
         session_serializer = PracticeSessionSerializer(sessions, many=True)
         return Response({"sessions": session_serializer.data})
 
@@ -1044,36 +1044,23 @@ class CompareSessionsView(APIView):
     def get(self, request, session1_id, session2_id):
         session1 = get_object_or_404(PracticeSession, id=session1_id, user=request.user)
         session2 = get_object_or_404(PracticeSession, id=session2_id, user=request.user)
-
-        def get_analysis_data(session):
-            return ChunkSentimentAnalysis.objects.filter(chunk__session=session).values(
-                "chunk__id",
-                "audience_emotion",
-                "conviction",
-                "clarity",
-                "impact",
-                "brevity",
-                "transformative_potential",
-                "body_posture",
-                "general_feedback_summary",
-                "volume",
-                "pitch_variability",
-                "pace",
-                "chunk_transcript",
-            )
+        print(session1)
+        print(session2)
+        session1_serialized = PracticeSessionSerializer(session1).data
+        session2_serialized = PracticeSessionSerializer(session2).data
 
         data = {
-            "session1": {
-                "id": session1.id,
-                "date": session1.date,
-                "analysis": list(get_analysis_data(session1)),
-            },
-            "session2": {
-                "id": session2.id,
-                "date": session2.date,
-                "analysis": list(get_analysis_data(session2)),
-            },
+            "session1": session1_serialized,
+            "session2": session2_serialized,
         }
+
+        # def get_session_data(session):
+        #     return {}
+
+        # data = {
+        #     "session1": get_session_data(session1),
+        #     "session2": get_session_data(session2),
+        # }
 
         return Response(data)
         # def get_avg_metrics(session_id):
