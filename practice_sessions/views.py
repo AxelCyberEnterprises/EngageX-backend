@@ -956,8 +956,8 @@ class SessionReportView(APIView):
         prompt = f"""
         Using the following presentation evaluation data, provide a structured JSON response containing three key elements:
 
-        1. **Strength**: Identify the speaker’s most notable strengths based on their delivery, clarity, and engagement. Output should be 3 bullet points of strength
-        2. **Area of Improvement**: Provide actionable and specific recommendations for improving the speaker’s performance. Output should be 3 bullet points of Area of Improvements
+        1. **Strength**: Identify the speaker’s most notable strengths based on their delivery, clarity, and engagement. Output should be 3 bullet points of strength separated by comma
+        2. **Area of Improvement**: Provide actionable and specific recommendations for improving the speaker’s performance. Output should be 3 bullet points of Area of Improvements separated by comma
         3. **General Feedback Summary**: Summarize the presentation’s overall effectiveness, balancing positive feedback with constructive advice.
 
         Data to analyze:
