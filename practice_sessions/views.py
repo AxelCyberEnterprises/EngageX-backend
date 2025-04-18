@@ -24,7 +24,7 @@ from django.db.models import (
 from django.utils.timezone import now
 from django.shortcuts import get_object_or_404
 from django.contrib.auth import get_user_model
-from django.db.models.functions import Cast, TruncMonth
+from django.db.models.functions import Cast, TruncMonth, TruncDay
 
 import os
 import json
@@ -835,6 +835,10 @@ class SessionReportView(APIView):
         all_brevity = []
         all_filler_words = []
         all_grammar = []
+        #
+        all_impact = []
+        all_conviction = []
+        all_trigger_response = []
 
         for index, chunk in enumerate(chunks, start=1):
             if hasattr(chunk, "sentiment_analysis"):
@@ -869,6 +873,10 @@ class SessionReportView(APIView):
                 all_brevity.append(analysis.brevity)
                 all_filler_words.append(analysis.filler_words)
                 all_grammar.append(analysis.grammar)
+
+                all_impact.append(analysis.impact)
+                all_conviction.append(analysis.conviction)
+                all_trigger_response.append(analysis.trigger_response)
 
         # Compute averages
         def safe_avg(lst):
@@ -920,6 +928,24 @@ class SessionReportView(APIView):
             session.filler_words = safe_avg(all_filler_words)
             session.grammar = safe_avg(all_grammar)
 
+            #
+            session.impact = safe_avg(all_impact)
+            session.trigger_response = safe_avg(all_trigger_response)
+            session.audience_engagement = safe_avg(
+                [*all_impact, *all_emotional_impact, *all_conviction]
+            )
+            session.vocal_variety = safe_avg(
+                [*all_volume, *all_pace, *all_pauses, *all_pitch]
+            )
+            session.body_language = safe_avg([*all_posture, *all_motion, *all_gesture])
+            session.overall_captured_impact = safe_avg(all_impact)
+            session.language_and_word_choice = safe_avg(
+                [*all_brevity, *all_filler_words, *all_grammar]
+            )
+            session.area_of_improvement = averages["Area of Improvement"]
+            session.strength = averages["Strength"]
+            session.general_feedback_summary = averages["General Feedback Summary"]
+
             session.save()
         except PracticeSession.DoesNotExist:
             return Response(
@@ -932,30 +958,66 @@ class PerformanceAnalyticsView(APIView):
     def get(self, request):
         user = request.user
         session = PracticeSession.objects.filter(user=user)
+
         chunk = ChunkSentimentAnalysis.objects.select_related("chunk__session").all()
-        print(session)
-        data = (
+        card_data = session.aggregate(
+            speaking_time=Sum("duration"),
+            total_session=Count("id"),
+            impact=Avg("impact"),
+            vocal_variety=Avg("vocal_variety"),
+        )
+        # Convert timedelta to HH:MM:SS
+        if card_data["speaking_time"]:
+            card_data["speaking_time"] = str(card_data["speaking_time"])
+        recent_data = (
+            session.annotate(
+                session_type_display=Case(
+                    When(session_type="pitch", then=Value("Pitch Practice")),
+                    When(session_type="public", then=Value("Public Speaking")),
+                    When(session_type="presentation", then=Value("Presentation")),
+                    output_field=CharField(),
+                ),
+                formatted_duration=Cast("duration", output_field=CharField()),
+            )
+            .order_by("-date")[:5]
+            .values(
+                "session_name",
+                "session_type_display",
+                "date",
+                "formatted_duration",
+            )
+        )
+        graph_data = (
             ChunkSentimentAnalysis.objects.select_related("chunk__session")
             .all()
-            .annotate(month=TruncMonth("chunk__session__date"))
-            .values("month")
             .annotate(
-                total_brevity=Sum("brevity"),
-                total_impact=Sum("impact"),
-                # total_engagement=Sum("engagement"),
+                # month=TruncMonth("chunk__session__date"),
+                day=TruncDay("chunk__session__date"),
             )
-            .order_by("month")
+            .values("day")
+            .annotate(
+                clarity=Sum("chunk__session__clarity"),
+                impact=Sum("chunk__session__impact"),
+                audience_engagement=Sum("chunk__session__audience_engagement"),
+            )
+            .order_by("day")
         )
-        # print(data)
-        result = [
+
+        result = (
             {
-                "month": item["month"].strftime("%Y-%m"),
-                "brevity": item["total_brevity"] or 0,
-                "impact": item["total_impact"] or 0,
+                "month": item["day"],
+                "clarity": item["clarity"] or 0,
+                "impact": item["impact"] or 0,
+                "audience_engagement": item["audience_engagement"] or 0,
             }
-            for item in data
-        ]
-        return Response(result)
+            for item in graph_data
+        )
+        data = {
+            "overview_card": dict(card_data),
+            "recent_session": list(recent_data),
+            "graph_data": result,
+        }
+        return Response(data)
 
 
 class SequenceListView(APIView):
