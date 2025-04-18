@@ -24,7 +24,7 @@ from django.db.models import (
 from django.utils.timezone import now
 from django.shortcuts import get_object_or_404
 from django.contrib.auth import get_user_model
-from django.db.models.functions import Cast, TruncMonth
+from django.db.models.functions import Cast, TruncMonth, TruncDay
 
 import os
 import json
@@ -52,6 +52,63 @@ from .serializers import (
 )
 
 User = get_user_model()
+
+
+def generate_full_summary(self, session_id):
+    """Creates a cohesive summary for Strengths, Improvements, and Feedback."""
+    client = OpenAI(api_key=settings.OPENAI_API_KEY)
+
+    general_feedback_summary = ChunkSentimentAnalysis.objects.filter(
+        chunk__session__id=session_id
+    ).values_list("general_feedback_summary", flat=True)
+
+    combined_feedback = " ".join([g for g in general_feedback_summary if g])
+
+    # get strenghts and areas of improvements
+    # grade content_organisation (0-100), from transcript
+
+    prompt = f"""
+        Using the following presentation evaluation data, provide a structured JSON response containing three key elements:
+
+        1. **Strength**: Identify the speaker’s most notable strengths based on their delivery, clarity, and engagement.
+        2. **Area of Improvement**: Provide actionable and specific recommendations for improving the speaker’s performance.
+        3. **General Feedback Summary**: Summarize the presentation’s overall effectiveness, balancing positive feedback with constructive advice.
+
+        Data to analyze:
+        {combined_feedback}
+        """
+
+    try:
+        completion = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": prompt}],
+            response_format={
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "Feedback",
+                    "schema": {
+                        "type": "object",
+                        "properties": {
+                            "Strength": {"type": "string"},
+                            "Area of Improvement": {"type": "string"},
+                            "General Feedback Summary": {"type": "string"},
+                        },
+                    },
+                },
+            },
+        )
+
+        refined_summary = completion.choices[0].message.content
+        parsed_summary = json.loads(refined_summary)
+
+    except Exception as e:
+        print(f"Error generating summary: {e}")
+        parsed_data = {
+            "Strength": "N/A",
+            "Area of Improvement": "N/A",
+            "General Feedback Summary": combined_feedback,
+        }
+    return parsed_summary
 
 
 class PracticeSequenceViewSet(viewsets.ModelViewSet):
@@ -150,7 +207,6 @@ class SessionDashboardView(APIView):
         dashboard_section = request.query_params.get("section")
         start_date_str = request.query_params.get("start_date")
         end_date_str = request.query_params.get("end_date")
-        print(user.user_profile.is_admin())
         if hasattr(user, "user_profile") and user.user_profile.is_admin():
             sessions = PracticeSession.objects.all()
             filtered_sessions = sessions
@@ -361,7 +417,6 @@ class SessionDashboardView(APIView):
                 "inactive_users_count": inactive_users_count,
             }
         else:
-            latest_aggregated_data = {}
             latest_session_score = None
             available_credit = None
             performance_analytics_over_time = []
@@ -374,8 +429,8 @@ class SessionDashboardView(APIView):
             latest_session_chunk = ChunkSentimentAnalysis.objects.filter(
                 chunk__session=latest_session
             )
-            if user:
-                available_credit = user.user_profile.available_credits
+
+            available_credit = user.user_profile.available_credits if user else 0.0
 
             if latest_session:
                 goals_and_achievment.append(
@@ -413,11 +468,11 @@ class SessionDashboardView(APIView):
                 # Add other relevant aggregated fields here
                 # }
                 # Calculate the latest session score (average impact from chunks)
-                chunk_impacts = ChunkSentimentAnalysis.objects.filter(
-                    chunk__session=latest_session
-                ).values_list("impact", flat=True)
-                if chunk_impacts:
-                    latest_session_score = sum(chunk_impacts) / len(chunk_impacts)
+                chunk_impacts = latest_session_chunk.values_list("impact", flat=True)
+
+                latest_session_score = (
+                    sum(chunk_impacts) / len(chunk_impacts) if chunk_impacts else 0
+                )
 
                 # Prepare performance analytics data over time
                 for chunk in latest_session_chunk:
@@ -1210,28 +1265,70 @@ class SessionReportView(APIView):
 
 class PerformanceAnalyticsView(APIView):
     def get(self, request):
-        data = (
+        user = request.user
+        session = PracticeSession.objects.filter(user=user)
+
+        chunk = ChunkSentimentAnalysis.objects.select_related("chunk__session").all()
+        card_data = session.aggregate(
+            speaking_time=Sum("duration"),
+            total_session=Count("id"),
+            impact=Avg("impact"),
+            vocal_variety=Avg("vocal_variety"),
+        )
+        # Convert timedelta to HH:MM:SS
+        if card_data["speaking_time"]:
+            card_data["speaking_time"] = str(card_data["speaking_time"])
+        recent_data = (
+            session.annotate(
+                session_type_display=Case(
+                    When(session_type="pitch", then=Value("Pitch Practice")),
+                    When(session_type="public", then=Value("Public Speaking")),
+                    When(session_type="presentation", then=Value("Presentation")),
+                    output_field=CharField(),
+                ),
+                formatted_duration=Cast("duration", output_field=CharField()),
+            )
+            .order_by("-date")[:5]
+            .values(
+                "id",
+                "session_name",
+                "session_type_display",
+                "date",
+                "formatted_duration",
+                "impact",
+            )
+        )
+        graph_data = (
             ChunkSentimentAnalysis.objects.select_related("chunk__session")
             .all()
-            .annotate(month=TruncMonth("chunk__session__date"))
-            .values("month")
             .annotate(
-                total_brevity=Sum("brevity"),
-                total_impact=Sum("impact"),
-                total_engagement=Sum("engagement"),
+                # month=TruncMonth("chunk__session__date"),
+                day=TruncDay("chunk__session__date"),
             )
-            .order_by("month")
+            .values("day")
+            .annotate(
+                clarity=Sum("chunk__session__clarity"),
+                impact=Sum("chunk__session__impact"),
+                audience_engagement=Sum("chunk__session__audience_engagement"),
+            )
+            .order_by("day")
         )
-        result = [
+
+        result = (
             {
-                "month": item["month"].strftime("%Y-%m"),
-                "brevity": item["total_brevity"] or 0,
-                "impact": item["total_impact"] or 0,
-                "engagement": item["total_engagement"] or 0,
+                "month": item["day"],
+                "clarity": item["clarity"] or 0,
+                "impact": item["impact"] or 0,
+                "audience_engagement": item["audience_engagement"] or 0,
             }
-            for item in data
-        ]
-        return Response(result)
+            for item in graph_data
+        )
+        data = {
+            "overview_card": dict(card_data),
+            "recent_session": list(recent_data),
+            "graph_data": result,
+        }
+        return Response(data)
 
 
 class SequenceListView(APIView):
@@ -1243,13 +1340,11 @@ class SequenceListView(APIView):
         return Response({"sequences": sequence_serializer.data})
 
 
-class SessionsInSequenceView(APIView):
+class SessionList(APIView):
     permission_classes = [IsAuthenticated]
 
-    def get(self, request, sequence_id):
-        sessions = PracticeSession.objects.filter(
-            sequence_id=sequence_id, user=request.user
-        )
+    def get(self, request):
+        sessions = PracticeSession.objects.filter(user=request.user).order_by("-date")
         session_serializer = PracticeSessionSerializer(sessions, many=True)
         return Response({"sessions": session_serializer.data})
 
@@ -1260,37 +1355,23 @@ class CompareSessionsView(APIView):
     def get(self, request, session1_id, session2_id):
         session1 = get_object_or_404(PracticeSession, id=session1_id, user=request.user)
         session2 = get_object_or_404(PracticeSession, id=session2_id, user=request.user)
-
-        def get_analysis_data(session):
-            return ChunkSentimentAnalysis.objects.filter(chunk__session=session).values(
-                "chunk__id",
-                "engagement",
-                "audience_emotion",
-                "conviction",
-                "clarity",
-                "impact",
-                "brevity",
-                "transformative_potential",
-                "body_posture",
-                "general_feedback_summary",
-                "volume",
-                "pitch_variability",
-                "pace",
-                "chunk_transcript",
-            )
+        print(session1)
+        print(session2)
+        session1_serialized = PracticeSessionSerializer(session1).data
+        session2_serialized = PracticeSessionSerializer(session2).data
 
         data = {
-            "session1": {
-                "id": session1.id,
-                "date": session1.date,
-                "analysis": list(get_analysis_data(session1)),
-            },
-            "session2": {
-                "id": session2.id,
-                "date": session2.date,
-                "analysis": list(get_analysis_data(session2)),
-            },
+            "session1": session1_serialized,
+            "session2": session2_serialized,
         }
+
+        # def get_session_data(session):
+        #     return {}
+
+        # data = {
+        #     "session1": get_session_data(session1),
+        #     "session2": get_session_data(session2),
+        # }
 
         return Response(data)
         # def get_avg_metrics(session_id):
@@ -1353,5 +1434,7 @@ class GoalAchievementView(APIView):
                 value = getattr(session, field, 0)
                 if value >= 80:
                     goals[field] += 1
+                else:
+                    goals[field] += 0
 
         return Response(dict(goals))

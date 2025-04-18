@@ -9,7 +9,7 @@ from .views import (
     SessionReportView,
     PerformanceAnalyticsView,
     SequenceListView,
-    SessionsInSequenceView,
+    SessionList,
     CompareSessionsView,
     GoalAchievementView,
 )
@@ -46,9 +46,9 @@ urlpatterns = [
     ),
     path("sequences/", SequenceListView.as_view(), name="sequence-list"),
     path(
-        "sequences/<str:sequence_id>/sessions/",
-        SessionsInSequenceView.as_view(),
-        name="sessions-in-sequence",
+        "sessions-list/",
+        SessionList.as_view(),
+        name="sessions-list",
     ),
     path(
         "compare-sessions/<str:session1_id>/<str:session2_id>",
