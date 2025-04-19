@@ -682,8 +682,8 @@ def analyze_sentiment(transcript, metrics, posture_data):
         parsed_response = {}
         parsed_response['Feedback'] = json.loads(response)
         parsed_response['Posture Scores'] = {
-            "Posture": mean_body_posture,
-            "Motion": range_body_posture,
+            "Posture": round(mean_body_posture),
+            "Motion": round(range_body_posture),
             "Gestures": is_hand_present
         }        
     except json.JSONDecoder:
