@@ -6,7 +6,8 @@ from rest_framework.views import APIView
 from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework.exceptions import PermissionDenied
 
-from django.conf import settings
+
+from django.db.models.functions import Ceil
 from django.conf import settings
 from django.db.models import (
     Count,
@@ -956,8 +957,8 @@ class SessionReportView(APIView):
         prompt = f"""
         Using the following presentation evaluation data, provide a structured JSON response containing three key elements:
 
-        1. Strength: Identify the speaker’s most notable strengths based on their delivery, clarity, and engagement. Output should be a python list with 3 points on strength separated by comma
-        2. Area of Improvement: Provide actionable and specific recommendations for improving the speaker’s performance. Output should be a python list with 3 points on Area of Improvements separated by comma
+        1. Strength: Identify the speaker’s most notable strengths based on their delivery, clarity, and engagement. Output this as a Python list with 3 specific points of strength.
+        2. Area of Improvement: Provide actionable and specific recommendations for improving the speaker’s performance. Output this as a Python list with 3 specific improvement suggestions.
         3. General Feedback Summary: Summarize the presentation’s overall effectiveness, balancing positive feedback with constructive advice.
 
         Data to analyze:
@@ -967,7 +968,7 @@ class SessionReportView(APIView):
         try:
             print("Calling OpenAI for summary generation...")
             completion = client.chat.completions.create(
-                model="gpt-4o-mini", # Using gpt-4o-mini as per your previous view
+                model="gpt-4o-mini",
                 messages=[{"role": "user", "content": prompt}],
                 response_format={
                     "type": "json_schema",
@@ -976,11 +977,22 @@ class SessionReportView(APIView):
                         "schema": {
                             "type": "object",
                             "properties": {
-                                "Strength": {"type": "string"},
-                                "Area of Improvement": {"type": "string"},
-                                "General Feedback Summary": {"type": "string"},
+                                "Strength": {
+                                    "type": "array",
+                                    "items": {"type": "string"},
+                                    "description": "List of key strengths observed"
+                                },
+                                "Area of Improvement": {
+                                    "type": "array",
+                                    "items": {"type": "string"},
+                                    "description": "List of specific areas to improve"
+                                },
+                                "General Feedback Summary": {
+                                    "type": "string",
+                                    "description": "Balanced summary of the presentation"
+                                },
                             },
-                            "required": ["Strength", "Area of Improvement", "General Feedback Summary"], # Ensure these fields are in the response
+                            "required": ["Strength", "Area of Improvement", "General Feedback Summary"],
                         },
                     },
                 },
@@ -1083,24 +1095,24 @@ class SessionReportView(APIView):
 
             aggregation_results = chunks_with_sentiment.aggregate(
                 # Aggregate individual metrics
-                avg_volume=Avg("sentiment_analysis__volume"),
-                avg_pitch_variability=Avg("sentiment_analysis__pitch_variability"),
-                avg_pace=Avg("sentiment_analysis__pace"),
-                total_pauses=Sum("sentiment_analysis__pauses", output_field=IntegerField()), # Use Sum for total pauses
-                avg_conviction=Avg("sentiment_analysis__conviction"),
-                avg_clarity=Avg("sentiment_analysis__clarity"),
-                avg_impact=Avg("sentiment_analysis__impact"),
-                avg_brevity=Avg("sentiment_analysis__brevity"),
-                avg_trigger_response=Avg("sentiment_analysis__trigger_response"),
-                avg_filler_words=Avg("sentiment_analysis__filler_words"),
-                avg_grammar=Avg("sentiment_analysis__grammar"),
-                avg_posture=Avg("sentiment_analysis__posture"),
-                avg_motion=Avg("sentiment_analysis__motion"),
+                avg_volume=Ceil(Avg("sentiment_analysis__volume")),
+                avg_pitch_variability=Ceil(Avg("sentiment_analysis__pitch_variability")),
+                avg_pace=Ceil(Avg("sentiment_analysis__pace")),
+                total_pauses=Ceil(Sum("sentiment_analysis__pauses", output_field=IntegerField())), # Use Sum for total pauses
+                avg_conviction=Ceil(Avg("sentiment_analysis__conviction")),
+                avg_clarity=Ceil(Avg("sentiment_analysis__clarity")),
+                avg_impact=Ceil(Avg("sentiment_analysis__impact")),
+                avg_brevity=Ceil(Avg("sentiment_analysis__brevity")),
+                avg_trigger_response=Ceil(Avg("sentiment_analysis__trigger_response")),
+                avg_filler_words=Ceil(Avg("sentiment_analysis__filler_words")),
+                avg_grammar=Ceil(Avg("sentiment_analysis__grammar")),
+                avg_posture=Ceil(Avg("sentiment_analysis__posture")),
+                avg_motion=Ceil(Avg("sentiment_analysis__motion")),
                 # To sum boolean gestures, explicitly cast to IntegerField before summing
-                total_true_gestures=Sum(Cast('sentiment_analysis__gestures', output_field=IntegerField())),
+                total_true_gestures=Ceil(Sum(Cast('sentiment_analysis__gestures', output_field=IntegerField()))),
                 # Count the number of chunks considered for aggregation
                 total_chunks_for_aggregation=Count('sentiment_analysis__conviction'), # Use Count on a non-nullable field
-                avg_transformative_potential=Avg("sentiment_analysis__transformative_potential"),
+                avg_transformative_potential=Ceil(Avg("sentiment_analysis__transformative_potential")),
             )
 
             print(f"Raw aggregation results: {aggregation_results}")

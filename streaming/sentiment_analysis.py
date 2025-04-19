@@ -189,53 +189,56 @@ def get_pace(audio_file, transcript):
     # print(f"\nElapsed time for pace: {elapsed_time:.2f} seconds")
     return word_count/duration
 
-def get_pauses(audio_file):
-    """
-    Detects pauses using Praat's intensity feature via parselmouth.
-    """
 
-    # Load audio file with Praat
+def get_pauses(audio_file):
+    import numpy as np
     sound = parselmouth.Sound(audio_file)
 
-    intensity_threshold=30 
-    min_pause_duration=0.5
-    long_pause_duration=1.75
-    
+    # Tunable values
+    # intensity_threshold = 30
+    min_pause_duration = 0.4
+    long_pause_duration = 1.75
+
     # Extract intensity
     intensity = sound.to_intensity()
+    times = intensity.xs()
+    values = intensity.values[0]
+
+    print("Intensity value stats:", np.min(values), np.max(values), np.mean(values))
+
+    # Optionally use percentile threshold
+    intensity_threshold = np.percentile(values, 10)
+
+    pause_times = [times[i] for i, val in enumerate(values) if val < intensity_threshold]
     
-    # Identify pause segments (where intensity falls below the threshold)
-    pause_times = []
-    for i, value in enumerate(intensity.values[0]):
-        if value < intensity_threshold:
-            pause_times.append(intensity.xs()[i])
-    
-    # Identify continuous pause regions
     if not pause_times:
         print("NO PAUSES DETECTED")
-        return 1, 1  # No pauses detected
+        return 1, 1
 
-    # Group pause segments into continuous pauses
+    # Group into continuous pauses
     pauses = []
     start_time = pause_times[0]
 
     for i in range(1, len(pause_times)):
-        if pause_times[i] - pause_times[i-1] > 0.1:  # Break detected
-            pauses.append((start_time, pause_times[i-1]))
+        if pause_times[i] - pause_times[i - 1] > 0.2:
+            end_time = pause_times[i - 1]
+            pauses.append((start_time, end_time))
             start_time = pause_times[i]
-
-    # Add the last pause
     pauses.append((start_time, pause_times[-1]))
 
-    # Classify pauses
+    # Print pause segments
+    print(f"Detected pause segments: {pauses}")
+
     appropriate_pauses = sum(min_pause_duration <= (end - start) < long_pause_duration for start, end in pauses)
     long_pauses = sum((end - start) >= long_pause_duration for start, end in pauses)
 
-    # Ensure at least (1,1) if both are 0
+    print(f"Appropriate pauses: {appropriate_pauses}, Long pauses: {long_pauses}")
+
     if appropriate_pauses == 0 and long_pauses == 0:
         return 1, 1
 
     return appropriate_pauses, long_pauses
+
 
 # ---------------------- PROCESS AUDIO ----------------------
 
