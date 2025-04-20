@@ -207,7 +207,7 @@ def get_pauses(audio_file):
     print("Intensity value stats:", np.min(values), np.max(values), np.mean(values))
 
     # Optionally use percentile threshold
-    intensity_threshold = np.percentile(values, 10)
+    intensity_threshold = np.percentile(values, 30)
 
     pause_times = [times[i] for i, val in enumerate(values) if val < intensity_threshold]
     
@@ -331,7 +331,7 @@ def transcribe_audio(audio_file):
 
 # Calculate Distance
 def find_distance(x1, y1, x2, y2):
-    return m.sqrt(((x2 - x1) * 2) + ((y2 - y1) * 2))
+    return m.sqrt(((x2 - x1) ** 2) + ((y2 - y1) ** 2))
 
 # Calculate Angles
 def find_angle(x1, y1, x2, y2):
@@ -411,10 +411,18 @@ def extract_posture_angles(landmarks, image_width, image_height):
     hip_mid = ((left_hip[0] + right_hip[0]) // 2, (left_hip[1] + right_hip[1]) // 2)
     ear_mid = ((left_ear[0] + right_ear[0]) // 2, (left_ear[1] + right_ear[1]) // 2)
 
+    # print(f"\n left_shoulder: {left_shoulder}, right_shoulder: {right_shoulder}, left_ear: {left_ear}, right_ear: {right_ear}, left_hip: {left_hip}, right_hip: {right_hip}", flush=True)
+
+    # print(f"\n left_wrist: {left_wrist}, right_wrist: {right_wrist}, left_pinky: {left_pinky}, right_pinky: {right_pinky}, left_index: {left_index}, right_index: {right_index}", flush=True)   
+
+    # print(f"\n left_thumb: {left_thumb}, right_thumb: {right_thumb}", flush=True)
+
+    # print(f"\n shoulder_mid: {shoulder_mid}, hip_mid: {hip_mid}, ear_mid: {ear_mid}", flush=True)
+
     neck_inclination = find_angle(ear_mid[0], ear_mid[1], shoulder_mid[0], shoulder_mid[1])
     back_inclination = find_angle(shoulder_mid[0], shoulder_mid[1], hip_mid[0], hip_mid[1])
 
-    return {
+    extracted_posture_angles = {
         "neck_inclination": neck_inclination,
         "back_inclination": back_inclination,
         "left_wrist_present": left_wrist_present,
@@ -426,7 +434,8 @@ def extract_posture_angles(landmarks, image_width, image_height):
         "left_thumb_present": left_thumb_present,
         "right_thumb_present": right_thumb_present
     }
-
+    print(f"\n extracted_posture_angles: {extracted_posture_angles} \n", flush=True) # Added logging
+    return extracted_posture_angles
 
 # Capture Thread
 def capture_frames(video_path):
