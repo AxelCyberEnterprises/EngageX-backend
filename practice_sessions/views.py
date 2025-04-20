@@ -955,11 +955,11 @@ class SessionReportView(APIView):
             }
 
         prompt = f"""
-        Using the following presentation evaluation data, provide a structured JSON response containing three key elements:
+        Using the presentation evaluation data provided, generate a structured JSON response with the following three components:
+        Strengths: List the speaker’s top strengths based on their delivery, clarity, and audience engagement. Format the output as a Python string representing a list, with each of the 3 strengths as points separated by a full stop with the quotes outside the list brackets (e.g., "[Strength 1. Strength 2. Strength 3]").
+        Areas for Improvement: Provide 3 specific, actionable suggestions to help the speaker enhance their performance. Format the output as a Python string representing a list, with each of the 3 area of improvement points separated by a full stop with the quotes outside the list brackets (e.g., "[Area of Improvement 1. Area of Improvement 2. Area of Improvement 3]").
 
-        1. Strength: Identify the speaker’s most notable strengths based on their delivery, clarity, and engagement. Output this as a Python list with 3 specific points of strength.
-        2. Area of Improvement: Provide actionable and specific recommendations for improving the speaker’s performance. Output this as a Python list with 3 specific improvement suggestions.
-        3. General Feedback Summary: Summarize the presentation’s overall effectiveness, balancing positive feedback with constructive advice.
+        General Feedback Summary: Write a concise paragraph summarizing the overall effectiveness of the presentation, balancing both positive observations and constructive feedback.
 
         Data to analyze:
         {combined_feedback}
@@ -977,27 +977,16 @@ class SessionReportView(APIView):
                         "schema": {
                             "type": "object",
                             "properties": {
-                                "Strength": {
-                                    "type": "array",
-                                    "items": {"type": "string"},
-                                    "description": "List of key strengths observed"
-                                },
-                                "Area of Improvement": {
-                                    "type": "array",
-                                    "items": {"type": "string"},
-                                    "description": "List of specific areas to improve"
-                                },
-                                "General Feedback Summary": {
-                                    "type": "string",
-                                    "description": "Balanced summary of the presentation"
-                                },
-                            },
+                                "Strength": {"type": "string"},
+                                "Area of Improvement": {"type": "string"},
+                                "General Feedback Summary":{"type": "string"},
                             "required": ["Strength", "Area of Improvement", "General Feedback Summary"],
                         },
                     },
                 },
-                 temperature=0.7, # Adjust temperature as needed
-                 max_tokens=500 # Limit tokens to control response length
+                },
+                temperature=0.7, # Adjust temperature as needed
+                max_tokens=500 # Limit tokens to control response length
             )
 
             refined_summary = completion.choices[0].message.content
