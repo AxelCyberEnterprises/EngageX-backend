@@ -1,4 +1,6 @@
 from rest_framework import serializers
+from rest_framework.exceptions import  ValidationError
+from django.db import transaction
 
 from datetime import timedelta
 from .models import (
@@ -29,26 +31,6 @@ class PracticeSessionSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = PracticeSession
-        # fields = [
-        #     "id",
-        #     "session_name",
-        #     "session_type",
-        #     "goals",
-        #     "session_type_display",
-        #     "latest_score",
-        #     "date",
-        #     "duration",
-        #     "note",
-        #     "user_email",
-        #     "full_name",
-        #     "pauses",
-        #     "impact",
-        #     "audience_engagement",
-        #     "sequence",
-        #     "allow_ai_questions",
-        #     "virtual_environment",
-        #     # Add other aggregated fields here if you have them in your PracticeSession model
-        # ]
         fields = "__all__"
         read_only_fields = [
             "id",
@@ -76,9 +58,19 @@ class PracticeSessionSerializer(serializers.ModelSerializer):
         return obj.impact
 
     def create(self, validated_data):
+        user  =  validated_data.get('user')
 
-        # We are no longer creating SessionDetail here
-        return PracticeSession.objects.create(**validated_data)
+        with transaction.atomic():
+            # Lock the profile row for this user to prevent race conditions
+            profile = user.user_profile.__class__.objects.select_for_update().get(user=user)
+            print(profile.available_credits)
+
+            if profile.available_credits > 0:
+                profile.available_credits -= 1
+                profile.save()
+                return PracticeSession.objects.create(**validated_data)
+            else:
+                raise ValidationError({"credit": "Insufficient credit"})
 
     def update(self, instance, validated_data):
         # Allow updates to basic fields like session_name and note

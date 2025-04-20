@@ -154,7 +154,7 @@ class PracticeSessionViewSet(viewsets.ModelViewSet):
                 PracticeSession.objects.none()
             )  # Return empty queryset for schema generation or anonymous users
 
-        if hasattr(user, "userprofile") and user.userprofile.is_admin():
+        if hasattr(user, "user_profile") and user.userprofile.is_admin():
             return PracticeSession.objects.all().order_by("-date")
 
         return PracticeSession.objects.filter(user=user).order_by("-date")
