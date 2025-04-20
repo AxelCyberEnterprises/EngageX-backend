@@ -49,6 +49,7 @@ class CustomTokenCreateSerializer(TokenCreateSerializer):
 
         # Create or get the existing auth token for the user
         token, created = Token.objects.get_or_create(user=user)
+        print(token)
 
         # Ensure the token has a user associated
         if not user or token.user is None:
@@ -223,6 +224,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
         model = UserProfile
         exclude = ["user"]
         # fields = "__all__"
+        # read_only_fields=["user"]
 
     def create(self, validated_data):
         print(validated_data)

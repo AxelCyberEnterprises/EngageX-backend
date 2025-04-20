@@ -189,53 +189,56 @@ def get_pace(audio_file, transcript):
     # print(f"\nElapsed time for pace: {elapsed_time:.2f} seconds")
     return word_count/duration
 
-def get_pauses(audio_file):
-    """
-    Detects pauses using Praat's intensity feature via parselmouth.
-    """
 
-    # Load audio file with Praat
+def get_pauses(audio_file):
+    import numpy as np
     sound = parselmouth.Sound(audio_file)
 
-    intensity_threshold=30 
-    min_pause_duration=0.5
-    long_pause_duration=1.75
-    
+    # Tunable values
+    # intensity_threshold = 30
+    min_pause_duration = 0.4
+    long_pause_duration = 1.75
+
     # Extract intensity
     intensity = sound.to_intensity()
+    times = intensity.xs()
+    values = intensity.values[0]
+
+    print("Intensity value stats:", np.min(values), np.max(values), np.mean(values))
+
+    # Optionally use percentile threshold
+    intensity_threshold = np.percentile(values, 30)
+
+    pause_times = [times[i] for i, val in enumerate(values) if val < intensity_threshold]
     
-    # Identify pause segments (where intensity falls below the threshold)
-    pause_times = []
-    for i, value in enumerate(intensity.values[0]):
-        if value < intensity_threshold:
-            pause_times.append(intensity.xs()[i])
-    
-    # Identify continuous pause regions
     if not pause_times:
         print("NO PAUSES DETECTED")
-        return 1, 1  # No pauses detected
+        return 1, 1
 
-    # Group pause segments into continuous pauses
+    # Group into continuous pauses
     pauses = []
     start_time = pause_times[0]
 
     for i in range(1, len(pause_times)):
-        if pause_times[i] - pause_times[i-1] > 0.1:  # Break detected
-            pauses.append((start_time, pause_times[i-1]))
+        if pause_times[i] - pause_times[i - 1] > 0.2:
+            end_time = pause_times[i - 1]
+            pauses.append((start_time, end_time))
             start_time = pause_times[i]
-
-    # Add the last pause
     pauses.append((start_time, pause_times[-1]))
 
-    # Classify pauses
+    # Print pause segments
+    print(f"Detected pause segments: {pauses}")
+
     appropriate_pauses = sum(min_pause_duration <= (end - start) < long_pause_duration for start, end in pauses)
     long_pauses = sum((end - start) >= long_pause_duration for start, end in pauses)
 
-    # Ensure at least (1,1) if both are 0
+    print(f"Appropriate pauses: {appropriate_pauses}, Long pauses: {long_pauses}")
+
     if appropriate_pauses == 0 and long_pauses == 0:
         return 1, 1
 
     return appropriate_pauses, long_pauses
+
 
 # ---------------------- PROCESS AUDIO ----------------------
 
@@ -328,7 +331,7 @@ def transcribe_audio(audio_file):
 
 # Calculate Distance
 def find_distance(x1, y1, x2, y2):
-    return m.sqrt(((x2 - x1) * 2) + ((y2 - y1) * 2))
+    return m.sqrt(((x2 - x1) ** 2) + ((y2 - y1) ** 2))
 
 # Calculate Angles
 def find_angle(x1, y1, x2, y2):
@@ -408,10 +411,18 @@ def extract_posture_angles(landmarks, image_width, image_height):
     hip_mid = ((left_hip[0] + right_hip[0]) // 2, (left_hip[1] + right_hip[1]) // 2)
     ear_mid = ((left_ear[0] + right_ear[0]) // 2, (left_ear[1] + right_ear[1]) // 2)
 
+    # print(f"\n left_shoulder: {left_shoulder}, right_shoulder: {right_shoulder}, left_ear: {left_ear}, right_ear: {right_ear}, left_hip: {left_hip}, right_hip: {right_hip}", flush=True)
+
+    # print(f"\n left_wrist: {left_wrist}, right_wrist: {right_wrist}, left_pinky: {left_pinky}, right_pinky: {right_pinky}, left_index: {left_index}, right_index: {right_index}", flush=True)   
+
+    # print(f"\n left_thumb: {left_thumb}, right_thumb: {right_thumb}", flush=True)
+
+    # print(f"\n shoulder_mid: {shoulder_mid}, hip_mid: {hip_mid}, ear_mid: {ear_mid}", flush=True)
+
     neck_inclination = find_angle(ear_mid[0], ear_mid[1], shoulder_mid[0], shoulder_mid[1])
     back_inclination = find_angle(shoulder_mid[0], shoulder_mid[1], hip_mid[0], hip_mid[1])
 
-    return {
+    extracted_posture_angles = {
         "neck_inclination": neck_inclination,
         "back_inclination": back_inclination,
         "left_wrist_present": left_wrist_present,
@@ -423,7 +434,8 @@ def extract_posture_angles(landmarks, image_width, image_height):
         "left_thumb_present": left_thumb_present,
         "right_thumb_present": right_thumb_present
     }
-
+    print(f"\n extracted_posture_angles: {extracted_posture_angles} \n", flush=True) # Added logging
+    return extracted_posture_angles
 
 # Capture Thread
 def capture_frames(video_path):
@@ -682,8 +694,8 @@ def analyze_sentiment(transcript, metrics, posture_data):
         parsed_response = {}
         parsed_response['Feedback'] = json.loads(response)
         parsed_response['Posture Scores'] = {
-            "Posture": mean_body_posture,
-            "Motion": range_body_posture,
+            "Posture": round(mean_body_posture),
+            "Motion": round(range_body_posture),
             "Gestures": is_hand_present
         }        
     except json.JSONDecoder:

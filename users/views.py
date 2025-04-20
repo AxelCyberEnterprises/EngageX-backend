@@ -585,13 +585,13 @@ class UserProfileViewSet(viewsets.ModelViewSet):
             )  # Return empty queryset for schema generation or anonymous users
 
         if hasattr(
-            user, "userprofile"
+            user, "user_profile"
         ):  # Check if userprofile exists before accessing it
-            if user.userprofile.is_admin():
+            if user.user_profile.is_admin():
                 # Admins can see everything
                 return UserProfile.objects.all()
 
-            elif user.userprofile.is_user():
+            elif user.user_profile.is_user():
                 return UserProfile.objects.filter(user=user)
 
         # Default: Return an empty queryset for non-admin, non-presenter, non-coach and users without userprofile

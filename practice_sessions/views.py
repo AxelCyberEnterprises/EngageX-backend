@@ -6,7 +6,8 @@ from rest_framework.views import APIView
 from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework.exceptions import PermissionDenied
 
-from django.conf import settings
+
+from django.db.models.functions import Ceil
 from django.conf import settings
 from django.db.models import (
     Count,
@@ -153,7 +154,7 @@ class PracticeSessionViewSet(viewsets.ModelViewSet):
                 PracticeSession.objects.none()
             )  # Return empty queryset for schema generation or anonymous users
 
-        if hasattr(user, "userprofile") and user.userprofile.is_admin():
+        if hasattr(user, "user_profile") and user.userprofile.is_admin():
             return PracticeSession.objects.all().order_by("-date")
 
         return PracticeSession.objects.filter(user=user).order_by("-date")
@@ -1135,11 +1136,11 @@ class SessionReportView(APIView):
             }
 
         prompt = f"""
-        Using the following presentation evaluation data, provide a structured JSON response containing three key elements:
+        Using the presentation evaluation data provided, generate a structured JSON response with the following three components:
+        Strengths: List the speaker’s top strengths based on their delivery, clarity, and audience engagement. Format the output as a Python string representing a list, with each of the 3 strengths as points separated by a full stop with the quotes outside the list brackets (e.g., "[Strength 1. Strength 2. Strength 3]").
+        Areas for Improvement: Provide 3 specific, actionable suggestions to help the speaker enhance their performance. Format the output as a Python string representing a list, with each of the 3 area of improvement points separated by a full stop with the quotes outside the list brackets (e.g., "[Area of Improvement 1. Area of Improvement 2. Area of Improvement 3]").
 
-        1. **Strength**: Identify the speaker’s most notable strengths based on their delivery, clarity, and engagement.
-        2. **Area of Improvement**: Provide actionable and specific recommendations for improving the speaker’s performance.
-        3. **General Feedback Summary**: Summarize the presentation’s overall effectiveness, balancing positive feedback with constructive advice.
+        General Feedback Summary: Write a concise paragraph summarizing the overall effectiveness of the presentation, balancing both positive observations and constructive feedback.
 
         Data to analyze:
         {combined_feedback}
@@ -1148,7 +1149,7 @@ class SessionReportView(APIView):
         try:
             print("Calling OpenAI for summary generation...")
             completion = client.chat.completions.create(
-                model="gpt-4o-mini", # Using gpt-4o-mini as per your previous view
+                model="gpt-4o-mini",
                 messages=[{"role": "user", "content": prompt}],
                 response_format={
                     "type": "json_schema",
@@ -1159,14 +1160,14 @@ class SessionReportView(APIView):
                             "properties": {
                                 "Strength": {"type": "string"},
                                 "Area of Improvement": {"type": "string"},
-                                "General Feedback Summary": {"type": "string"},
-                            },
-                            "required": ["Strength", "Area of Improvement", "General Feedback Summary"], # Ensure these fields are in the response
+                                "General Feedback Summary":{"type": "string"},
+                            "required": ["Strength", "Area of Improvement", "General Feedback Summary"],
                         },
                     },
                 },
-                 temperature=0.7, # Adjust temperature as needed
-                 max_tokens=500 # Limit tokens to control response length
+                },
+                temperature=0.7, # Adjust temperature as needed
+                max_tokens=500 # Limit tokens to control response length
             )
 
             refined_summary = completion.choices[0].message.content
@@ -1264,12 +1265,22 @@ class SessionReportView(APIView):
 
             aggregation_results = chunks_with_sentiment.aggregate(
                 # Aggregate individual metrics
+                avg_volume=Ceil(Avg("sentiment_analysis__volume")),
+                avg_pitch_variability=Ceil(Avg("sentiment_analysis__pitch_variability")),
+                avg_pace=Ceil(Avg("sentiment_analysis__pace")),
+                avg_conviction=Ceil(Avg("sentiment_analysis__conviction")),
+                avg_clarity=Ceil(Avg("sentiment_analysis__clarity")),
+                avg_impact=Ceil(Avg("sentiment_analysis__impact")),
+                avg_brevity=Ceil(Avg("sentiment_analysis__brevity")),
+                avg_trigger_response=Ceil(Avg("sentiment_analysis__trigger_response")),
+                avg_filler_words=Ceil(Avg("sentiment_analysis__filler_words")),
+                avg_grammar=Ceil(Avg("sentiment_analysis__grammar")),
+                avg_posture=Ceil(Avg("sentiment_analysis__posture")),
+                avg_motion=Ceil(Avg("sentiment_analysis__motion")),
                 avg_volume=Avg("sentiment_analysis__volume"),
                 avg_pitch_variability=Avg("sentiment_analysis__pitch_variability"),
                 avg_pace=Avg("sentiment_analysis__pace"),
-                # *** FIX: Use Avg for aggregated pauses (expected to be over 100) ***
-                avg_pauses=Avg("sentiment_analysis__pauses"), # Use Avg for aggregated pauses
-                # *** End FIX ***
+                avg_pauses=Ceil(Avg("sentiment_analysis__pauses")), # Use Avg for aggregated pauses
                 avg_conviction=Avg("sentiment_analysis__conviction"),
                 avg_clarity=Avg("sentiment_analysis__clarity"),
                 avg_impact=Avg("sentiment_analysis__impact"),
@@ -1280,10 +1291,10 @@ class SessionReportView(APIView):
                 avg_posture=Avg("sentiment_analysis__posture"),
                 avg_motion=Avg("sentiment_analysis__motion"),
                 # To sum boolean gestures, explicitly cast to IntegerField before summing
-                total_true_gestures=Sum(Cast('sentiment_analysis__gestures', output_field=IntegerField())),
+                total_true_gestures=Ceil(Sum(Cast('sentiment_analysis__gestures', output_field=IntegerField()))),
                 # Count the number of chunks considered for aggregation
                 total_chunks_for_aggregation=Count('sentiment_analysis__conviction'), # Use Count on a non-nullable field
-                avg_transformative_potential=Avg("sentiment_analysis__transformative_potential"),
+                avg_transformative_potential=Ceil(Avg("sentiment_analysis__transformative_potential")),
             )
 
             print(f"Raw aggregation results: {aggregation_results}")

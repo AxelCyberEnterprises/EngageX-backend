@@ -138,7 +138,7 @@ class UserProfile(models.Model):
     available_credits = models.DecimalField(
         max_digits=10,
         decimal_places=2,
-        default=0.00,
+        default=4.00,
         help_text="Available credits on the user dashboard.",
     )
 
@@ -157,6 +157,24 @@ class UserProfile(models.Model):
         max_length=15, null=True, blank=True, help_text="User's phone number"
     )
 
+    email_alert = models.BooleanField(default=False, null=True, blank=True)
+    practice_reminder = models.BooleanField(default=False, null=True, blank=True)
+    session_analysis =  models.BooleanField(default=False, null=True, blank=True)
+
+    INDUSTRY_CHOICES =   [
+        ("Media & Presentation", "Media & Presentation"),
+        ("Technology", "Technology"),
+        ("Healthcare", "Healthcare"),
+        ("Finance", "Finance"),
+        ("Education", "Education"),
+    ]
+    industry = models.CharField(
+        max_length=50,
+        choices=INDUSTRY_CHOICES,
+        blank=True,
+        null=True,
+
+    )
     def __str__(self):
         return f"{self.user.email} - {self.role}"
 
