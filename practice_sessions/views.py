@@ -780,10 +780,91 @@ class ChunkSentimentAnalysisViewSet(viewsets.ModelViewSet):
 # class SessionReportView(APIView):
 #     permission_classes = [IsAuthenticated]
 
+#     def generate_full_summary(self, session_id):
+#         """Creates a cohesive summary for Strengths, Improvements, and Feedback using OpenAI."""
+#         client = OpenAI(api_key=settings.OPENAI_API_KEY)
+
+#         # Retrieve all general feedback summaries for the session's chunks
+#         general_feedback_summaries = ChunkSentimentAnalysis.objects.filter(
+#             chunk__session__id=session_id
+#         ).values_list("general_feedback_summary", flat=True)
+
+#         combined_feedback = " ".join([g for g in general_feedback_summaries if g])
+
+#         # If there's no feedback, return default values
+#         if not combined_feedback.strip():
+#             print("No feedback available from chunks to generate summary.")
+#             return {
+#                 "Strength": "N/A - No feedback available.",
+#                 "Area of Improvement": "N/A - No feedback available.",
+#                 "General Feedback Summary": "No feedback was generated for the chunks in this session.",
+#             }
+
+#         prompt = f"""
+#         Using the following presentation evaluation data, provide a structured JSON response containing three key elements:
+
+#         1. **Strength**: Identify the speaker’s most notable strengths based on their delivery, clarity, and engagement.
+#         2. **Area of Improvement**: Provide actionable and specific recommendations for improving the speaker’s performance.
+#         3. **General Feedback Summary**: Summarize the presentation’s overall effectiveness, balancing positive feedback with constructive advice.
+
+#         Data to analyze:
+#         {combined_feedback}
+#         """
+
+#         try:
+#             print("Calling OpenAI for summary generation...")
+#             completion = client.chat.completions.create(
+#                 model="gpt-4o-mini", # Using gpt-4o-mini as per your previous view
+#                 messages=[{"role": "user", "content": prompt}],
+#                 response_format={
+#                     "type": "json_schema",
+#                     "json_schema": {
+#                         "name": "Feedback",
+#                         "schema": {
+#                             "type": "object",
+#                             "properties": {
+#                                 "Strength": {"type": "string"},
+#                                 "Area of Improvement": {"type": "string"},
+#                                 "General Feedback Summary": {"type": "string"},
+#                             },
+#                             "required": ["Strength", "Area of Improvement", "General Feedback Summary"], # Ensure these fields are in the response
+#                         },
+#                     },
+#                 },
+#                  temperature=0.7, # Adjust temperature as needed
+#                  max_tokens=500 # Limit tokens to control response length
+#             )
+
+#             refined_summary = completion.choices[0].message.content
+#             print(f"OpenAI raw response: {refined_summary}")
+#             parsed_summary = json.loads(refined_summary)
+#             print(f"Parsed summary: {parsed_summary}")
+#             return parsed_summary
+
+#         except json.JSONDecodeError as e:
+#              print(f"Error decoding JSON from OpenAI response: {e}")
+#              print(f"Faulty JSON content: {refined_summary}")
+#              # Fallback in case of JSON decoding error
+#              return {
+#                 "Strength": "N/A - Error generating detailed summary.",
+#                 "Area of Improvement": "N/A - Error generating detailed summary.",
+#                 "General Feedback Summary": f"Error processing AI summary. Raw feedback: {combined_feedback}",
+#              }
+#         except Exception as e:
+#             print(f"Error generating summary with OpenAI: {e}")
+#             # Fallback in case of any other OpenAI error
+#             return {
+#                 "Strength": "N/A - Error generating detailed summary.",
+#                 "Area of Improvement": "N/A - Error generating detailed summary.",
+#                 "General Feedback Summary": f"Error processing AI summary. Raw feedback: {combined_feedback}",
+#             }
+
+
 #     def get(self, request, session_id):
+#         # Keep the GET method as is, it just returns the session details
 #         try:
 #             session = PracticeSession.objects.get(id=session_id, user=request.user)
-#             session_serializer = PracticeSessionSerializer(session)  # correct usage
+#             session_serializer = PracticeSessionSerializer(session)
 #             return Response(session_serializer.data, status=status.HTTP_200_OK)
 #         except PracticeSession.DoesNotExist:
 #             return Response(
@@ -791,143 +872,243 @@ class ChunkSentimentAnalysisViewSet(viewsets.ModelViewSet):
 #             )
 
 #     @swagger_auto_schema(
-#         operation_description="update the session duration and get the session summary",
+#         operation_description="update the session duration, calculate report, and generate summary",
 #         request_body=SessionReportSerializer,
 #         responses={},
 #     )
 #     def post(self, request, session_id):
-#         duration = request.data.get("duration")
-#         try:
-#             session = PracticeSession.objects.get(id=session_id, user=request.user)
-#             if duration:
-#                 session.duration = duration
-#                 session.save()
-#             print(session.duration)
-#         except PracticeSession.DoesNotExist:
-#             return Response(
-#                 {"error": "Session not found"}, status=status.HTTP_404_NOT_FOUND
-#             )
-
-#         chunks = session.chunks.select_related("sentiment_analysis").all()
-
-#         data = []
-#         graph_data = []
-#         all_brevity = []
-#         all_transformative_potential = []
-#         all_impact = []
-#         all_clarity = []
-#         all_volume = []
-#         all_pitch = []
-#         all_pace = []
-#         all_pauses = []
-#         all_engagement = []
-#         all_conviction = []
-#         all_body_posture = []
-#         all_posture = []
-#         all_motion = []
-#         all_grammar = []
-#         all_filler_words = []
-#         all_trigger_reponse = []
-#         all_structure_and_clarity = []
-#         all_transformative_communication = []
-#         all_emotional_impact = []
-#         all_gesture = []
-
-#         for index, chunk in enumerate(chunks, start=1):
-#             if hasattr(chunk, "sentiment_analysis"):
-#                 analysis = chunk.sentiment_analysis
-#                 # graph dict
-#                 graph_data.append(
-#                     {
-#                         "chuck_no": f"Chunk {index}",
-#                         "start_time": chunk.start_time,
-#                         "end_time": chunk.end_time,
-#                         "brevity": analysis.brevity,
-#                         "conviction": analysis.conviction,
-#                         "impact": analysis.impact,
-#                     }
-#                 )
-#                 # Collecting for avg
-#                 all_brevity.append(analysis.brevity)
-#                 all_transformative_potential.append(analysis.transformative_potential)
-#                 all_impact.append(analysis.impact)
-#                 all_clarity.append(analysis.clarity)
-#                 all_volume.append(analysis.volume)
-#                 all_pitch.append(analysis.pitch_variability)
-#                 all_pace.append(analysis.pace)
-#                 all_pauses.append(session.pauses)
-#                 # all_engagement.append(analysis.engagement)
-#                 all_conviction.append(analysis.conviction)
-#                 # all_body_posture.append(analysis.body_posture)
-#                 all_posture.append(analysis.posture)
-#                 all_motion.append(analysis.motion)
-#                 all_grammar.append(analysis.grammar)
-#                 all_filler_words.append(analysis.filler_words)
-#                 all_trigger_reponse.append(analysis.trigger_response)
-#                 all_transformative_communication.append(
-#                     analysis.transformative_communication
-#                 )
-#                 all_gesture.append(analysis.gestures)
-#                 all_structure_and_clarity.append(analysis.clarity)
-
-#         # Compute averages
-#         def safe_avg(lst):
-#             return round(sum(lst) / len(lst), 2) if lst else 0
-
-#         averages = {
-#             "brevity": safe_avg(all_brevity),
-#             "all_transformative_potential": safe_avg(all_transformative_potential),
-#             "all_transformative_communication": safe_avg(
-#                 all_transformative_communication
-#             ),
-#             "emotional_impact": safe_avg(all_impact),
-#             "clarity": safe_avg(all_clarity),
-#             "volume": safe_avg(all_volume),
-#             "pitch": safe_avg(all_pitch),
-#             "pace": safe_avg(all_pace),
-#             "pauses": safe_avg(all_pauses),
-#             "trigger_response": safe_avg(all_trigger_reponse),
-#             "filler_words": safe_avg(all_filler_words),
-#             "grammar": safe_avg(all_grammar),
-#             "posture": safe_avg(all_posture),
-#             "motion": safe_avg(all_motion),
-#             "brevity": safe_avg(all_brevity),
-#             "pitch_variability": safe_avg(all_pitch),
-#             "gestures": safe_avg(all_gesture),
-#             "structure_clarity": safe_avg(all_structure_and_clarity),
-#         }
+#         print(f"Starting report generation and summary for session ID: {session_id}")
+#         duration_seconds = request.data.get("duration")
 
 #         try:
-#             session = PracticeSession.objects.get(id=session_id, user=request.user)
+#             session = get_object_or_404(PracticeSession, id=session_id, user=request.user)
+#             print(f"Session found: {session.session_name}")
 
-#             # vocal
-#             session.volume = safe_avg(all_volume)
-#             session.pitch_variability = safe_avg(all_pitch)
-#             session.pace = safe_avg(all_pace)
-#             session.pauses = safe_avg(all_pauses)
-#             # delivery
-#             session.transformative_communication = safe_avg(
-#                 all_transformative_communication
+#             # --- Update Duration ---
+#             if duration_seconds is not None:
+#                 try:
+#                     duration_seconds_int = int(duration_seconds)
+#                     session.duration = timedelta(seconds=duration_seconds_int)
+#                     session.save(update_fields=['duration'])
+#                     print(f"Session duration updated to: {session.duration}")
+#                 except ValueError:
+#                     print(f"Invalid duration value received: {duration_seconds}")
+#                 except Exception as e:
+#                     print(f"Error saving duration: {e}")
+
+#             # --- Aggregate Chunk Sentiment Analysis Data ---
+#             print("Aggregating chunk sentiment analysis data...")
+#             # Get chunks with sentiment analysis data
+#             chunks_with_sentiment = session.chunks.filter(
+#                 sentiment_analysis__isnull=False
 #             )
-#             session.emotional_impact = safe_avg(all_trigger_reponse)
-#             session.structure_and_clarity = safe_avg(all_structure_and_clarity)
+#             print(f"Number of chunks with sentiment analysis found: {chunks_with_sentiment.count()}")
 
-#             # body language
-#             session.posture = safe_avg(all_posture)
-#             session.motion = safe_avg(all_motion)
-#             session.gestures = safe_avg(all_gesture)
+#             # If no chunks with sentiment analysis, return a basic report
+#             if not chunks_with_sentiment.exists():
+#                  print("No chunks with sentiment analysis found. Returning basic report.")
+#                  # You might want to populate session with default N/A or 0 values here
+#                  # session.volume = 0 # etc.
+#                  # session.strength = "No analysis data available." # etc.
+#                  # session.save() # Save defaults if needed
 
-#             # language and choice
-#             session.brevity = safe_avg(all_brevity)
-#             session.filler_words = safe_avg(all_filler_words)
-#             session.grammar = safe_avg(all_grammar)
+#                  return Response({
+#                      "session_id": session.id,
+#                      "session_name": session.session_name,
+#                      "duration": str(session.duration) if session.duration else None,
+#                      "aggregated_scores": {}, # Empty or default values
+#                      "derived_scores": {}, # Empty or default values
+#                      "full_summary": {
+#                          "Strength": "No analysis data available for summary.",
+#                          "Area of Improvement": "No analysis data available for summary.",
+#                          "General Feedback Summary": "No analysis data was generated for this session's chunks.",
+#                      },
+#                      "gestures_percentage": 0.0
+#                      # No graph_data if you removed it from the response
+#                  }, status=status.HTTP_200_OK)
+
+
+#             aggregation_results = chunks_with_sentiment.aggregate(
+#                 # Aggregate individual metrics
+#                 avg_volume=Avg("sentiment_analysis__volume"),
+#                 avg_pitch_variability=Avg("sentiment_analysis__pitch_variability"),
+#                 avg_pace=Avg("sentiment_analysis__pace"),
+#                 total_pauses=Sum("sentiment_analysis__pauses", output_field=IntegerField()), # Use Sum for total pauses
+#                 avg_conviction=Avg("sentiment_analysis__conviction"),
+#                 avg_clarity=Avg("sentiment_analysis__clarity"),
+#                 avg_impact=Avg("sentiment_analysis__impact"),
+#                 avg_brevity=Avg("sentiment_analysis__brevity"),
+#                 avg_trigger_response=Avg("sentiment_analysis__trigger_response"),
+#                 avg_filler_words=Avg("sentiment_analysis__filler_words"),
+#                 avg_grammar=Avg("sentiment_analysis__grammar"),
+#                 avg_posture=Avg("sentiment_analysis__posture"),
+#                 avg_motion=Avg("sentiment_analysis__motion"),
+#                 # To sum boolean gestures, explicitly cast to IntegerField before summing
+#                 total_true_gestures=Sum(Cast('sentiment_analysis__gestures', output_field=IntegerField())),
+#                 # Count the number of chunks considered for aggregation
+#                 total_chunks_for_aggregation=Count('sentiment_analysis__conviction'), # Use Count on a non-nullable field
+#                 avg_transformative_potential=Avg("sentiment_analysis__transformative_potential"),
+#             )
+
+#             print(f"Raw aggregation results: {aggregation_results}")
+
+#             # --- Calculate Derived Fields and Prepare Data for Saving/Response ---
+#             # Use .get with a default value (0 or 0.0) and check for None explicitly
+#             def get_agg_value(key, default):
+#                 value = aggregation_results.get(key, default)
+#                 return value if value is not None else default
+
+#             volume = get_agg_value("avg_volume", 0.0)
+#             pitch_variability = get_agg_value("avg_pitch_variability", 0.0)
+#             pace = get_agg_value("avg_pace", 0.0)
+#             pauses = get_agg_value("total_pauses", 0) # This is a sum (integer)
+#             conviction = get_agg_value("avg_conviction", 0.0)
+#             clarity = get_agg_value("avg_clarity", 0.0)
+#             impact = get_agg_value("avg_impact", 0.0)
+#             brevity = get_agg_value("avg_brevity", 0.0)
+#             trigger_response = get_agg_value("avg_trigger_response", 0.0)
+#             filler_words = get_agg_value("avg_filler_words", 0.0)
+#             grammar = get_agg_value("avg_grammar", 0.0)
+#             posture = get_agg_value("avg_posture", 0.0)
+#             motion = get_agg_value("avg_motion", 0.0)
+
+#             # Calculate gestures proportion manually after fetching sum and count
+#             total_true_gestures = get_agg_value("total_true_gestures", 0)
+#             total_chunks_for_aggregation = get_agg_value("total_chunks_for_aggregation", 0)
+#             gestures_proportion = (total_true_gestures / total_chunks_for_aggregation) if total_chunks_for_aggregation > 0 else 0.0
+
+
+#             transformative_potential = get_agg_value("avg_transformative_potential", 0.0)
+
+
+#             # Calculate derived fields as per PracticeSession model help text and common interpretations
+#             # Use helper function to avoid division by zero
+#             def safe_division(numerator, denominator):
+#                 return (numerator / denominator) if denominator > 0 else 0.0
+
+#             audience_engagement = safe_division((impact + trigger_response + conviction), 3.0) # Use 3.0 for float division
+#             overall_captured_impact = impact # Same as impact
+#             # Assuming pauses contributes to vocal variety calculation - might need adjustment based on how pauses is scored
+#             # If pauses is a count, averaging it with scores (0-100) might skew results.
+#             # Consider how pauses should factor into vocal variety (e.g., rate score related to pauses)
+#             # For now, keeping the sum in the average as per previous logic, but note this potential area.
+#             vocal_variety = safe_division((volume + pitch_variability + pace + pauses), 4.0) # Use 4.0 for float division
+#             emotional_impact = trigger_response # Same as trigger response
+#             # Body language score calculation - Example: simple average of posture, motion, and gestures (represented as 0 or 100)
+#             gestures_score_for_body_language = gestures_proportion * 100
+#             body_language = safe_division((posture + motion + gestures_score_for_body_language), 3.0) # Use 3.0 for float division
+#             transformative_communication = transformative_potential # Same as transformative potential
+#             structure_and_clarity = clarity # Same as clarity
+#             language_and_word_choice = safe_division((brevity + filler_words + grammar), 3.0) # Use 3.0 for float division
+
+
+#             # --- Generate Full Summary using OpenAI ---
+#             print("Generating full summary...")
+#             full_summary_data = self.generate_full_summary(session_id)
+#             strength_summary = full_summary_data.get("Strength", "N/A")
+#             improvement_summary = full_summary_data.get("Area of Improvement", "N/A")
+#             general_feedback = full_summary_data.get("General Feedback Summary", "N/A")
+
+#             # --- Save Calculated Data and Summary to PracticeSession ---
+#             print("Saving aggregated and summary data to PracticeSession...")
+#             session.volume = round(volume if volume is not None else 0) # Ensure not saving None
+#             session.pitch_variability = round(pitch_variability if pitch_variability is not None else 0)
+#             session.pace = round(pace if pace is not None else 0)
+#             session.pauses = round(pauses if pauses is not None else 0) # Total pauses (sum)
+#             session.conviction = round(conviction if conviction is not None else 0)
+#             session.clarity = round(clarity if clarity is not None else 0)
+#             session.impact = round(impact if impact is not None else 0)
+#             session.brevity = round(brevity if brevity is not None else 0)
+#             session.trigger_response = round(trigger_response if trigger_response is not None else 0)
+#             session.filler_words = round(filler_words if filler_words is not None else 0)
+#             session.grammar = round(grammar if grammar is not None else 0)
+#             session.posture = round(posture if posture is not None else 0)
+#             session.motion = round(motion if motion is not None else 0)
+#             session.transformative_potential = round(transformative_potential if transformative_potential is not None else 0)
+
+#             # Save derived fields (FloatFields in PracticeSession)
+#             session.audience_engagement = round(audience_engagement if audience_engagement is not None else 0.0, 2)
+#             session.overall_captured_impact = round(overall_captured_impact if overall_captured_impact is not None else 0.0, 2)
+#             session.vocal_variety = round(vocal_variety if vocal_variety is not None else 0.0, 2)
+#             session.emotional_impact = round(emotional_impact if emotional_impact is not None else 0.0, 2)
+#             session.body_language = round(body_language if body_language is not None else 0.0, 2)
+#             session.transformative_communication = round(transformative_communication if transformative_communication is not None else 0.0, 2)
+#             session.structure_and_clarity = round(structure_and_clarity if structure_and_clarity is not None else 0.0, 2)
+#             session.language_and_word_choice = round(language_and_word_choice if language_and_word_choice is not None else 0.0, 2)
+
+#             # Save boolean gestures field (True if any positive gestures were recorded)
+#             session.gestures = total_true_gestures > 0 # True if sum > 0
+
+#             # Save the text summaries
+#             session.strength = strength_summary
+#             session.area_of_improvement = improvement_summary
+#             session.general_feedback_summary = general_feedback
+
 
 #             session.save()
+#             print(f"PracticeSession {session_id} updated with report data and summary.")
+
+#             # --- Prepare Response ---
+#             # You can include the calculated aggregated data and summary in the response
+#             report_response_data = {
+#                 "session_id": session.id,
+#                 "session_name": session.session_name,
+#                 "duration": str(session.duration) if session.duration else None,
+#                 "aggregated_scores": {
+#                     "volume": session.volume,
+#                     "pitch_variability": session.pitch_variability,
+#                     "pace": session.pace,
+#                     "pauses": session.pauses, # Total pauses
+#                     "conviction": session.conviction,
+#                     "clarity": session.clarity,
+#                     "impact": session.impact,
+#                     "brevity": session.brevity,
+#                     "trigger_response": session.trigger_response,
+#                     "filler_words": session.filler_words,
+#                     "grammar": session.grammar,
+#                     "posture": session.posture,
+#                     "motion": session.motion,
+#                     "transformative_potential": session.transformative_potential,
+#                     # Include gestures as boolean and percentage in response
+#                     "gestures_present": session.gestures, # Boolean from session model
+#                     "gestures_percentage": round(gestures_proportion * 100, 2) # Percentage calculated
+#                 },
+#                  "derived_scores": {
+#                     "audience_engagement": session.audience_engagement,
+#                     "overall_captured_impact": session.overall_captured_impact,
+#                     "vocal_variety": session.vocal_variety,
+#                     "emotional_impact": session.emotional_impact,
+#                     "body_language": session.body_language,
+#                     "transformative_communication": session.transformative_communication,
+#                     "structure_and_clarity": session.structure_and_clarity,
+#                     "language_and_word_choice": session.language_and_word_choice,
+#                  },
+#                 "full_summary": {
+#                     "Strength": session.strength,
+#                     "Area of Improvement": session.area_of_improvement,
+#                     "General Feedback Summary": session.general_feedback_summary,
+#                 },
+#                  # Include graph_data if you still need it in the response, you would need to fetch it separately here
+#                  # "graph_data": ... (Perhaps fetch chunks_with_sentiment and serialize minimal data)
+#             }
+
+
+#             print(f"Report generation and summary complete for session ID: {session_id}")
+#             return Response(report_response_data, status=status.HTTP_200_OK)
+
 #         except PracticeSession.DoesNotExist:
+#             print(f"PracticeSession with ID {session_id} not found.")
 #             return Response(
-#                 {"error": "Session not found"}, status=status.HTTP_404_NOT_FOUND
+#                 {"error": "PracticeSession not found"}, status=status.HTTP_404_NOT_FOUND
 #             )
-#         return Response({"graph_data": graph_data, "averages": averages})
+#         except Exception as e:
+#             print(f"An unexpected error occurred during report generation: {e}")
+#             traceback.print_exc() # Print traceback for detailed error logging
+#             return Response(
+#                 {"error": "An error occurred during report generation.", "details": str(e)}, # Include error details in response
+#                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+#             )
+
 
 
 class SessionReportView(APIView):
@@ -999,10 +1180,10 @@ class SessionReportView(APIView):
              print(f"Faulty JSON content: {refined_summary}")
              # Fallback in case of JSON decoding error
              return {
-                "Strength": "N/A - Error generating detailed summary.",
-                "Area of Improvement": "N/A - Error generating detailed summary.",
-                "General Feedback Summary": f"Error processing AI summary. Raw feedback: {combined_feedback}",
-             }
+                 "Strength": "N/A - Error generating detailed summary.",
+                 "Area of Improvement": "N/A - Error generating detailed summary.",
+                 "General Feedback Summary": f"Error processing AI summary. Raw feedback: {combined_feedback}",
+              }
         except Exception as e:
             print(f"Error generating summary with OpenAI: {e}")
             # Fallback in case of any other OpenAI error
@@ -1010,7 +1191,7 @@ class SessionReportView(APIView):
                 "Strength": "N/A - Error generating detailed summary.",
                 "Area of Improvement": "N/A - Error generating detailed summary.",
                 "General Feedback Summary": f"Error processing AI summary. Raw feedback: {combined_feedback}",
-            }
+             }
 
 
     def get(self, request, session_id):
@@ -1073,7 +1254,7 @@ class SessionReportView(APIView):
                      "derived_scores": {}, # Empty or default values
                      "full_summary": {
                          "Strength": "No analysis data available for summary.",
-                         "Area of Improvement": "No analysis data available for summary.",
+                         "Area of Improvement": "N/A - No analysis data available for summary.",
                          "General Feedback Summary": "No analysis data was generated for this session's chunks.",
                      },
                      "gestures_percentage": 0.0
@@ -1086,7 +1267,9 @@ class SessionReportView(APIView):
                 avg_volume=Avg("sentiment_analysis__volume"),
                 avg_pitch_variability=Avg("sentiment_analysis__pitch_variability"),
                 avg_pace=Avg("sentiment_analysis__pace"),
-                total_pauses=Sum("sentiment_analysis__pauses", output_field=IntegerField()), # Use Sum for total pauses
+                # *** FIX: Use Avg for aggregated pauses (expected to be over 100) ***
+                avg_pauses=Avg("sentiment_analysis__pauses"), # Use Avg for aggregated pauses
+                # *** End FIX ***
                 avg_conviction=Avg("sentiment_analysis__conviction"),
                 avg_clarity=Avg("sentiment_analysis__clarity"),
                 avg_impact=Avg("sentiment_analysis__impact"),
@@ -1114,7 +1297,7 @@ class SessionReportView(APIView):
             volume = get_agg_value("avg_volume", 0.0)
             pitch_variability = get_agg_value("avg_pitch_variability", 0.0)
             pace = get_agg_value("avg_pace", 0.0)
-            pauses = get_agg_value("total_pauses", 0) # This is a sum (integer)
+            pauses_average = get_agg_value("avg_pauses", 0.0) # <-- Get the average pauses (expected to be over 100)
             conviction = get_agg_value("avg_conviction", 0.0)
             clarity = get_agg_value("avg_clarity", 0.0)
             impact = get_agg_value("avg_impact", 0.0)
@@ -1130,9 +1313,7 @@ class SessionReportView(APIView):
             total_chunks_for_aggregation = get_agg_value("total_chunks_for_aggregation", 0)
             gestures_proportion = (total_true_gestures / total_chunks_for_aggregation) if total_chunks_for_aggregation > 0 else 0.0
 
-
             transformative_potential = get_agg_value("avg_transformative_potential", 0.0)
-
 
             # Calculate derived fields as per PracticeSession model help text and common interpretations
             # Use helper function to avoid division by zero
@@ -1141,11 +1322,8 @@ class SessionReportView(APIView):
 
             audience_engagement = safe_division((impact + trigger_response + conviction), 3.0) # Use 3.0 for float division
             overall_captured_impact = impact # Same as impact
-            # Assuming pauses contributes to vocal variety calculation - might need adjustment based on how pauses is scored
-            # If pauses is a count, averaging it with scores (0-100) might skew results.
-            # Consider how pauses should factor into vocal variety (e.g., rate score related to pauses)
-            # For now, keeping the sum in the average as per previous logic, but note this potential area.
-            vocal_variety = safe_division((volume + pitch_variability + pace + pauses), 4.0) # Use 4.0 for float division
+            vocal_variety = safe_division((volume + pitch_variability + pace + pauses_average), 4.0) # <-- Use the average here
+
             emotional_impact = trigger_response # Same as trigger response
             # Body language score calculation - Example: simple average of posture, motion, and gestures (represented as 0 or 100)
             gestures_score_for_body_language = gestures_proportion * 100
@@ -1167,7 +1345,7 @@ class SessionReportView(APIView):
             session.volume = round(volume if volume is not None else 0) # Ensure not saving None
             session.pitch_variability = round(pitch_variability if pitch_variability is not None else 0)
             session.pace = round(pace if pace is not None else 0)
-            session.pauses = round(pauses if pauses is not None else 0) # Total pauses (sum)
+            session.pauses = round(pauses_average if pauses_average is not None else 0) # Save the AVERAGE here
             session.conviction = round(conviction if conviction is not None else 0)
             session.clarity = round(clarity if clarity is not None else 0)
             session.impact = round(impact if impact is not None else 0)
@@ -1211,7 +1389,7 @@ class SessionReportView(APIView):
                     "volume": session.volume,
                     "pitch_variability": session.pitch_variability,
                     "pace": session.pace,
-                    "pauses": session.pauses, # Total pauses
+                    "pauses": session.pauses, # Return the AVERAGE here (stored in session.pauses)
                     "conviction": session.conviction,
                     "clarity": session.clarity,
                     "impact": session.impact,
@@ -1222,9 +1400,7 @@ class SessionReportView(APIView):
                     "posture": session.posture,
                     "motion": session.motion,
                     "transformative_potential": session.transformative_potential,
-                    # Include gestures as boolean and percentage in response
                     "gestures_present": session.gestures, # Boolean from session model
-                    "gestures_percentage": round(gestures_proportion * 100, 2) # Percentage calculated
                 },
                  "derived_scores": {
                     "audience_engagement": session.audience_engagement,
@@ -1261,7 +1437,6 @@ class SessionReportView(APIView):
                 {"error": "An error occurred during report generation.", "details": str(e)}, # Include error details in response
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
-
 
 class PerformanceAnalyticsView(APIView):
     def get(self, request):

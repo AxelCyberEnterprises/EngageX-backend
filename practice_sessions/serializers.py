@@ -103,13 +103,13 @@ class PracticeSessionSerializer(serializers.ModelSerializer):
 
 
 class PracticeSessionSlidesSerializer(serializers.ModelSerializer):
-    slides = serializers.FileField(
+    slides_file = serializers.FileField(
         required=False
-    )  # Make slides field optional in serializer
+    )
 
     class Meta:
         model = PracticeSession
-        fields = ["slides"]  # Only include the slides field
+        fields = ["slides_file"]
 
 
 class SessionChunkSerializer(serializers.ModelSerializer):
@@ -125,6 +125,7 @@ class ChunkSentimentAnalysisSerializer(serializers.ModelSerializer):
         fields = [
             "id",
             "chunk",
+            "chunk_number",
             "audience_emotion",
             "conviction",
             "clarity",
@@ -141,14 +142,10 @@ class ChunkSentimentAnalysisSerializer(serializers.ModelSerializer):
             "pace",
             "motion",
             "gestures",
-            "volume",
-            "chunk_transcript",
-            "pitch_variability",
-            "general_feedback_summary",
+            "pauses",
             "chunk_transcript",
         ]
         read_only_fields = ["id"]
-
 
 class SessionReportSerializer(serializers.Serializer):
     duration = serializers.CharField(allow_null=True, allow_blank=True)

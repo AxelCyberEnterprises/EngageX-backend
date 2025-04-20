@@ -302,8 +302,16 @@ if USE_S3:
         "ProfilePicStorage": {
             "BACKEND": "users.storages_backends.ProfilePicStorage",
         },
+            "OPTIONS": {
+                "bucket_name": AWS_STORAGE_BUCKET_NAME,
+                "location": "profile-pic/",  # Stores static files in 'static/' folder in S3
+            },
         "SlidesStorage": {
             "BACKEND": "users.storages_backends.SlidesStorage",
+            "OPTIONS": {
+                "bucket_name": AWS_STORAGE_BUCKET_NAME,
+                "location": "slides/",
+            },
         },
         "StaticVideosStorage": {
             "BACKEND": "users.storages_backends.StaticVideosStorage",

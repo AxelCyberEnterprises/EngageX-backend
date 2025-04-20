@@ -700,10 +700,6 @@ class LiveSessionConsumer(AsyncWebsocketConsumer):
                             # Pass the last chunk number in the window
                             asyncio.create_task(self.analyze_windowed_media(window_paths, self.chunk_counter))
 
-                            # Cleanup of the oldest chunk in the buffer happens after analysis attempt completes
-                            # in the finally block of analyze_windowed_media, as in the previous versions.
-
-
                     else:
                         print("WS: Error: Missing 'data' in media message.")
                 else:
@@ -928,7 +924,6 @@ class LiveSessionConsumer(AsyncWebsocketConsumer):
 
         print(f"WS: analyze_windowed_media finished (instance) for window ending with chunk {window_chunk_number} after {time.time() - start_time:.2f} seconds")
 
-
     def extract_audio(self, media_path):
         """Extracts audio from a media file using FFmpeg."""
         start_time = time.time()
@@ -971,7 +966,6 @@ class LiveSessionConsumer(AsyncWebsocketConsumer):
              traceback.print_exc()
              return None
 
-
     def upload_to_s3(self, file_path):
         """Uploads a local file to S3."""
         if s3 is None:
@@ -994,10 +988,6 @@ class LiveSessionConsumer(AsyncWebsocketConsumer):
             traceback.print_exc()
             return None
 
-
-    # Accepts s3_url as an argument
-    # It's called via asyncio.to_thread from process_media_chunk
-    # This method's job is just to save the SessionChunk record with the S3 URL
     def _save_chunk_data(self, media_path, s3_url):
         """Saves the SessionChunk object and maps media path to chunk ID."""
         start_time = time.time()
@@ -1011,7 +1001,6 @@ class LiveSessionConsumer(AsyncWebsocketConsumer):
              print(f"WS: Error: S3 URL not provided for {media_path}. Cannot save SessionChunk.")
              return # Do not save if S3 URL is missing
 
-
         try:
             # Synchronous DB call: Get the session
             print(f"WS: Attempting to get PracticeSession with id: {self.session_id}")
@@ -1021,7 +1010,6 @@ class LiveSessionConsumer(AsyncWebsocketConsumer):
             except PracticeSession.DoesNotExist:
                  print(f"WS: Error: PracticeSession with id {self.session_id} not found. Cannot save chunk data.")
                  return # Exit if session doesn't exist
-
 
             print(f"WS: S3 URL for SessionChunk: {s3_url}")
             session_chunk_data = {
@@ -1047,12 +1035,10 @@ class LiveSessionConsumer(AsyncWebsocketConsumer):
             else:
                 print("WS: Error saving SessionChunk:", session_chunk_serializer.errors)
 
-
         except Exception as e: # Catching other potential exceptions during DB interaction etc.
             print(f"WS: Error in _save_chunk_data: {e}")
             traceback.print_exc()
         print(f"WS: _save_chunk_data finished after {time.time() - start_time:.2f} seconds")
-
 
     # This method is called using asyncio.to_thread from analyze_windowed_media.
     # It saves the analysis results to the database.
@@ -1111,15 +1097,9 @@ class LiveSessionConsumer(AsyncWebsocketConsumer):
 
                     # Add the combined transcript
                     'chunk_transcript': transcript_text,
-
-                    # If you have other fields in ChunkSentimentAnalysis model that
-                    # are derived from the window analysis, map them here:
-                    # e.g., 'strength': analysis_result.get('Strength'),
-                    # e.g., 'area_of_improvement': analysis_result.get('Area of Improvement'),
                 }
 
                 print(f"WS: ChunkSentimentAnalysis data (for window, chunk {chunk_number}): {sentiment_data}")
-
 
                 # Use the serializer to validate and prepare data for saving
                 sentiment_serializer = ChunkSentimentAnalysisSerializer(data=sentiment_data)
