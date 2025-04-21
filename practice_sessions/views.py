@@ -7,7 +7,7 @@ from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework.exceptions import PermissionDenied
 
 
-from django.db.models.functions import Ceil
+from django.db.models.functions import Round
 from django.conf import settings
 from django.db.models import (
     Count,
@@ -803,8 +803,8 @@ class SessionReportView(APIView):
 
         prompt = f"""
         Using the presentation evaluation data provided, generate a structured JSON response with the following three components:
-        Strengths: List the speaker’s top strengths based on their delivery, clarity, and audience engagement. Format the output as a Python string representing a list, with each of the 3 strengths as points separated by a full stop with the quotes outside the list brackets (e.g., "[Strength 1. Strength 2. Strength 3]").
-        Areas for Improvement: Provide 3 specific, actionable suggestions to help the speaker enhance their performance. Format the output as a Python string representing a list, with each of the 3 area of improvement points separated by a full stop with the quotes outside the list brackets (e.g., "[Area of Improvement 1. Area of Improvement 2. Area of Improvement 3]").
+        Strengths: List the speaker’s top strengths based on their delivery, clarity, and audience engagement. Format the output as a Python string representing a list, with each of the 3 strengths as points separated by a comma with the quotes outside the list brackets (e.g., "[Strength 1. Strength 2. Strength 3]").
+        Areas for Improvement: Provide 3 specific, actionable suggestions to help the speaker enhance their performance. Format the output as a Python string representing a list, with each of the 3 area of improvement points separated by a comma with the quotes outside the list brackets (e.g., "[Area of Improvement 1. Area of Improvement 2. Area of Improvement 3]").
 
         General Feedback Summary: Write a concise paragraph summarizing the overall effectiveness of the presentation, balancing both positive observations and constructive feedback.
 
@@ -932,18 +932,18 @@ class SessionReportView(APIView):
 
             aggregation_results = chunks_with_sentiment.aggregate(
                 # Aggregate individual metrics
-                avg_volume=Ceil(Avg("sentiment_analysis__volume")),
-                avg_pitch_variability=Ceil(Avg("sentiment_analysis__pitch_variability")),
-                avg_pace=Ceil(Avg("sentiment_analysis__pace")),
-                avg_conviction=Ceil(Avg("sentiment_analysis__conviction")),
-                avg_clarity=Ceil(Avg("sentiment_analysis__clarity")),
-                avg_impact=Ceil(Avg("sentiment_analysis__impact")),
-                avg_brevity=Ceil(Avg("sentiment_analysis__brevity")),
-                avg_trigger_response=Ceil(Avg("sentiment_analysis__trigger_response")),
-                avg_filler_words=Ceil(Avg("sentiment_analysis__filler_words")),
-                avg_grammar=Ceil(Avg("sentiment_analysis__grammar")),
-                avg_posture=Ceil(Avg("sentiment_analysis__posture")),
-                avg_motion=Ceil(Avg("sentiment_analysis__motion")),
+                avg_volume=Round(Avg("sentiment_analysis__volume"), output_field=IntegerField()),
+                avg_pitch_variability=Round(Avg("sentiment_analysis__pitch_variability"), output_field=IntegerField()),
+                avg_pace=Round(Avg("sentiment_analysis__pace"), output_field=IntegerField()),
+                avg_conviction=Round(Avg("sentiment_analysis__conviction"), output_field=IntegerField()),
+                avg_clarity=Round(Avg("sentiment_analysis__clarity"), output_field=IntegerField()),
+                avg_impact=Round(Avg("sentiment_analysis__impact"), output_field=IntegerField()),
+                avg_brevity=Round(Avg("sentiment_analysis__brevity"), output_field=IntegerField()),
+                avg_trigger_response=Round(Avg("sentiment_analysis__trigger_response"), output_field=IntegerField()),
+                avg_filler_words=Round(Avg("sentiment_analysis__filler_words"), output_field=IntegerField()),
+                avg_grammar=Round(Avg("sentiment_analysis__grammar"), output_field=IntegerField()),
+                avg_posture=Round(Avg("sentiment_analysis__posture"), output_field=IntegerField()),
+                avg_motion=Round(Avg("sentiment_analysis__motion"), output_field=IntegerField()),
                 # avg_volume=Avg("sentiment_analysis__volume"),
                 # avg_pitch_variability=Avg("sentiment_analysis__pitch_variability"),
                 # avg_pace=Avg("sentiment_analysis__pace"),
@@ -960,7 +960,7 @@ class SessionReportView(APIView):
                 # avg_volume=Avg("sentiment_analysis__volume"),
                 # savg_pitch_variability=Avg("sentiment_analysis__pitch_variability"),
                 # avg_pace=Avg("sentiment_analysis__pace"),
-                avg_pauses=Ceil(Avg("sentiment_analysis__pauses")), # Use Avg for aggregated pauses
+                avg_pauses=Round(Avg("sentiment_analysis__pauses"), output_field=IntegerField()), # Use Avg for aggregated pauses
                 # avg_conviction=Avg("sentiment_analysis__conviction"),
                 # avg_clarity=Avg("sentiment_analysis__clarity"),
                 # avg_impact=Avg("sentiment_analysis__impact"),
@@ -971,10 +971,10 @@ class SessionReportView(APIView):
                 # avg_posture=Avg("sentiment_analysis__posture"),
                 # avg_motion=Avg("sentiment_analysis__motion"),
                 # To sum boolean gestures, explicitly cast to IntegerField before summing
-                total_true_gestures=Ceil(Sum(Cast('sentiment_analysis__gestures', output_field=IntegerField()))),
+                total_true_gestures=Round(Sum(Cast('sentiment_analysis__gestures', output_field=IntegerField()))),
                 # Count the number of chunks considered for aggregation
                 total_chunks_for_aggregation=Count('sentiment_analysis__conviction'), # Use Count on a non-nullable field
-                avg_transformative_potential=Ceil(Avg("sentiment_analysis__transformative_potential")),
+                avg_transformative_potential=Round(Avg("sentiment_analysis__transformative_potential"), output_field=IntegerField()),
             )
 
             print(f"Raw aggregation results: {aggregation_results}")
@@ -1049,14 +1049,14 @@ class SessionReportView(APIView):
             session.transformative_potential = round(transformative_potential if transformative_potential is not None else 0)
 
             # Save derived fields (FloatFields in PracticeSession)
-            session.audience_engagement = round(audience_engagement if audience_engagement is not None else 0.0, 2)
-            session.overall_captured_impact = round(overall_captured_impact if overall_captured_impact is not None else 0.0, 2)
-            session.vocal_variety = round(vocal_variety if vocal_variety is not None else 0.0, 2)
-            session.emotional_impact = round(emotional_impact if emotional_impact is not None else 0.0, 2)
-            session.body_language = round(body_language if body_language is not None else 0.0, 2)
-            session.transformative_communication = round(transformative_communication if transformative_communication is not None else 0.0, 2)
-            session.structure_and_clarity = round(structure_and_clarity if structure_and_clarity is not None else 0.0, 2)
-            session.language_and_word_choice = round(language_and_word_choice if language_and_word_choice is not None else 0.0, 2)
+            session.audience_engagement = round(audience_engagement if audience_engagement is not None else 0.0)
+            session.overall_captured_impact = round(overall_captured_impact if overall_captured_impact is not None else 0.0)
+            session.vocal_variety = round(vocal_variety if vocal_variety is not None else 0.0)
+            session.emotional_impact = round(emotional_impact if emotional_impact is not None else 0.0)
+            session.body_language = round(body_language if body_language is not None else 0.0)
+            session.transformative_communication = round(transformative_communication if transformative_communication is not None else 0.0)
+            session.structure_and_clarity = round(structure_and_clarity if structure_and_clarity is not None else 0.0)
+            session.language_and_word_choice = round(language_and_word_choice if language_and_word_choice is not None else 0.0)
 
             # Save boolean gestures field (True if any positive gestures were recorded)
             session.gestures = total_true_gestures > 0 # True if sum > 0
@@ -1077,31 +1077,31 @@ class SessionReportView(APIView):
                 "session_name": session.session_name,
                 "duration": str(session.duration) if session.duration else None,
                 "aggregated_scores": {
-                    "volume": session.volume,
-                    "pitch_variability": session.pitch_variability,
-                    "pace": session.pace,
-                    "pauses": session.pauses, # Return the AVERAGE here (stored in session.pauses)
-                    "conviction": session.conviction,
-                    "clarity": session.clarity,
-                    "impact": session.impact,
-                    "brevity": session.brevity,
-                    "trigger_response": session.trigger_response,
-                    "filler_words": session.filler_words,
-                    "grammar": session.grammar,
-                    "posture": session.posture,
-                    "motion": session.motion,
-                    "transformative_potential": session.transformative_potential,
+                    "volume": round(session.volume or 0),
+                    "pitch_variability": round(session.pitch_variability or 0),
+                    "pace": round(session.pace or 0),
+                    "pauses": round(session.pauses or 0), # Return the AVERAGE here (stored in session.pauses)
+                    "conviction": round(session.conviction or 0),
+                    "clarity": round(session.clarity or 0),
+                    "impact": round(session.impact or 0),
+                    "brevity": round(session.brevity or 0),
+                    "trigger_response": round(session.trigger_response or 0),
+                    "filler_words": round(session.filler_words or 0),
+                    "grammar": round(session.grammar or 0),
+                    "posture": round(session.posture or 0),
+                    "motion": round(session.motion or 0),
+                    "transformative_potential": round(session.transformative_potential or 0),
                     "gestures_present": session.gestures, # Boolean from session model
                 },
                  "derived_scores": {
-                    "audience_engagement": session.audience_engagement,
-                    "overall_captured_impact": session.overall_captured_impact,
-                    "vocal_variety": session.vocal_variety,
-                    "emotional_impact": session.emotional_impact,
-                    "body_language": session.body_language,
-                    "transformative_communication": session.transformative_communication,
-                    "structure_and_clarity": session.structure_and_clarity,
-                    "language_and_word_choice": session.language_and_word_choice,
+                    "audience_engagement": round(session.audience_engagement or 0),
+                    "overall_captured_impact": round(session.overall_captured_impact or 0),
+                    "vocal_variety": round(session.vocal_variety or 0),
+                    "emotional_impact": round(session.emotional_impact or 0),
+                    "body_language": round(session.body_language or 0),
+                    "transformative_communication": round(session.transformative_communication or 0),
+                    "structure_and_clarity": round(session.structure_and_clarity or 0),
+                    "language_and_word_choice": round(session.language_and_word_choice or 0),
                  },
                 "full_summary": {
                     "Strength": session.strength,
