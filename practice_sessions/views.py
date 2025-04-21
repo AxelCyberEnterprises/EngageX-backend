@@ -1161,10 +1161,10 @@ class SessionReportView(APIView):
                                 "Strength": {"type": "string"},
                                 "Area of Improvement": {"type": "string"},
                                 "General Feedback Summary":{"type": "string"},
+                            },
                             "required": ["Strength", "Area of Improvement", "General Feedback Summary"],
-                        },
-                    },
-                },
+                    }
+                }
                 },
                 temperature=0.7, # Adjust temperature as needed
                 max_tokens=500 # Limit tokens to control response length
@@ -1211,6 +1211,7 @@ class SessionReportView(APIView):
         request_body=SessionReportSerializer,
         responses={},
     )
+    
     def post(self, request, session_id):
         print(f"Starting report generation and summary for session ID: {session_id}")
         duration_seconds = request.data.get("duration")
@@ -1277,19 +1278,19 @@ class SessionReportView(APIView):
                 avg_grammar=Ceil(Avg("sentiment_analysis__grammar")),
                 avg_posture=Ceil(Avg("sentiment_analysis__posture")),
                 avg_motion=Ceil(Avg("sentiment_analysis__motion")),
-                avg_volume=Avg("sentiment_analysis__volume"),
-                avg_pitch_variability=Avg("sentiment_analysis__pitch_variability"),
-                avg_pace=Avg("sentiment_analysis__pace"),
+                # avg_volume=Avg("sentiment_analysis__volume"),
+                # savg_pitch_variability=Avg("sentiment_analysis__pitch_variability"),
+                # avg_pace=Avg("sentiment_analysis__pace"),
                 avg_pauses=Ceil(Avg("sentiment_analysis__pauses")), # Use Avg for aggregated pauses
-                avg_conviction=Avg("sentiment_analysis__conviction"),
-                avg_clarity=Avg("sentiment_analysis__clarity"),
-                avg_impact=Avg("sentiment_analysis__impact"),
-                avg_brevity=Avg("sentiment_analysis__brevity"),
-                avg_trigger_response=Avg("sentiment_analysis__trigger_response"),
-                avg_filler_words=Avg("sentiment_analysis__filler_words"),
-                avg_grammar=Avg("sentiment_analysis__grammar"),
-                avg_posture=Avg("sentiment_analysis__posture"),
-                avg_motion=Avg("sentiment_analysis__motion"),
+                # avg_conviction=Avg("sentiment_analysis__conviction"),
+                # avg_clarity=Avg("sentiment_analysis__clarity"),
+                # avg_impact=Avg("sentiment_analysis__impact"),
+                # avg_brevity=Avg("sentiment_analysis__brevity"),
+                # avg_trigger_response=Avg("sentiment_analysis__trigger_response"),
+                # avg_filler_words=Avg("sentiment_analysis__filler_words"),
+                # avg_grammar=Avg("sentiment_analysis__grammar"),
+                # avg_posture=Avg("sentiment_analysis__posture"),
+                # avg_motion=Avg("sentiment_analysis__motion"),
                 # To sum boolean gestures, explicitly cast to IntegerField before summing
                 total_true_gestures=Ceil(Sum(Cast('sentiment_analysis__gestures', output_field=IntegerField()))),
                 # Count the number of chunks considered for aggregation
