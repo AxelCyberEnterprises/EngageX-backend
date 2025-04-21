@@ -795,15 +795,39 @@ class SessionReportView(APIView):
             }
 
     def get(self, request, session_id):
-        # Keep the GET method as is, it just returns the session details
         try:
             session = PracticeSession.objects.get(id=session_id, user=request.user)
             session_serializer = PracticeSessionSerializer(session)
-            return Response(session_serializer.data, status=status.HTTP_200_OK)
+
+            # Get related chunk sentiment analysis
+            latest_session_chunk = ChunkSentimentAnalysis.objects.filter(
+                chunk__session=session
+            )
+
+            performance_analytics_over_time = []
+
+            for chunk in latest_session_chunk:
+                performance_analytics_over_time.append({
+                    "chunk_number": chunk.chunk_number if chunk.chunk_number is not None else 0,
+                    "start_time": chunk.chunk.start_time if chunk.chunk.start_time is not None else 0,
+                    "end_time": chunk.chunk.end_time if chunk.chunk.end_time is not None else 0,
+                    "impact": chunk.impact if chunk.impact is not None else 0,
+                    "trigger_response": chunk.trigger_response if chunk.trigger_response is not None else 0,
+                    "conviction": chunk.conviction if chunk.conviction is not None else 0,
+                })
+
+            # Combine both sets of data in the response
+            response_data = session_serializer.data
+            response_data["performance_analytics"] = performance_analytics_over_time
+
+            return Response(response_data, status=status.HTTP_200_OK)
+
         except PracticeSession.DoesNotExist:
             return Response(
-                {"error": "Session not found"}, status=status.HTTP_404_NOT_FOUND
+                {"error": "Session not found"},
+                status=status.HTTP_404_NOT_FOUND
             )
+
 
     @swagger_auto_schema(
         operation_description="update the session duration, calculate report, and generate summary",
@@ -861,6 +885,23 @@ class SessionReportView(APIView):
                     # No graph_data if you removed it from the response
                 }, status=status.HTTP_200_OK)
 
+
+            # performamce analytics
+            latest_session_chunk = ChunkSentimentAnalysis.objects.filter(
+                chunk__session=session
+            )
+            performance_analytics_over_time = []
+
+            for chunk in latest_session_chunk:
+                performance_analytics_over_time.append({
+                    "chunk_number": chunk.chunk_number if chunk.chunk_number is not None else 0,
+                    "start_time": chunk.chunk.start_time if chunk.chunk.start_time is not None else 0,
+                    "end_time": chunk.chunk.end_time if chunk.chunk.end_time is not None else 0,
+                    "impact": chunk.impact if chunk.impact is not None else 0,
+                    "trigger_response": chunk.trigger_response if chunk.trigger_response is not None else 0,
+                    "conviction": chunk.conviction if chunk.conviction is not None else 0,
+                })
+            print(performance_analytics_over_time)
             aggregation_results = chunks_with_sentiment.aggregate(
                 # Aggregate individual metrics
                 avg_volume=Ceil(Avg("sentiment_analysis__volume")),
@@ -1048,6 +1089,7 @@ class SessionReportView(APIView):
                     "Area of Improvement": session.area_of_improvement,
                     "General Feedback Summary": session.general_feedback_summary,
                 },
+                "performance_analytics": list(performance_analytics_over_time)
                 # Include graph_data if you still need it in the response, you would need to fetch it separately here
                 # "graph_data": ... (Perhaps fetch chunks_with_sentiment and serialize minimal data)
             }
