@@ -1071,29 +1071,29 @@ class LiveSessionConsumer(AsyncWebsocketConsumer):
 
                     # Map from 'Feedback'
                     'audience_emotion': feedback_data.get('Audience Emotion'),
-                    'conviction': feedback_data.get('Conviction'), # Use get, default is None if key missing
-                    'clarity': feedback_data.get('Clarity'),
-                    'impact': feedback_data.get('Impact'),
-                    'brevity': feedback_data.get('Brevity'),
-                    'transformative_potential': feedback_data.get('Transformative Potential'),
-                    'trigger_response': feedback_data.get('Trigger Response'),
-                    'filler_words': feedback_data.get('Filler Words'),
-                    'grammar': feedback_data.get('Grammar'),
+                    'conviction': round(feedback_data.get('Conviction')), # Use get, default is None if key missing
+                    'clarity': round(feedback_data.get('Clarity')),
+                    'impact': round(feedback_data.get('Impact')),
+                    'brevity': round(feedback_data.get('Brevity')),
+                    'transformative_potential': round(feedback_data.get('Transformative Potential')),
+                    'trigger_response': round(feedback_data.get('Trigger Response')),
+                    'filler_words': round(feedback_data.get('Filler Words')),
+                    'grammar': round(feedback_data.get('Grammar')),
                     'general_feedback_summary': feedback_data.get('General Feedback Summary', ''), # Default to empty string
 
 
                     # Map from 'Posture'
-                    'posture': posture_data.get('Posture'),
-                    'motion': posture_data.get('Motion'),
+                    'posture': round(posture_data.get('Posture')),
+                    'motion': round(posture_data.get('Motion')),
                     # Assuming Gestures is a boolean in analysis_result or can be converted
                     'gestures': bool(posture_data.get('Gestures', False)), # Ensure boolean or default to False
 
 
                     # Map from the 'Scores' nested dictionary
-                    'volume': scores_data.get('Volume Score'),
-                    'pitch_variability': scores_data.get('Pitch Variability Score'),
-                    'pace': scores_data.get('Pace Score'),
-                    'pauses': scores_data.get('Pause Score'), # Use Pause Score key
+                    'volume': round(scores_data.get('Volume Score')),
+                    'pitch_variability': round(scores_data.get('Pitch Variability Score')),
+                    'pace': round(scores_data.get('Pace Score')),
+                    'pauses': round(scores_data.get('Pause Score')), # Use Pause Score key
 
                     # Add the combined transcript
                     'chunk_transcript': transcript_text,
