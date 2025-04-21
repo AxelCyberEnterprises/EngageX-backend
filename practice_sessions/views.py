@@ -435,6 +435,7 @@ class SessionDashboardView(APIView):
             fields = [
                 "vocal_variety",
                 "body_language",
+                "gestures_score_for_body_language",
                 "structure_and_clarity",
                 "overall_captured_impact",
                 "transformative_communication",
@@ -994,7 +995,7 @@ class SessionReportView(APIView):
             session.transformative_communication = round(transformative_communication if transformative_communication is not None else 0.0)
             session.structure_and_clarity = round(structure_and_clarity if structure_and_clarity is not None else 0.0)
             session.language_and_word_choice = round(language_and_word_choice if language_and_word_choice is not None else 0.0)
-
+            session.gestures_score_for_body_language = round(gestures_score_for_body_language if gestures_score_for_body_language is not None else 0.0)
             # Save boolean gestures field (True if any positive gestures were recorded)
             session.gestures = total_true_gestures > 0  # True if sum > 0
 
@@ -1034,6 +1035,7 @@ class SessionReportView(APIView):
                     "overall_captured_impact": round(session.overall_captured_impact or 0),
                     "vocal_variety": round(session.vocal_variety or 0),
                     "emotional_impact": round(session.emotional_impact or 0),
+                    "gestures_score_for_body_language": round(session.gestures_score_for_body_language or 0),
                     "body_language": round(session.body_language or 0),
                     "transformative_communication": round(session.transformative_communication or 0),
                     "structure_and_clarity": round(session.structure_and_clarity or 0),
@@ -1223,6 +1225,7 @@ class GoalAchievementView(APIView):
         fields = [
             "vocal_variety",
             "body_language",
+            "gestures_score_for_body_language",
             "structure_and_clarity",
             "overall_captured_impact",
             "transformative_communication",
