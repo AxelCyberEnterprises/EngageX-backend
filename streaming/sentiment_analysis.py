@@ -55,20 +55,26 @@ lock = threading.Lock()
 
 # ---------------------- SCORING FUNCTIONS ----------------------
 
-
 def scale_to_score(value, min_val, max_val):
-    """Scales values where min/max get exactly 70, midpoint gets 100, and outside drops smoothly to 0."""
+    """
+    Scales values where:
+    - min_val and max_val get exactly 70
+    - midpoint gets 100
+    - outside drops smoothly and exponentially toward 40
+    """
 
     if value < min_val or value > max_val:
-        # Smoother exponential drop-off for values outside min/max
+        # Distance from the nearest boundary
         distance = min(abs(value - min_val), abs(value - max_val))
-        score = 70 * np.exp(-0.1 * distance)  # Lower decay factor for smooth drop-off
+        # Exponential decay from 70 down to 40
+        score = 40 + (30 * np.exp(-0.1 * distance))  # As distance increases, score approaches 40
     else:
-        # Adjusted bell curve that ensures min/max hit exactly 70
-        normalized = (value - min_val) / (max_val - min_val)  # Normalize between 0 and 1
-        score = 70 + (30 * (1 - np.abs(2 * normalized - 1)))  # Linear interpolation to 100
+        # Normalize value between 0 and 1
+        normalized = (value - min_val) / (max_val - min_val)
+        # Bell-like curve from 70 to 100 to 70
+        score = 70 + 30 * (1 - abs(2 * normalized - 1))  # Peak at 100 in the middle
 
-    return max(0, round(score))  # Ensure score never goes below 0
+    return max(40, round(score))  # Ensure the score never drops below 40
 
 
 def score_volume(volume):
@@ -94,11 +100,11 @@ def score_volume(volume):
 def score_pauses(appropriate_pauses, long_pauses):
     """scores pauses using discrete buckets."""
     # call scale_to_score after getting rationale
-    score = scale_to_score(appropriate_pauses, 8, 20) # adjusted for 40 seconds
+    score = scale_to_score(appropriate_pauses, 3, 8) # adjusted for 30 seconds
 
-    if 8 <= appropriate_pauses <= 20:
+    if 3 <= appropriate_pauses <= 7:
         rationale = "Ideal pause frequency; pauses enhance clarity without disrupting flow."
-    elif appropriate_pauses < 12:
+    elif appropriate_pauses < 3:
         rationale = "Insufficient pauses; speech may be rushed and less clear."
     else:
         rationale = "Excessive pause frequency; too many breaks can disrupt continuity."
@@ -197,7 +203,7 @@ def get_pauses(audio_file):
     # Tunable values
     # intensity_threshold = 30
     min_pause_duration = 0.4
-    long_pause_duration = 1.75
+    long_pause_duration = 0.8
 
     # Extract intensity
     intensity = sound.to_intensity()
