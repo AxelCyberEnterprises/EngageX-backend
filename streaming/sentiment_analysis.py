@@ -100,7 +100,7 @@ def score_volume(volume):
 def score_pauses(appropriate_pauses, long_pauses):
     """scores pauses using discrete buckets."""
     # call scale_to_score after getting rationale
-    score = scale_to_score(appropriate_pauses, 3, 8) # adjusted for 30 seconds
+    score = scale_to_score(appropriate_pauses, 3, 7) # adjusted for 30 seconds
 
     if 3 <= appropriate_pauses <= 7:
         rationale = "Ideal pause frequency; pauses enhance clarity without disrupting flow."
@@ -118,7 +118,7 @@ def score_pauses(appropriate_pauses, long_pauses):
     return score, rationale
 
 def score_pace(speaking_rate):
-    """scores speaking rate with a peak at 1.5-2.5 words/sec, penalizing extremes."""
+    """scores speaking rate with a peak at 2-3 words/sec, penalizing extremes."""
     score = scale_to_score(speaking_rate, 2.0, 3.0)
 
     if 2.0 <= speaking_rate <= 3.0:
@@ -835,8 +835,9 @@ def analyze_results(transcript_text, video_path, audio_path_for_metrics):
 
         metrics = process_audio(audio_path_for_metrics, transcript_text) # Use the audio path for metrics calculation
         print(f"process audio metrics: {metrics}", flush=True)
-
+        sentiment_analysis_start_time = time.time()
         sentiment_analysis = analyze_sentiment(transcript_text, metrics, posture_data)
+        print(f"WS: sentiment_analysis after {time.time() - sentiment_analysis_start_time:.2f} seconds")
 
         final_json = {
             'Feedback': sentiment_analysis.get('Feedback'),
