@@ -698,7 +698,7 @@ class LiveSessionConsumer(AsyncWebsocketConsumer):
                         print(f"WS: Received media chunk {self.chunk_counter} for Session {self.session_id}. Saved to {media_path}")
                         self.media_buffer.append(media_path)
 
-                        print(f"WS: Starting process_media_chunk for chunk {self.chunk_counter} and WAITING for it to complete.")
+                        # print(f"WS: Starting process_media_chunk for chunk {self.chunk_counter} and WAITING for it to complete.")
                         # *** FIX: Await the process_media_chunk task ***
                         # This ensures audio extraction and saving to buffer completes before analysis check
                         process_task = asyncio.create_task(self.process_media_chunk(media_path))
@@ -776,7 +776,7 @@ class LiveSessionConsumer(AsyncWebsocketConsumer):
         """
         # Check buffer content and existence - this check is now expected to pass if process_media_chunk succeeded
         if len(window_paths) != 4:
-            print(f"WS: analyze_windowed_media called with {len(window_paths)} paths for window ending with chunk {latest_chunk_number}, expected 4. Skipping analysis for this window instance.")
+            # print(f"WS: analyze_windowed_media called with {len(window_paths)} paths for window ending with chunk {latest_chunk_number}, expected 4. Skipping analysis for this window instance.")
             # Cleanup of oldest chunk happens in finally block
             return
 
@@ -784,7 +784,7 @@ class LiveSessionConsumer(AsyncWebsocketConsumer):
         last_media_path = window_paths[-1]
         window_chunk_number = latest_chunk_number
 
-        print(f"WS: analyze_windowed_media started for window ending with {last_media_path} (chunk {window_chunk_number}) at {start_time}")
+        # print(f"WS: analyze_windowed_media started for window ending with {last_media_path} (chunk {window_chunk_number}) at {start_time}")
 
         combined_audio_path = None
         transcript_text = None
@@ -804,7 +804,7 @@ class LiveSessionConsumer(AsyncWebsocketConsumer):
                  return
             # *** End SIMPLIFIED ***
 
-            print(f"WS: Valid audio paths for concatenation: {valid_audio_paths}") # Now expected to have 4 valid paths
+            # print(f"WS: Valid audio paths for concatenation: {valid_audio_paths}") # Now expected to have 4 valid paths
 
 
             # --- FFmpeg concatenation ---
@@ -832,7 +832,7 @@ class LiveSessionConsumer(AsyncWebsocketConsumer):
 
             # --- Transcription (blocking network I/O) ---
             if client:
-                print(f"WS: Attempting transcription for {combined_audio_path}")
+                # print(f"WS: Attempting transcription for {combined_audio_path}")
                 transcription_start_time = time.time()
                 # Using asyncio.to_thread for blocking Deepgram call
                 transcript_text = await asyncio.to_thread(transcribe_audio, combined_audio_path)
@@ -843,7 +843,7 @@ class LiveSessionConsumer(AsyncWebsocketConsumer):
 
             if transcript_text and client: # If transcript obtained AND client is available
                 # --- Analyze results using OpenAI (blocking network I/O) ---
-                print(f"WS: Running analyze_results for combined transcript.")
+                # print(f"WS: Running analyze_results for combined transcript.")
                 analysis_start_time = time.time()
                 # Pass the video path of the first chunk in the window for visual analysis reference
                 analysis_result = await asyncio.to_thread(analyze_results, transcript_text, window_paths[0], combined_audio_path) # Using window_paths[0] as before
@@ -872,7 +872,7 @@ class LiveSessionConsumer(AsyncWebsocketConsumer):
                         region_name = os.environ.get('AWS_S3_REGION_NAME', os.environ.get('AWS_REGION', 'us-east-1')) # Default region if none set
                         emotion_s3_url = f"https://{BUCKET_NAME}.s3.{region_name}.amazonaws.com/{EMOTION_STATIC_FOLDER}/{self.room_name}/{lowercase_emotion}/{selected_variation}.mp4"
 
-                        print(f"WS: Sending window emotion update: {audience_emotion}, URL: {emotion_s3_url} (Room: {self.room_name}, Variation: {selected_variation})")
+                        # print(f"WS: Sending window emotion update: {audience_emotion}, URL: {emotion_s3_url} (Room: {self.room_name}, Variation: {selected_variation})")
                         await self.send(json.dumps({
                             "type": "window_emotion_update",
                             "emotion": audience_emotion,
@@ -888,7 +888,7 @@ class LiveSessionConsumer(AsyncWebsocketConsumer):
                      print("WS: No audience emotion detected. Cannot send static video URL.")
 
 
-                print(f"WS: Sending full analysis update to frontend for chunk {window_chunk_number}: {analysis_result}")
+                # print(f"WS: Sending full analysis update to frontend for chunk {window_chunk_number}: {analysis_result}")
                 await self.send(json.dumps({
                     "type": "full_analysis_update",
                     "analysis": analysis_result
@@ -995,7 +995,7 @@ class LiveSessionConsumer(AsyncWebsocketConsumer):
             # Construct S3 URL - using regional endpoint format
             region_name = os.environ.get('AWS_S3_REGION_NAME', os.environ.get('AWS_REGION', 'us-east-1'))
             s3_url = f"https://{BUCKET_NAME}.s3.{region_name}.amazonaws.com/{s3_key}"
-            print(f"WS: Uploaded {file_path} to S3 successfully. S3 URL: {s3_url} after {time.time() - start_time:.2f} seconds.")
+            # print(f"WS: Uploaded {file_path} to S3 successfully. S3 URL: {s3_url} after {time.time() - start_time:.2f} seconds.")
             return s3_url
         except Exception as e:
             print(f"WS: S3 upload failed for {file_path}: {e}")
@@ -1068,10 +1068,10 @@ class LiveSessionConsumer(AsyncWebsocketConsumer):
             # This is synchronous because _save_window_analysis is already running in a thread.
             session_chunk_id = self.media_path_to_chunk.get(media_path)
 
-            print(f"WS: In _save_window_analysis for {media_path} (chunk {chunk_number}): session_chunk_id found? {session_chunk_id is not None}. ID: {session_chunk_id}")
+            # print(f"WS: In _save_window_analysis for {media_path} (chunk {chunk_number}): session_chunk_id found? {session_chunk_id is not None}. ID: {session_chunk_id}")
 
             if session_chunk_id:
-                print(f"WS: Found SessionChunk ID: {session_chunk_id} for media path: {media_path}")
+                # print(f"WS: Found SessionChunk ID: {session_chunk_id} for media path: {media_path}")
 
                 # Safely access nested dictionaries from analysis_result
                 feedback_data = analysis_result.get('Feedback', {})
@@ -1085,46 +1085,46 @@ class LiveSessionConsumer(AsyncWebsocketConsumer):
 
                     # Map from 'Feedback'
                     'audience_emotion': feedback_data.get('Audience Emotion'),
-                    'conviction': round(feedback_data.get('Conviction')), # Use get, default is None if key missing
-                    'clarity': round(feedback_data.get('Clarity')),
-                    'impact': round(feedback_data.get('Impact')),
-                    'brevity': round(feedback_data.get('Brevity')),
-                    'transformative_potential': round(feedback_data.get('Transformative Potential')),
-                    'trigger_response': round(feedback_data.get('Trigger Response')),
-                    'filler_words': round(feedback_data.get('Filler Words')),
-                    'grammar': round(feedback_data.get('Grammar')),
+                    'conviction': feedback_data.get('Conviction'), # Use get, default is None if key missing
+                    'clarity': feedback_data.get('Clarity'),
+                    'impact': feedback_data.get('Impact'),
+                    'brevity': feedback_data.get('Brevity'),
+                    'transformative_potential': feedback_data.get('Transformative Potential'),
+                    'trigger_response': feedback_data.get('Trigger Response'),
+                    'filler_words': feedback_data.get('Filler Words'),
+                    'grammar': feedback_data.get('Grammar'),
                     'general_feedback_summary': feedback_data.get('General Feedback Summary', ''), # Default to empty string
 
 
                     # Map from 'Posture'
-                    'posture': round(posture_data.get('Posture')),
-                    'motion': round(posture_data.get('Motion')),
+                    'posture': posture_data.get('Posture'),
+                    'motion': posture_data.get('Motion'),
                     # Assuming Gestures is a boolean in analysis_result or can be converted
                     'gestures': bool(posture_data.get('Gestures', False)), # Ensure boolean or default to False
 
 
                     # Map from the 'Scores' nested dictionary
-                    'volume': round(scores_data.get('Volume Score')),
-                    'pitch_variability': round(scores_data.get('Pitch Variability Score')),
-                    'pace': round(scores_data.get('Pace Score')),
-                    'pauses': round(scores_data.get('Pause Score')), # Use Pause Score key
+                    'volume': scores_data.get('Volume Score'),
+                    'pitch_variability': scores_data.get('Pitch Variability Score'),
+                    'pace': scores_data.get('Pace Score'),
+                    'pauses': scores_data.get('Pause Score'), # Use Pause Score key
 
                     # Add the combined transcript
                     'chunk_transcript': transcript_text,
                 }
 
-                print(f"WS: ChunkSentimentAnalysis data (for window, chunk {chunk_number}): {sentiment_data}")
+                # print(f"WS: ChunkSentimentAnalysis data (for window, chunk {chunk_number}): {sentiment_data}")
 
                 # Use the serializer to validate and prepare data for saving
                 sentiment_serializer = ChunkSentimentAnalysisSerializer(data=sentiment_data)
 
                 if sentiment_serializer.is_valid():
-                    print(f"WS: ChunkSentimentAnalysisSerializer (for window, chunk {chunk_number}) is valid.")
+                    # print(f"WS: ChunkSentimentAnalysisSerializer (for window, chunk {chunk_number}) is valid.")
                     try:
                         # Synchronous database call to save the sentiment analysis
                         sentiment_analysis_obj = sentiment_serializer.save()
 
-                        print(f"WS: Window analysis data saved for chunk ID: {session_chunk_id} (chunk {chunk_number}) with sentiment ID: {sentiment_analysis_obj.id} after {time.time() - start_time:.2f} seconds")
+                        # print(f"WS: Window analysis data saved for chunk ID: {session_chunk_id} (chunk {chunk_number}) with sentiment ID: {sentiment_analysis_obj.id} after {time.time() - start_time:.2f} seconds")
 
                     except Exception as save_error:
                         print(f"WS: Error during ChunkSentimentAnalysis save (for window, chunk {chunk_number}): {save_error}")
