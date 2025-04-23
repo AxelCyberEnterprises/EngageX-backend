@@ -564,6 +564,8 @@ import django
 import time
 import traceback
 import random # Import random for selecting variations
+import numpy as np
+
 
 from base64 import b64decode
 from datetime import timedelta
@@ -592,6 +594,18 @@ POSSIBLE_ROOMS = ['conference_room', 'board_room_1', 'board_room_2']
 
 # Assume a fixed number of variations for each emotion video (1.mp4 to 5.mp4)
 NUMBER_OF_VARIATIONS = 5
+
+
+def convert_numpy(obj):
+    if isinstance(obj, (np.integer, np.int32, np.int64)):
+        return int(obj)
+    elif isinstance(obj, (np.floating, np.float32, np.float64)):
+        return float(obj)
+    elif isinstance(obj, np.ndarray):
+        return obj.tolist()
+    else:
+        raise TypeError(f"Object of type {type(obj).__name__} is not JSON serializable")
+
 
 
 class LiveSessionConsumer(AsyncWebsocketConsumer):
@@ -878,7 +892,7 @@ class LiveSessionConsumer(AsyncWebsocketConsumer):
                 await self.send(json.dumps({
                     "type": "full_analysis_update",
                     "analysis": analysis_result
-                }))
+                }, default=convert_numpy))
 
                 # Save the analysis for the last chunk in the window
                 # Call the synchronous _save_window_analysis using asyncio.to_thread
