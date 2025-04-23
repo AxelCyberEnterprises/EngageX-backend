@@ -101,7 +101,7 @@ class PracticeSession(models.Model):
     slides_file = models.FileField(
         # Pass the *instance* of the storage class obtained above
         storage=SlidesStorageInstance, # <-- Use the obtained storage instance here (either custom or default)
-        upload_to='', # <-- Specify the subdirectory within that storage
+        upload_to='slides/', # <-- Specify the subdirectory within that storage
         blank=True,
         null=True,
         # Add validators if you want to restrict file types (e.g., PDF, PPT, images)

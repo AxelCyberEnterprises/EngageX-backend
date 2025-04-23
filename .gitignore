@@ -1,5 +1,5 @@
 venv/
 .env
 *.pyc
-
+/migrations
 testdata.txt
