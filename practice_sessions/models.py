@@ -37,7 +37,7 @@ if _storage_backend_path:
         SlidesStorageClass = getattr(_storage_module, _class_name)
         # Instantiate the class
         SlidesStorageInstance = SlidesStorageClass()
-        print(f"Successfully loaded custom SlidesStorage backend via manual import: {_storage_backend_path}")
+        # print(f"Successfully loaded custom SlidesStorage backend via manual import: {_storage_backend_path}")
 
     except (ImportError, KeyError, AttributeError) as e:
          print(f"Could not manually load custom SlidesStorage backend specified in settings: {e}. "
@@ -191,6 +191,11 @@ class PracticeSession(models.Model):
     )
     gestures = models.BooleanField(
         default=False, help_text="Presence of positive gestures in the session"
+    )
+    gestures_score_for_body_language = models.IntegerField(
+        default=0,
+        validators=[MinValueValidator(0), MaxValueValidator(100)],
+        help_text="Score for gestures in body language analysis",
     )
     transformative_potential = models.IntegerField(
         default=0,
