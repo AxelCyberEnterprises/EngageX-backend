@@ -613,7 +613,7 @@ def analyze_sentiment(transcript, metrics, posture_data):
 
 
     Audience Emotion:
-      - Select one of these emotions that the audience will be feeling most strongly (Curiosity, Empathy, Excitement, Inspiration, Amusement, Conviction, Surprise, Interested)
+      - Select one of these emotions that the audience will be feeling most strongly (curiosity, empathy, excitement, laughter, surprise, interested)
    
     Conviction:
       - Indicates firmness and clarity of beliefs or message. Evaluates how strongly and clearly the speaker presents their beliefs and message. Dependent on Confidence score and transcript
