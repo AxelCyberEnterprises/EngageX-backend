@@ -322,11 +322,23 @@ class LiveSessionConsumer(AsyncWebsocketConsumer):
             # This task runs in the background. Store the task so analyze_windowed_media can potentially wait for it.
             # Create the task first, then add it to the dictionary to ensure it's registered
             chunk_save_task = asyncio.create_task(self._complete_chunk_save_in_background(media_path, s3_upload_task))
-            # Add a small delay to ensure the task is properly registered
-            await asyncio.sleep(0.01)
-            # Now add it to the dictionary
+            
+            # Register the task immediately
             self.background_chunk_save_tasks[media_path] = chunk_save_task
             print(f"WS: Registered background chunk save task for {media_path}")
+
+            # Add a small delay to ensure the task is properly registered and started
+            await asyncio.sleep(0.01)
+
+            # Trigger windowed analysis if buffer size is sufficient
+            # analyze_windowed_media will run concurrently
+            # It will handle waiting for background chunk save before saving analysis results
+            if len(self.media_buffer) >= ANALYSIS_WINDOW_SIZE:
+                # Take the last ANALYSIS_WINDOW_SIZE chunks for the sliding window
+                window_paths = list(self.media_buffer[-ANALYSIS_WINDOW_SIZE:])
+                print(f"WS: Triggering windowed analysis for sliding window (chunks ending with {self.chunk_counter})")
+                # Pass the list of media paths in the window and the latest chunk number
+                asyncio.create_task(self.analyze_windowed_media(window_paths, self.chunk_counter))
 
 
         except Exception as e:
