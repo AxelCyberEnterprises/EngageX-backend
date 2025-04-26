@@ -54,27 +54,26 @@ lock = threading.Lock()
 
 
 # ---------------------- SCORING FUNCTIONS ----------------------
-
 def scale_to_score(value, min_val, max_val):
     """
     Scales values where:
-    - min_val and max_val get exactly 70
+    - min_val and max_val get exactly 75
     - midpoint gets 100
-    - outside drops smoothly and exponentially toward 40
+    - outside drops smoothly and exponentially toward 50
     """
 
     if value < min_val or value > max_val:
         # Distance from the nearest boundary
         distance = min(abs(value - min_val), abs(value - max_val))
-        # Exponential decay from 70 down to 40
-        score = 40 + (30 * np.exp(-0.1 * distance))  # As distance increases, score approaches 40
+        # Exponential decay from 75 down to 50
+        score = 50 + (25 * np.exp(-0.1 * distance))  # As distance increases, score approaches 50
     else:
         # Normalize value between 0 and 1
         normalized = (value - min_val) / (max_val - min_val)
-        # Bell-like curve from 70 to 100 to 70
-        score = 70 + 30 * (1 - abs(2 * normalized - 1))  # Peak at 100 in the middle
+        # Bell-like curve from 75 to 100 to 75
+        score = 75 + 25 * (1 - abs(2 * normalized - 1))  # Peak at 100 in the middle
 
-    return max(40, round(score))  # Ensure the score never drops below 40
+    return max(50, round(score))  # Ensure the score never drops below 50
 
 
 def score_volume(volume):
@@ -541,7 +540,7 @@ def analyze_posture(video_path):
         is_hand_present = results_data["is_hand_present"] if results_data["is_hand_present"] else 0
 
         # Normalize to match the known video length (60 seconds)
-        video_duration = 40
+        video_duration = 28
 
         # Time spent in good/bad posture
         gb_time = results_data["good_back_frames"] / 30
@@ -606,9 +605,9 @@ def analyze_sentiment(transcript, metrics, posture_data):
     is_hand_present = posture_data["is_hand_present"]
 
     prompt = f"""
-    You are an advanced presentation evaluation system. Using the provided speech metrics, their rationale and the speakers transcript, generate a performance analysis with the following scores (each on a scale of 1–100) and a general feedback summary. Return valid JSON only
+    You are an advanced presentation evaluation system. Using the provided speech metrics, their rationale and the speakers transcript, generate a performance analysis with the following scores (each on a scale of 1–100). Return valid JSON only
     
-    Transcript Provided:
+    Transcript Provided(overlook transcription errors):
     {transcript}
 
 
@@ -616,7 +615,7 @@ def analyze_sentiment(transcript, metrics, posture_data):
       - Select one of these emotions that the audience will be feeling most strongly (curiosity, empathy, excitement, laughter, surprise, interested)
    
     Conviction:
-      - Indicates firmness and clarity of beliefs or message. Evaluates how strongly and clearly the speaker presents their beliefs and message. Dependent on Confidence score and transcript
+      - Indicates firmness and clarity of beliefs or message. Evaluates how strongly and clearly the speaker presents their beliefs and message. Dependent on volume Volume_score: {metrics["Metrics"]["Volume"]} {metrics["Metrics"]["Volume Rationale"]}, pace_score: {metrics["Scores"]["Pace Score"]} {metrics["Metrics"]["Pace Rationale"]}, pause_score: {metrics["Scores"]["Pause Score"]} {metrics["Metrics"]["Pause Metric Rationale"]} and transcript content
 
     Clarity:
       -  Measures how easily the audience can understand the speaker’s message, dependent on pace, volume consistency, effective pause usage. Volume_score: {metrics["Metrics"]["Volume"]} {metrics["Metrics"]["Volume Rationale"]}, pace_score: {metrics["Scores"]["Pace Score"]} {metrics["Metrics"]["Pace Rationale"]}, pause_score: {metrics["Scores"]["Pause Score"]} {metrics["Metrics"]["Pause Metric Rationale"]}
@@ -625,7 +624,7 @@ def analyze_sentiment(transcript, metrics, posture_data):
       - Overall measure of how captivating the talk is and how well the user visually presents himself. 
       Volume_score: {metrics["Metrics"]["Volume"]} {metrics["Metrics"]["Volume Rationale"]}, pitch_variability_score: {metrics["Scores"]["Pitch Variability Score"]} {metrics["Metrics"]["Pitch Variability Rationale"]}, 
       pace_score: {metrics["Scores"]["Pace Score"]} {metrics["Metrics"]["Pace Rationale"]}, pause_score: {metrics["Scores"]["Pause Score"]} {metrics["Metrics"]["Pause Metric Rationale"]}.
-      Posture score: {mean_body_posture} {mean_back_rationale} {mean_neck_rationale}, stiffness score: {range_body_posture} {range_back_rationale} {range_neck_rationale}
+      Posture score: {mean_body_posture} {mean_back_rationale} {mean_neck_rationale}, stiffness score: {range_body_posture} {range_back_rationale} {range_neck_rationale}, Hand Motion: {is_hand_present}
 
     Brevity:
 	- Measure of conciseness of words. To be graded by the transcript
@@ -634,24 +633,13 @@ def analyze_sentiment(transcript, metrics, posture_data):
       - Potential to motivate significant change or shift perspectives.
 
     Trigger Response:
-      - Indicates to what extent the presentation is compelling to the audience emotions
+      - Indicates to what extent the presentation is triggers an audience emotional response
 
     Filler Words
       - Filler words are bad and affect overall audience engagement. Score 100 if there are no filler words, then -10 for each filler word
 
     Grammar
       - Based on the transcript, grade the speaker's grammar. Score 100 if there are no grammatical errors, then -10 for each grammatical error
-   
-
-    Body Posture:
-     - Based on the overall quality of posture alignment and stability. A high score reflects steady posture, minimal stiffness, and low time in poor posture.
-     - Posture score: {mean_body_posture} {mean_back_rationale} {mean_neck_rationale}, stiffness score: {range_body_posture} {range_back_rationale} {range_neck_rationale}
-   
-    General Feedback Summary:
-    Provide a holistic assessment that integrates insights from audio analysis scores, posture metrics, and transcript sentiment for a complete evaluation of the speaker's presentation.
-    Explicitly reference key data points from audio metrics, posture analysis, and the transcript to justify observations.
-    Explain how observed behaviors — such as monotonous speech, poor posture, or excessive movement — may influence the audience's perception
-    Emphasize both strengths and areas for improvement to provide a balanced assessment.
 
     Response Requirements:
     1) Output valid JSON only, no extra text.
@@ -679,14 +667,12 @@ def analyze_sentiment(transcript, metrics, posture_data):
                         "Trigger Response": {"type": "number"},
                         "Filler Words": {"type": "number"},
                         "Grammar": {"type": "number"},
-                        "General Feedback Summary": {"type": "string"},
                     },
                     "required": [
                         "Audience Emotion", "Conviction", 
                         "Clarity", "Impact", "Brevity",
                         "Transformative Potential","Trigger Response",
-                        "Filler Words", "Grammar", 
-                        "General Feedback Summary",
+                        "Filler Words", "Grammar"
                     ]
             }
             }
@@ -697,8 +683,10 @@ def analyze_sentiment(transcript, metrics, posture_data):
     print(f"DATA TYPE OF RESPONSE:  {type(response)}")
 
     try:
+        general_feedback_summary = f"Posture rationale: {mean_back_rationale}, {mean_neck_rationale}. Stiffness rationale: {range_back_rationale}, {range_neck_rationale}. Volume rationale: {metrics['Metrics']['Volume Rationale']}. Pitch variability rationale: {metrics['Metrics']['Pitch Variability Rationale']}. Pace rationale: {metrics['Metrics']['Pace Rationale']}. Pause rationale: {metrics['Metrics']['Pause Metric Rationale']}."
         parsed_response = {}
         parsed_response['Feedback'] = json.loads(response)
+        parsed_response['Feedback']["General Feedback Summary"] = general_feedback_summary
         parsed_response['Posture Scores'] = {
             "Posture": round(mean_body_posture),
             "Motion": round(range_body_posture),
