@@ -19,13 +19,12 @@ import uuid  # For generating unique sequence IDs
 try:
     from django.core.files.storage import default_storage
 except ImportError:
-     # Fallback if default_storage also has import issues, though less likely
-     print("Warning: Could not import default_storage. File field behavior may be unpredictable.")
-     default_storage = None # Assign None or raise an error if default_storage is essential
-
+    # Fallback if default_storage also has import issues, though less likely
+    print("Warning: Could not import default_storage. File field behavior may be unpredictable.")
+    default_storage = None  # Assign None or raise an error if default_storage is essential
 
 _storage_backend_path = settings.STORAGES.get("SlidesStorage", {}).get("BACKEND")
-SlidesStorageInstance = default_storage # Start with default_storage as the fallback
+SlidesStorageInstance = default_storage  # Start with default_storage as the fallback
 
 if _storage_backend_path:
     try:
@@ -40,14 +39,14 @@ if _storage_backend_path:
         # print(f"Successfully loaded custom SlidesStorage backend via manual import: {_storage_backend_path}")
 
     except (ImportError, KeyError, AttributeError) as e:
-         print(f"Could not manually load custom SlidesStorage backend specified in settings: {e}. "
-               f"Attempted path: {_storage_backend_path}. Falling back to default storage.")
-         # Keep SlidesStorageInstance as default_storage if manual load fails
+        print(f"Could not manually load custom SlidesStorage backend specified in settings: {e}. "
+              f"Attempted path: {_storage_backend_path}. Falling back to default storage.")
+        # Keep SlidesStorageInstance as default_storage if manual load fails
     except Exception as e:
-         # Catch any other unexpected errors during manual loading
-         print(f"An unexpected error occurred while loading SlidesStorage backend: {e}. "
-               f"Attempted path: {_storage_backend_path}. Falling back to default storage.")
-         # Keep SlidesStorageInstance as default_storage
+        # Catch any other unexpected errors during manual loading
+        print(f"An unexpected error occurred while loading SlidesStorage backend: {e}. "
+              f"Attempted path: {_storage_backend_path}. Falling back to default storage.")
+        # Keep SlidesStorageInstance as default_storage
 
 
 else:
@@ -100,12 +99,13 @@ class PracticeSession(models.Model):
     # --- Replace original slides_URL with slides_file (FileField) ---
     slides_file = models.FileField(
         # Pass the *instance* of the storage class obtained above
-        storage=SlidesStorageInstance, # <-- Use the obtained storage instance here (either custom or default)
-        upload_to='slides/', # <-- Specify the subdirectory within that storage
+        storage=SlidesStorageInstance,  # <-- Use the obtained storage instance here (either custom or default)
+        upload_to='slides/',  # <-- Specify the subdirectory within that storage
         blank=True,
         null=True,
         # Add validators if you want to restrict file types (e.g., PDF, PPT, images)
-        validators=[FileExtensionValidator(allowed_extensions=['pdf', 'ppt', 'pptx', 'odp', 'key', 'jpg', 'jpeg', 'png', 'gif'])],
+        validators=[FileExtensionValidator(
+            allowed_extensions=['pdf', 'ppt', 'pptx', 'odp', 'key', 'jpg', 'jpeg', 'png', 'gif'])],
         help_text="Upload presentation slides (e.g., PDF, PPT, image files).",
     )
     # --- End Change ---
@@ -127,7 +127,7 @@ class PracticeSession(models.Model):
         help_text="Select a virtual environment.",
     )
     sequence = models.ForeignKey(
-        PracticeSequence, # Use the class directly if defined above
+        PracticeSequence,  # Use the class directly if defined above
         on_delete=models.SET_NULL,
         related_name="sessions",
         null=True,
@@ -142,7 +142,7 @@ class PracticeSession(models.Model):
     )
     pace = models.IntegerField(default=0, help_text="Average pace of the session")
     pauses = models.IntegerField(
-        default=0, help_text="Average pause score for the session (expected over 100)" # Updated help text for clarity
+        default=0, help_text="Average pause score for the session (expected over 100)"  # Updated help text for clarity
     )
     conviction = models.IntegerField(
         default=0,
@@ -220,7 +220,7 @@ class PracticeSession(models.Model):
         default=0, help_text="Overall captured impact (same as impact)"
     )
     vocal_variety = models.FloatField(
-        default=0, help_text="Average of volume, pitch, pace, and pauses (expected over 100)" # Updated help text
+        default=0, help_text="Average of volume, pitch, pace, and pauses (expected over 100)"  # Updated help text
     )
     emotional_impact = models.FloatField(
         default=0, help_text="Emotional impact (same as trigger response)"
@@ -238,9 +238,15 @@ class PracticeSession(models.Model):
     language_and_word_choice = models.FloatField(
         default=0, help_text="Average of brevity, filler words, and grammar"
     )
-    slide_efficiency = models.FloatField(default=0, help_text="Efficiency score for slide usage")
-    text_economy = models.FloatField(default=0, help_text="Text economy score")
-    visual_communication = models.FloatField(default=0, help_text="Visual communication score")
+    slide_efficiency = models.FloatField(
+        default=0, help_text=""
+    )
+    text_economy = models.FloatField(
+        default=0, help_text=""
+    )
+    visual_communication = models.FloatField(
+        default=0, help_text=""
+    )
 
     def __str__(self):
         return f"{self.session_name} by {self.user.email}"
@@ -350,29 +356,32 @@ class ChunkSentimentAnalysis(models.Model):
     chunk_transcript = models.TextField(blank=True, null=True, help_text="Transcript")
 
     # New fields for sentiment analysis response
-    trigger_response = models.IntegerField( # Renamed from original field in your other model def
-        default=0, help_text="Number of trigger responses detected" # Help text suggests count, but logs show score? Clarify this.
+    trigger_response = models.IntegerField(  # Renamed from original field in your other model def
+        default=0, help_text="Number of trigger responses detected"
+        # Help text suggests count, but logs show score? Clarify this.
     )
-    filler_words = models.IntegerField( # Renamed
-        default=0, help_text="Number of filler words used" # Help text suggests count, but logs show score? Clarify this.
+    filler_words = models.IntegerField(  # Renamed
+        default=0, help_text="Number of filler words used"
+        # Help text suggests count, but logs show score? Clarify this.
     )
-    grammar = models.IntegerField( # Renamed
-        default=0, help_text="Grammar score or number of errors" # Help text ambiguous
+    grammar = models.IntegerField(  # Renamed
+        default=0, help_text="Grammar score or number of errors"  # Help text ambiguous
     )
-    posture = models.IntegerField( # Renamed
+    posture = models.IntegerField(  # Renamed
         default=0,
         validators=[MinValueValidator(0), MaxValueValidator(100)],
         help_text="Posture score",
     )
-    motion = models.IntegerField( # Renamed
+    motion = models.IntegerField(  # Renamed
         default=0,
         validators=[MinValueValidator(0), MaxValueValidator(100)],
         help_text="Motion score",
     )
-    gestures = models.BooleanField( # Renamed
+    gestures = models.BooleanField(  # Renamed
         default=False, help_text="Presence of positive gestures"
     )
-    pauses = models.IntegerField(default=0, help_text="Pause score for this chunk (expected over 100)") # Updated help text for clarity
+    pauses = models.IntegerField(default=0,
+                                 help_text="Pause score for this chunk (expected over 100)")  # Updated help text for clarity
 
     def __str__(self):
         return f"Sentiment Analysis for Chunk {self.chunk.start_time}-{self.chunk.end_time} of {self.chunk.session.session_name}"
