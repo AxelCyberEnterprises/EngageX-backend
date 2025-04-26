@@ -238,6 +238,9 @@ class PracticeSession(models.Model):
     language_and_word_choice = models.FloatField(
         default=0, help_text="Average of brevity, filler words, and grammar"
     )
+    slide_efficiency = models.FloatField(default=0, help_text="Efficiency score for slide usage")
+    text_economy = models.FloatField(default=0, help_text="Text economy score")
+    visual_communication = models.FloatField(default=0, help_text="Visual communication score")
 
     def __str__(self):
         return f"{self.session_name} by {self.user.email}"
