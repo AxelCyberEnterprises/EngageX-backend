@@ -263,10 +263,38 @@ class SessionChunk(models.Model):
         null=True,
         help_text="Video file for this chunk",
     )
+    # New fields for chunk processing
+    chunk_number = models.IntegerField(
+        null=True,
+        blank=True,
+        help_text="Order of the chunk in the session",
+    )
+    transcript = models.TextField(
+        blank=True,
+        null=True,
+        help_text="Transcript of this chunk",
+    )
+    audio_path = models.CharField(
+        max_length=255,
+        blank=True,
+        null=True,
+        help_text="Path to the audio file for this chunk",
+    )
+    created_at = models.DateTimeField(
+        default=timezone.now,
+        help_text="When this chunk was created",
+    )
+    updated_at = models.DateTimeField(
+        default=timezone.now,
+        help_text="When this chunk was last updated",
+    )
+
+    class Meta:
+        ordering = ['chunk_number', 'created_at']
 
     def __str__(self):
         return (
-            f"Chunk {self.start_time}-{self.end_time} for {self.session.session_name}"
+            f"Chunk {self.chunk_number or self.start_time}-{self.end_time} for {self.session.session_name}"
         )
 
 
