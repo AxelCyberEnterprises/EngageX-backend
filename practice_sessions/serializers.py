@@ -107,8 +107,19 @@ class PracticeSessionSlidesSerializer(serializers.ModelSerializer):
 class SessionChunkSerializer(serializers.ModelSerializer):
     class Meta:
         model = SessionChunk
-        fields = ["id", "session", "video_file"]
-        read_only_fields = ["id"]
+        fields = [
+            "id", 
+            "session", 
+            "video_file",
+            "chunk_number",
+            "transcript",
+            "audio_path",
+            "start_time",
+            "end_time",
+            "created_at",
+            "updated_at"
+        ]
+        read_only_fields = ["id", "created_at", "updated_at"]
 
 
 class ChunkSentimentAnalysisSerializer(serializers.ModelSerializer):
