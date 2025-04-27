@@ -1,3 +1,7 @@
+import base64
+import concurrent.futures
+
+import openai
 from rest_framework import viewsets, status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.decorators import action
@@ -5,7 +9,6 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework.exceptions import PermissionDenied
-
 
 from django.db.models.functions import Round
 from django.conf import settings
@@ -115,6 +118,82 @@ def generate_full_summary(self, session_id):
     return parsed_summary
 
 
+def generate_slide_summary(pdf_path):
+        client = OpenAI(api_key=settings.OPENAI_API_KEY)
+        # STEP 2: Read and encode the PDF as Base64
+        if isinstance(pdf_path, (str,bytes,os.PathLike)):
+            with open(pdf_path, 'rb') as file:
+                pdf_bytes = file.read()
+                base64_pdf = base64.b64encode(pdf_bytes).decode('utf-8')
+        elif isinstance(pdf_path, UploadedFile):
+            pdf_bytes = pdf_path.read()
+            base64_pdf = base64.b64encode(pdf_bytes).decode('utf-8')
+            pdf_path.seek(0)
+
+
+            # STEP 3: Construct your evaluation prompt
+        prompt = """
+        You are a presentation evaluator. Review the attached presentation and score it on:
+
+        1. *Slide Efficiency*: Are too many slides used to deliver simple points?
+        2. *Text Economy*: Is the presentation light on text per slide?
+        3. *Visual Communication*: Is there a strong use of images, diagrams, or design elements?
+
+        Give each a score from 1 (poor) to 100 (excellent).
+        """
+
+        # STEP 4: Make the completion call using the file and structured JSON schema
+        response = openai.chat.completions.create(
+            model="gpt-4o",
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "file",
+                            "file": {
+                                "file_data": f"data:application/pdf;base64,{base64_pdf}",
+                                "filename": "uploaded_document.pdf"
+                            }
+                        },
+                        {
+                            "type": "text",
+                            "text": prompt
+                        }
+                    ]
+                }
+            ],
+            response_format={
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "PresentationEvaluation",
+                    "schema": {
+                        "type": "object",
+                        "properties": {
+                            "SlideEfficiency": {"type": "number"},
+                            "TextEconomy": {"type": "number"},
+                            "VisualCommunication": {"type": "number"},
+                        },
+                        "required": [
+                            "SlideEfficiency",
+                            "TextEconomy",
+                            "VisualCommunication",
+                        ]
+                    }
+                }
+            }
+        )
+
+        # STEP 5: Unpack and print the response
+        result = json.loads(response.choices[0].message.content)
+
+        print("\n✅ Evaluation Results:")
+        print(f"Slide Efficiency: {result['SlideEfficiency']}/100")
+        print(f"Text Economy: {result['TextEconomy']}/100")
+        print(f"Visual Communication: {result['VisualCommunication']}/100")
+
+        return result
+
 class PracticeSequenceViewSet(viewsets.ModelViewSet):
     """
     ViewSet for handling practice session sequences.
@@ -165,15 +244,15 @@ class PracticeSessionViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
 
-    @action(detail=True, methods=["get"])
-    def report(self, request, pk=None):
-        """
-        Retrieve the full session report for the given session.
-        Admins can view any session; regular users can view only their own.
-        """
-        session = self.get_object()
-        serializer = PracticeSessionSerializer(session)
-        return Response(serializer.data)
+    # @action(detail=True, methods=["get"])
+    # def report(self, request, pk=None):
+    #     """
+    #     Retrieve the full session report for the given session.
+    #     Admins can view any session; regular users can view only their own.
+    #     """
+    #     session = self.get_object()
+    #     serializer = PracticeSessionSerializer(session)
+    #     return Response(serializer.data)
 
 
 class SessionDashboardView(APIView):
@@ -465,7 +544,7 @@ class SessionDashboardView(APIView):
             for session in sessions:
                 for field in fields:
                     value = getattr(session, field, 0)
-                    if value >= 80:
+                    if value >= 80 and  goals[field] < 10:
                         goals[field] += 1
                     else:
                         goals[field] += 0
@@ -542,7 +621,7 @@ class SessionDashboardView(APIView):
 #                 },
 #                 status=status.HTTP_400_BAD_REQUEST,
 #             )
-
+from django.core.files.uploadedfile import UploadedFile
 
 
 class UploadSessionSlidesView(APIView):
@@ -552,6 +631,8 @@ class UploadSessionSlidesView(APIView):
 
     permission_classes = [IsAuthenticated]
     parser_classes = [MultiPartParser, FormParser]
+
+
 
     def get(self, request, pk=None):
         """
@@ -571,81 +652,82 @@ class UploadSessionSlidesView(APIView):
 
             # Check if a slides_file has been uploaded for this session
             if not practice_session.slides_file or not practice_session.slides_file.name:
-                 # Return a 404 or 200 with a clear message if no file is attached
-                 return Response(
-                     {"message": "No slides available for this session."},
-                     status=status.HTTP_404_NOT_FOUND # Or status.HTTP_200_OK with {"slide_url": None}
-                 )
+                # Return a 404 or 200 with a clear message if no file is attached
+                return Response(
+                    {"message": "No slides available for this session."},
+                    status=status.HTTP_404_NOT_FOUND  # Or status.HTTP_200_OK with {"slide_url": None}
+                )
 
             slide_url = None
             # Determine the storage method configured and get the appropriate URL
             if settings.USE_S3:
-                 try:
-                     s3_client = boto3.client(
-                         "s3",
-                         region_name=settings.AWS_S3_REGION_NAME,
-                         # Consider more secure ways to handle credentials in production
-                     )
-                 except Exception as e:
-                      print(f"Error initializing S3 client: {e}")
-                      return Response(
-                          {"error": "Could not initialize S3 client."},
-                          status=status.HTTP_500_INTERNAL_SERVER_ERROR
-                      )
+                try:
+                    s3_client = boto3.client(
+                        "s3",
+                        region_name=settings.AWS_S3_REGION_NAME,
+                        # Consider more secure ways to handle credentials in production
+                    )
+                except Exception as e:
+                    print(f"Error initializing S3 client: {e}")
+                    return Response(
+                        {"error": "Could not initialize S3 client."},
+                        status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                    )
 
-                 try:
-                     # The S3 key is the path stored in the FileField's .name attribute
-                     # Based on your S3 location, this *should* be 'slides/Nourish_Final_pitch_deck.pdf'.
-                     # The S3 error shows it's currently 'slides/Nourish_Final_pitch_deck.pdf'.
-                     s3_key = practice_session.slides_file.name # This is the value from the database field
+                try:
+                    # The S3 key is the path stored in the FileField's .name attribute
+                    # Based on your S3 location, this *should* be 'slides/Nourish_Final_pitch_deck.pdf'.
+                    # The S3 error shows it's currently 'slides/Nourish_Final_pitch_deck.pdf'.
+                    s3_key = practice_session.slides_file.name  # This is the value from the database field
 
-                     print(f"Attempting to generate pre-signed URL for S3 key: {s3_key}") # Log the key from .name
+                    print(f"Attempting to generate pre-signed URL for S3 key: {s3_key}")  # Log the key from .name
 
-                     # Generate the pre-signed URL for 'get_object' operation
-                     slide_url = s3_client.generate_presigned_url(
-                         'get_object',
-                         Params={'Bucket': settings.AWS_STORAGE_BUCKET_NAME, 'Key': s3_key},
-                         ExpiresIn=3600 # URL expires in 1 hour (adjust the expiration time as needed)
-                     )
-                     print(f"Generated pre-signed S3 URL for key: {s3_key}") # Log the key used to generate URL
+                    # Generate the pre-signed URL for 'get_object' operation
+                    slide_url = s3_client.generate_presigned_url(
+                        'get_object',
+                        Params={'Bucket': settings.AWS_STORAGE_BUCKET_NAME, 'Key': s3_key},
+                        ExpiresIn=3600  # URL expires in 1 hour (adjust the expiration time as needed)
+                    )
+                    print(f"Generated pre-signed S3 URL for key: {s3_key}")  # Log the key used to generate URL
 
 
-                 except (NoCredentialsError, PartialCredentialsError):
-                     print("AWS credentials not found or incomplete. Cannot generate pre-signed URL.")
-                     return Response(
-                         {"error": "AWS credentials not configured correctly."},
-                         status=status.HTTP_500_INTERNAL_SERVER_ERROR
-                     )
-                 except ClientError as e:
-                     print(f"S3 ClientError generating pre-signed URL: {e}")
-                     if e.response['Error']['Code'] == '404' or e.response['Error']['Code'] == 'NoSuchKey':
-                          print(f"NoSuchKey error details from S3: Key attempted: {e.response['Error'].get('Key')}") # Log the key S3 was asked for
-                          return Response(
-                              {"error": "Slide file not found in S3. The requested key does not exist."},
-                              status=status.HTTP_404_NOT_FOUND
-                          )
-                     return Response(
-                         {"error": f"S3 error generating slide URL: {e}"},
-                         status=status.HTTP_500_INTERNAL_SERVER_ERROR
-                     )
-                 except Exception as e:
-                     print(f"Error generating pre-signed URL: {e}")
-                     traceback.print_exc()
-                     return Response(
-                         {"error": "Could not generate slide URL due to unexpected error."},
-                         status=status.HTTP_500_INTERNAL_SERVER_ERROR
-                     )
+                except (NoCredentialsError, PartialCredentialsError):
+                    print("AWS credentials not found or incomplete. Cannot generate pre-signed URL.")
+                    return Response(
+                        {"error": "AWS credentials not configured correctly."},
+                        status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                    )
+                except ClientError as e:
+                    print(f"S3 ClientError generating pre-signed URL: {e}")
+                    if e.response['Error']['Code'] == '404' or e.response['Error']['Code'] == 'NoSuchKey':
+                        print(
+                            f"NoSuchKey error details from S3: Key attempted: {e.response['Error'].get('Key')}")  # Log the key S3 was asked for
+                        return Response(
+                            {"error": "Slide file not found in S3. The requested key does not exist."},
+                            status=status.HTTP_404_NOT_FOUND
+                        )
+                    return Response(
+                        {"error": f"S3 error generating slide URL: {e}"},
+                        status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                    )
+                except Exception as e:
+                    print(f"Error generating pre-signed URL: {e}")
+                    traceback.print_exc()
+                    return Response(
+                        {"error": "Could not generate slide URL due to unexpected error."},
+                        status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                    )
             else:
-                 try:
-                     slide_url = practice_session.slides_file.url
-                     print(f"Using local storage URL: {slide_url}")
-                 except Exception as e:
-                      print(f"Error getting local storage URL: {e}")
-                      traceback.print_exc()
-                      return Response(
-                         {"error": "Could not retrieve local slide URL."},
-                         status=status.HTTP_500_INTERNAL_SERVER_ERROR
-                      )
+                try:
+                    slide_url = practice_session.slides_file.url
+                    print(f"Using local storage URL: {slide_url}")
+                except Exception as e:
+                    print(f"Error getting local storage URL: {e}")
+                    traceback.print_exc()
+                    return Response(
+                        {"error": "Could not retrieve local slide URL."},
+                        status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                    )
 
             if slide_url:
                 return Response(
@@ -657,10 +739,10 @@ class UploadSessionSlidesView(APIView):
                     status=status.HTTP_200_OK,
                 )
             else:
-                 return Response(
-                     {"message": "Could not retrieve slide URL."},
-                     status=status.HTTP_500_INTERNAL_SERVER_ERROR
-                 )
+                return Response(
+                    {"message": "Could not retrieve slide URL."},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
 
         except PracticeSession.DoesNotExist:
             return Response(
@@ -673,7 +755,6 @@ class UploadSessionSlidesView(APIView):
                 {"error": "An internal error occurred.", "details": str(e)},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
-
 
     def put(self, request, pk=None):
         """
@@ -696,17 +777,40 @@ class UploadSessionSlidesView(APIView):
             )
 
             if serializer.is_valid():
+                uploaded_pdf = serializer.validated_data.get("slides_file")
+
+                if uploaded_pdf:
+                    print('---processing pdf----')
+                    with concurrent.futures.ThreadPoolExecutor() as executor:
+                        future = executor.submit(generate_slide_summary, uploaded_pdf)
+                        result  = future.result()
+                        practice_session.slide_efficiency = result['SlideEfficiency']
+                        practice_session.text_economy=result['TextEconomy']
+                        practice_session.visual_communication=result['VisualCommunication']
+
+                    print(practice_session.slide_efficiency)
+                    print(practice_session)
+
+                print('---saving db----')
+                with  concurrent.futures.ThreadPoolExecutor() as db_executor:
+                    db_executor.submit(serializer.save)
+                    print(f"Slides uploaded successfully for session {pk}.")
+
+
+
                 # Save the uploaded file. This should use the storage backend and upload_to.
-                serializer.save()
-                print(f"Slides uploaded successfully for session {pk}.")
+
+                # serializer.save()
+                # result = future.result()
+                # print(result)
 
                 # *** CHECK THIS LOG AFTER A PUT REQUEST ***
                 if practice_session.slides_file:
-                     print(f"WS: After save in PUT, practice_session.slides_file.name is: {practice_session.slides_file.name}")
+                    print(
+                        f"WS: After save in PUT, practice_session.slides_file.name is: {practice_session.slides_file.name}")
                 else:
-                     print("WS: After save in PUT, practice_session.slides_file is None.")
+                    print("WS: After save in PUT, practice_session.slides_file is None.")
                 # *** WHAT IS THE EXACT OUTPUT OF THIS LINE? ***
-
 
                 return Response(
                     {
@@ -1028,7 +1132,6 @@ class SessionReportView(APIView):
                 status=status.HTTP_404_NOT_FOUND
             )
 
-
     @swagger_auto_schema(
         operation_description="update the session duration, calculate report, and generate summary",
         request_body=SessionReportSerializer,
@@ -1085,7 +1188,6 @@ class SessionReportView(APIView):
                     # No graph_data if you removed it from the response
                 }, status=status.HTTP_200_OK)
 
-
             # performamce analytics
             latest_session_chunk = ChunkSentimentAnalysis.objects.filter(
                 chunk__session=session
@@ -1132,7 +1234,8 @@ class SessionReportView(APIView):
                 # avg_volume=Avg("sentiment_analysis__volume"),
                 # savg_pitch_variability=Avg("sentiment_analysis__pitch_variability"),
                 # avg_pace=Avg("sentiment_analysis__pace"),
-                avg_pauses=Round(Avg("sentiment_analysis__pauses"), output_field=IntegerField()), # Use Avg for aggregated pauses
+                avg_pauses=Round(Avg("sentiment_analysis__pauses"), output_field=IntegerField()),
+                # Use Avg for aggregated pauses
                 # avg_conviction=Avg("sentiment_analysis__conviction"),
                 # avg_clarity=Avg("sentiment_analysis__clarity"),
                 # avg_impact=Avg("sentiment_analysis__impact"),
@@ -1145,8 +1248,10 @@ class SessionReportView(APIView):
                 # To sum boolean gestures, explicitly cast to IntegerField before summing
                 total_true_gestures=Round(Sum(Cast('sentiment_analysis__gestures', output_field=IntegerField()))),
                 # Count the number of chunks considered for aggregation
-                total_chunks_for_aggregation=Count('sentiment_analysis__conviction'), # Use Count on a non-nullable field
-                avg_transformative_potential=Round(Avg("sentiment_analysis__transformative_potential"), output_field=IntegerField()),
+                total_chunks_for_aggregation=Count('sentiment_analysis__conviction'),
+                # Use Count on a non-nullable field
+                avg_transformative_potential=Round(Avg("sentiment_analysis__transformative_potential"),
+                                                   output_field=IntegerField()),
             )
 
             print(f"Raw aggregation results: {aggregation_results}")
@@ -1227,14 +1332,18 @@ class SessionReportView(APIView):
 
             # Save derived fields (FloatFields in PracticeSession)
             session.audience_engagement = round(audience_engagement if audience_engagement is not None else 0.0)
-            session.overall_captured_impact = round(overall_captured_impact if overall_captured_impact is not None else 0.0)
+            session.overall_captured_impact = round(
+                overall_captured_impact if overall_captured_impact is not None else 0.0)
             session.vocal_variety = round(vocal_variety if vocal_variety is not None else 0.0)
             session.emotional_impact = round(emotional_impact if emotional_impact is not None else 0.0)
             session.body_language = round(body_language if body_language is not None else 0.0)
-            session.transformative_communication = round(transformative_communication if transformative_communication is not None else 0.0)
+            session.transformative_communication = round(
+                transformative_communication if transformative_communication is not None else 0.0)
             session.structure_and_clarity = round(structure_and_clarity if structure_and_clarity is not None else 0.0)
-            session.language_and_word_choice = round(language_and_word_choice if language_and_word_choice is not None else 0.0)
-            session.gestures_score_for_body_language = round(gestures_score_for_body_language if gestures_score_for_body_language is not None else 0.0)
+            session.language_and_word_choice = round(
+                language_and_word_choice if language_and_word_choice is not None else 0.0)
+            session.gestures_score_for_body_language = round(
+                gestures_score_for_body_language if gestures_score_for_body_language is not None else 0.0)
             # Save boolean gestures field (True if any positive gestures were recorded)
             session.gestures = total_true_gestures > 0  # True if sum > 0
 
@@ -1256,7 +1365,7 @@ class SessionReportView(APIView):
                     "volume": round(session.volume or 0),
                     "pitch_variability": round(session.pitch_variability or 0),
                     "pace": round(session.pace or 0),
-                    "pauses": round(session.pauses or 0), # Return the AVERAGE here (stored in session.pauses)
+                    "pauses": round(session.pauses or 0),  # Return the AVERAGE here (stored in session.pauses)
                     "conviction": round(session.conviction or 0),
                     "clarity": round(session.clarity or 0),
                     "impact": round(session.impact or 0),
@@ -1267,9 +1376,12 @@ class SessionReportView(APIView):
                     "posture": round(session.posture or 0),
                     "motion": round(session.motion or 0),
                     "transformative_potential": round(session.transformative_potential or 0),
-                    "gestures_present": session.gestures, # Boolean from session model
+                    "gestures_present": session.gestures,  # Boolean from session model
+                    "slide_efficiency":session.slide_efficiency,
+                    "text_economy":session.text_economy,
+                    "visual_communication":session.visual_communication
                 },
-                 "derived_scores": {
+                "derived_scores": {
                     "audience_engagement": round(session.audience_engagement or 0),
                     "overall_captured_impact": round(session.overall_captured_impact or 0),
                     "vocal_variety": round(session.vocal_variety or 0),
@@ -1279,7 +1391,7 @@ class SessionReportView(APIView):
                     "transformative_communication": round(session.transformative_communication or 0),
                     "structure_and_clarity": round(session.structure_and_clarity or 0),
                     "language_and_word_choice": round(session.language_and_word_choice or 0),
-                 },
+                },
                 "full_summary": {
                     "Strength": session.strength,
                     "Area of Improvement": session.area_of_improvement,
@@ -1394,6 +1506,36 @@ class SessionList(APIView):
         return Response({"sessions": session_serializer.data})
 
 
+class PerformanceMetricsComparison(APIView):
+    permission_classes = [IsAuthenticated]
+    def get(self, request, sequence_id):
+        session_metrics = (
+            PracticeSession.objects
+            .filter(sequence=sequence_id)
+            .annotate(
+                session_type_display=Case(
+                    When(session_type="pitch", then=Value("Pitch Practice")),
+                    When(session_type="public", then=Value("Public Speaking")),
+                    When(session_type="presentation", then=Value("Presentation")),
+                    default=Value("Unknown"),
+                    output_field=CharField(),
+                )
+            )
+            .values(
+                "id",
+                "session_type",
+                "vocal_variety",
+                "body_language",
+                "audience_engagement",
+                "filler_words",
+                "emotional_impact",
+                "transformative_communication",
+                "structure_and_clarity",
+                "language_and_word_choice"
+            )
+        )
+        return Response(session_metrics)
+
 class CompareSessionsView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -1478,7 +1620,7 @@ class GoalAchievementView(APIView):
         for session in sessions:
             for field in fields:
                 value = getattr(session, field, 0)
-                if value >= 80:
+                if value >= 80 and goals[field] < 10:
                     goals[field] += 1
                 else:
                     goals[field] += 0
