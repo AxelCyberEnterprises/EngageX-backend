@@ -247,6 +247,8 @@ class PracticeSession(models.Model):
     visual_communication = models.FloatField(
         default=0, help_text=""
     )
+    created_at = models.DateField(auto_now_add=True)
+    updated_at = models.DateField(auto_now=True)
 
     def __str__(self):
         return f"{self.session_name} by {self.user.email}"
