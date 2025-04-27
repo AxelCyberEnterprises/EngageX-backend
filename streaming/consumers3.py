@@ -263,9 +263,8 @@ class LiveSessionConsumer(AsyncWebsocketConsumer):
     async def process_media_chunk(self, media_path):
         """
         Processes a single media chunk: extracts audio, transcribes,
-        and initiates S3 upload and saves SessionChunk data in the background.
-        This function returns after extracting audio and transcribing,
-        allowing analyze_windowed_media to be triggered sooner.
+        and saves data. S3 upload happens in background while DB operations
+        are handled in the main thread for reliability.
         """
         start_time = time.time()
         print(f"WS: process_media_chunk started for: {media_path} at {start_time}")
@@ -314,58 +313,38 @@ class LiveSessionConsumer(AsyncWebsocketConsumer):
                 self.audio_buffer[media_path] = None # Store None if audio extraction failed
                 self.transcript_buffer[media_path] = None # Store None if transcription is skipped
 
-            # --- Initiate S3 Upload and Save SessionChunk data in the BACKGROUND ---
+            # --- Initiate S3 Upload in background ---
             # Create a task for S3 upload - this runs in a thread pool
             s3_upload_task = asyncio.create_task(asyncio.to_thread(self.upload_to_s3, media_path))
 
-            # Create a task to await the S3 upload and then save the chunk data to the DB
-            # This task runs in the background. Store the task so analyze_windowed_media can potentially wait for it.
-            # Create the task first, then add it to the dictionary to ensure it's registered
-            chunk_save_task = asyncio.create_task(self._complete_chunk_save_in_background(media_path, s3_upload_task))
-            
-            # Register the task immediately
-            self.background_chunk_save_tasks[media_path] = chunk_save_task
-            print(f"WS: Registered background chunk save task for {media_path}")
-
-            # Add a small delay to ensure the task is properly registered and started
-            await asyncio.sleep(0.05)  # 50ms delay to ensure task visibility
+            # Wait for S3 upload to complete
+            s3_url = await s3_upload_task
+            if s3_url:
+                print(f"WS: S3 upload complete for {media_path}. Saving SessionChunk data...")
+                # Save chunk data in main thread for reliability
+                chunk_id = await self._save_chunk_data(media_path, s3_url)
+                if chunk_id:
+                    print(f"WS: SessionChunk saved with ID: {chunk_id}")
+                    self.media_path_to_chunk[media_path] = chunk_id
+                else:
+                    print(f"WS: Failed to save SessionChunk for {media_path}")
+            else:
+                print(f"WS: S3 upload failed for {media_path}. Cannot save SessionChunk.")
 
             # Trigger windowed analysis if buffer size is sufficient
-            # analyze_windowed_media will run concurrently
-            # It will handle waiting for background chunk save before saving analysis results
             if len(self.media_buffer) >= ANALYSIS_WINDOW_SIZE:
                 # Take the last ANALYSIS_WINDOW_SIZE chunks for the sliding window
                 window_paths = list(self.media_buffer[-ANALYSIS_WINDOW_SIZE:])
-                last_media_path = window_paths[-1]
-                
-                # Verify task registration before triggering analysis
-                if last_media_path in self.background_chunk_save_tasks:
-                    print(f"WS: [DEBUG] Triggering window analysis for {last_media_path}. Save task exists: True")
-                    # Use call_soon to ensure proper task scheduling
-                    self.loop.call_soon(
-                        asyncio.create_task,
-                        self.analyze_windowed_media(window_paths, self.chunk_counter)
-                    )
-                else:
-                    print(f"WS: [DEBUG] Delaying window analysis for {last_media_path}. Save task not yet visible.")
-                    # If task not visible, wait a bit longer and try again
-                    await asyncio.sleep(0.1)  # Additional 100ms delay
-                    if last_media_path in self.background_chunk_save_tasks:
-                        print(f"WS: [DEBUG] Now triggering window analysis for {last_media_path}. Save task exists: True")
-                        self.loop.call_soon(
-                            asyncio.create_task,
-                            self.analyze_windowed_media(window_paths, self.chunk_counter)
-                        )
-                    else:
-                        print(f"WS: [WARNING] Could not find save task for {last_media_path} after delay. Skipping window analysis.")
+                print(f"WS: Triggering windowed analysis for sliding window (chunks ending with {self.chunk_counter})")
+                # Pass the list of media paths in the window and the latest chunk number
+                asyncio.create_task(self.analyze_windowed_media(window_paths, self.chunk_counter))
 
 
         except Exception as e:
             print(f"WS: Error in process_media_chunk for {media_path}: {e}")
             traceback.print_exc()
 
-        print(f"WS: process_media_chunk finished (background tasks initiated) for: {media_path} after {time.time() - start_time:.2f} seconds")
-        # This function now returns sooner, allowing the next chunk's processing or analysis trigger to proceed.
+        print(f"WS: process_media_chunk finished for: {media_path} after {time.time() - start_time:.2f} seconds")
 
 
     async def _complete_chunk_save_in_background(self, media_path, s3_upload_task):
@@ -464,18 +443,26 @@ class LiveSessionConsumer(AsyncWebsocketConsumer):
                  concat_command.extend(["-filter_complex", f"concat=n={len(valid_audio_paths)}:a=1:v=0", "-acodec", "libmp3lame", "-b:a", "128k", "-nostats", "-loglevel", "0", combined_audio_path])
 
                  print(f"WS: Running FFmpeg audio concatenation command: {' '.join(concat_command)}")
-                 process = subprocess.Popen(concat_command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-                 stdout, stderr = await asyncio.to_thread(process.communicate) # Run blocking communicate in a thread
-                 returncode = await asyncio.to_thread(lambda p: p.returncode, process) # Get return code in thread
+                 try:
+                     # Use subprocess.Popen for Windows compatibility
+                     process = subprocess.Popen(concat_command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                     # Run the process in a thread pool to avoid blocking
+                     stdout, stderr = await asyncio.to_thread(process.communicate)
+                     returncode = process.returncode
 
-                 if returncode != 0:
-                     error_output = stderr.decode()
-                     print(f"WS: FFmpeg audio concatenation error (code {returncode}) for window ending with chunk {window_chunk_number}: {error_output}")
-                     print(f"WS: FFmpeg stdout: {stdout.decode()}")
-                     combined_audio_path = None # Ensure combined_audio_path is None on failure
-                 else:
-                     print(f"WS: Audio files concatenated to: {combined_audio_path}")
-                     # combined_audio_path is set here if successful
+                     if returncode != 0:
+                         error_output = stderr.decode()
+                         print(f"WS: FFmpeg audio concatenation error (code {returncode}) for window ending with chunk {window_chunk_number}: {error_output}")
+                         print(f"WS: FFmpeg stdout: {stdout.decode()}")
+                         combined_audio_path = None # Ensure combined_audio_path is None on failure
+                     else:
+                         print(f"WS: Audio files concatenated to: {combined_audio_path}")
+                         # combined_audio_path is set here if successful
+
+                 except Exception as e:
+                     print(f"WS: Error during FFmpeg audio concatenation: {e}")
+                     traceback.print_exc()
+                     combined_audio_path = None
 
             else:
                  print(f"WS: Audio not found for all {ANALYSIS_WINDOW_SIZE} chunks in window ending with chunk {latest_chunk_number}. Ready audio paths: {len(valid_audio_paths)}/{ANALYSIS_WINDOW_SIZE}. Skipping audio concatenation for this window instance.")
@@ -570,49 +557,16 @@ class LiveSessionConsumer(AsyncWebsocketConsumer):
                     "analysis": serializable_analysis_result
                 }))
 
-                # --- Wait for the background chunk save task for the LAST chunk in the window ---
-                # before attempting to save the window analysis results to the database.
-                # Add a loop to wait for the task to appear in the dictionary, with a timeout
-                last_chunk_save_task = None
-                wait_start_time = time.time()
-                wait_timeout = 30.0 # Increased timeout to wait for the task to appear/complete
-                max_retries = 3 # Maximum number of retries to find the task
-                retry_count = 0
-
-                while (time.time() - wait_start_time) < wait_timeout and retry_count < max_retries:
-                    last_chunk_save_task = self.background_chunk_save_tasks.get(last_media_path)
-                    if last_chunk_save_task:
-                        print(f"WS: Background save task found for {last_media_path}. Waiting for it to complete...")
-                        try:
-                            # Wait for the specific task to finish (with the remaining timeout)
-                            await asyncio.wait_for(last_chunk_save_task, timeout=wait_timeout - (time.time() - wait_start_time))
-                            print(f"WS: Background save task for {last_media_path} completed. Proceeding to save window analysis.")
-
-                            # --- Initiate Saving Analysis data in the BACKGROUND ---
-                            # Only create the analysis save task if the chunk save completed
-                            print(f"WS: Initiating saving window analysis for chunk {window_chunk_number} in background.")
-                            # Create a task to save the analysis result
-                            # Pass the original analysis_result here, as the saving function might expect it
-                            asyncio.create_task(self._save_window_analysis(last_media_path, analysis_result, combined_transcript_text, window_chunk_number))
-
-                        except asyncio.TimeoutError:
-                            print(f"WS: Timeout waiting for background save task for {last_media_path} to complete. Cannot save window analysis for chunk {window_chunk_number}.")
-                        except Exception as task_error:
-                            # This handles exceptions within the chunk save task itself if return_exceptions=True was used (it's not, but good practice)
-                            print(f"WS: Background save task for {last_media_path} failed with error: {task_error}. Cannot save window analysis.")
-
-                        break # Exit the while loop once the task is found and processed
-
-                    # If task not found, wait a bit and retry
-                    await asyncio.sleep(0.5) # Increased sleep time between retries
-                    retry_count += 1
-                    print(f"WS: Retry {retry_count}/{max_retries} to find background save task for {last_media_path}")
-
-                if not last_chunk_save_task:
-                    print(f"WS: Background save task for the last chunk ({last_media_path}) in the window was not found within timeout. Cannot save window analysis.")
-                    # Log additional debug information
-                    print(f"WS: DEBUG: Current background_chunk_save_tasks keys: {list(self.background_chunk_save_tasks.keys())}")
-                    print(f"WS: DEBUG: Current media_path_to_chunk keys: {list(self.media_path_to_chunk.keys())}")
+                # --- Save window analysis in main thread ---
+                # Since we're now handling DB operations in the main thread, we can save the analysis directly
+                if analysis_result is not None:
+                    print(f"WS: Saving window analysis for chunk {window_chunk_number}")
+                    try:
+                        # Save the analysis result in the main thread
+                        await self._save_window_analysis(last_media_path, analysis_result, combined_transcript_text, window_chunk_number)
+                    except Exception as save_error:
+                        print(f"WS: Error saving window analysis: {save_error}")
+                        traceback.print_exc()
 
 
             else:
@@ -645,37 +599,6 @@ class LiveSessionConsumer(AsyncWebsocketConsumer):
                      oldest_media_path = self.media_buffer[0]
                      print(f"WS: Considering cleanup for oldest media chunk {oldest_media_path}...")
 
-                     # --- Wait for the background chunk save task for this specific oldest chunk to complete ---
-                     # This ensures the S3 upload and initial DB save for the chunk being removed from the buffer are done.
-                     # This is distinct from waiting for the *last* chunk's save task for analysis saving.
-                     save_task = self.background_chunk_save_tasks.get(oldest_media_path)
-
-                     if save_task:
-                         print(f"WS: Waiting for background save task for oldest chunk ({oldest_media_path}) to complete before cleaning up...")
-                         try:
-                             # Wait for the specific task to finish (with a timeout)
-                             await asyncio.wait_for(save_task, timeout=90.0) # Use a reasonable timeout
-                             print(f"WS: Background save task for oldest chunk ({oldest_media_path}) completed. Proceeding with cleanup.")
-
-                         except asyncio.TimeoutError:
-                             print(f"WS: Timeout waiting for background save task for oldest chunk ({oldest_media_path}). Skipping cleanup of this chunk for now.")
-                             # Skip cleanup for this specific chunk in this iteration; it might be cleaned up later or on disconnect
-                             # Break the while loop to avoid blocking further cleanup attempts for other chunks that might be ready
-                             break # Exit the while loop after a cleanup attempt (successful or timed out)
-
-                         except Exception as task_error:
-                             # This handles exceptions within the background save task itself
-                             print(f"WS: Background save task for oldest chunk ({oldest_media_path}) failed with error: {task_error}. Proceeding with cleanup as task is done.")
-                             # The task failed but is finished. We can proceed with cleanup.
-
-
-                     else:
-                          # This case might happen if cleanup runs significantly later and the task finished/failed and removed itself from tracking,
-                          # or if process_media_chunk had an error before starting the task.
-                          print(f"WS: No background save task found for oldest chunk ({oldest_media_path}). Assuming it finished or wasn't started. Proceeding with cleanup.")
-                          # We proceed with cleanup cautiously.
-
-
                      # --- If we reached here, either the task completed, failed, or didn't exist. Proceed with cleanup ---
                      # Now pop the oldest media path from the buffer as the save is considered complete/dealt with
                      # Check if the oldest media path is still in the buffer before popping
@@ -687,7 +610,6 @@ class LiveSessionConsumer(AsyncWebsocketConsumer):
                          oldest_audio_path = self.audio_buffer.pop(oldest_media_path_to_clean, None)
                          oldest_transcript = self.transcript_buffer.pop(oldest_media_path_to_clean, None)
                          oldest_chunk_id = self.media_path_to_chunk.pop(oldest_media_path_to_clean, None)
-                         # The background_chunk_save_tasks entry for this path is removed within _complete_chunk_save_in_background's finally block.
 
                          # Clean up the temporary files associated with this oldest chunk
                          files_to_remove = [oldest_media_path_to_clean, oldest_audio_path]
