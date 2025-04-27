@@ -119,20 +119,19 @@ def generate_full_summary(self, session_id):
 
 
 def generate_slide_summary(pdf_path):
-        client = OpenAI(api_key=settings.OPENAI_API_KEY)
-        # STEP 2: Read and encode the PDF as Base64
-        if isinstance(pdf_path, (str,bytes,os.PathLike)):
-            with open(pdf_path, 'rb') as file:
-                pdf_bytes = file.read()
-                base64_pdf = base64.b64encode(pdf_bytes).decode('utf-8')
-        elif isinstance(pdf_path, UploadedFile):
-            pdf_bytes = pdf_path.read()
+    client = OpenAI(api_key=settings.OPENAI_API_KEY)
+    # STEP 2: Read and encode the PDF as Base64
+    if isinstance(pdf_path, (str, bytes, os.PathLike)):
+        with open(pdf_path, 'rb') as file:
+            pdf_bytes = file.read()
             base64_pdf = base64.b64encode(pdf_bytes).decode('utf-8')
-            pdf_path.seek(0)
+    elif isinstance(pdf_path, UploadedFile):
+        pdf_bytes = pdf_path.read()
+        base64_pdf = base64.b64encode(pdf_bytes).decode('utf-8')
+        pdf_path.seek(0)
 
-
-            # STEP 3: Construct your evaluation prompt
-        prompt = """
+        # STEP 3: Construct your evaluation prompt
+    prompt = """
         You are a presentation evaluator. Review the attached presentation and score it on:
 
         1. *Slide Efficiency*: Are too many slides used to deliver simple points?
@@ -142,57 +141,58 @@ def generate_slide_summary(pdf_path):
         Give each a score from 1 (poor) to 100 (excellent).
         """
 
-        # STEP 4: Make the completion call using the file and structured JSON schema
-        response = openai.chat.completions.create(
-            model="gpt-4o",
-            messages=[
-                {
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "file",
-                            "file": {
-                                "file_data": f"data:application/pdf;base64,{base64_pdf}",
-                                "filename": "uploaded_document.pdf"
-                            }
-                        },
-                        {
-                            "type": "text",
-                            "text": prompt
+    # STEP 4: Make the completion call using the file and structured JSON schema
+    response = openai.chat.completions.create(
+        model="gpt-4o",
+        messages=[
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "file",
+                        "file": {
+                            "file_data": f"data:application/pdf;base64,{base64_pdf}",
+                            "filename": "uploaded_document.pdf"
                         }
+                    },
+                    {
+                        "type": "text",
+                        "text": prompt
+                    }
+                ]
+            }
+        ],
+        response_format={
+            "type": "json_schema",
+            "json_schema": {
+                "name": "PresentationEvaluation",
+                "schema": {
+                    "type": "object",
+                    "properties": {
+                        "SlideEfficiency": {"type": "number"},
+                        "TextEconomy": {"type": "number"},
+                        "VisualCommunication": {"type": "number"},
+                    },
+                    "required": [
+                        "SlideEfficiency",
+                        "TextEconomy",
+                        "VisualCommunication",
                     ]
                 }
-            ],
-            response_format={
-                "type": "json_schema",
-                "json_schema": {
-                    "name": "PresentationEvaluation",
-                    "schema": {
-                        "type": "object",
-                        "properties": {
-                            "SlideEfficiency": {"type": "number"},
-                            "TextEconomy": {"type": "number"},
-                            "VisualCommunication": {"type": "number"},
-                        },
-                        "required": [
-                            "SlideEfficiency",
-                            "TextEconomy",
-                            "VisualCommunication",
-                        ]
-                    }
-                }
             }
-        )
+        }
+    )
 
-        # STEP 5: Unpack and print the response
-        result = json.loads(response.choices[0].message.content)
+    # STEP 5: Unpack and print the response
+    result = json.loads(response.choices[0].message.content)
 
-        print("\n✅ Evaluation Results:")
-        print(f"Slide Efficiency: {result['SlideEfficiency']}/100")
-        print(f"Text Economy: {result['TextEconomy']}/100")
-        print(f"Visual Communication: {result['VisualCommunication']}/100")
+    print("\n✅ Evaluation Results:")
+    print(f"Slide Efficiency: {result['SlideEfficiency']}/100")
+    print(f"Text Economy: {result['TextEconomy']}/100")
+    print(f"Visual Communication: {result['VisualCommunication']}/100")
 
-        return result
+    return result
+
 
 class PracticeSequenceViewSet(viewsets.ModelViewSet):
     """
@@ -282,124 +282,80 @@ class SessionDashboardView(APIView):
 
     def get(self, request):
         user = request.user
-        data = {}
         today = now().date()
         yesterday = today - timedelta(days=1)
 
-        # Get filter parameters from query params
-        dashboard_section = request.query_params.get("section")
         start_date_str = request.query_params.get("start_date")
         end_date_str = request.query_params.get("end_date")
+
         if hasattr(user, "user_profile") and user.user_profile.is_admin():
             sessions = PracticeSession.objects.all()
-            filtered_sessions = sessions
 
-            # Filtering all session base on start date and time and  dashboard section
             if start_date_str and end_date_str:
                 parsed_start = datetime.strptime(start_date_str, "%Y-%m-%d").date()
                 parsed_end = datetime.strptime(end_date_str, "%Y-%m-%d").date()
 
-                # filtered_sessions = sessions.filter(
-                #     date__date__range=[parsed_start, parsed_end]
-                # )
-
-                # Calculate previous range
                 interval_length = (parsed_end - parsed_start).days + 1
-                print(interval_length)
                 prev_start_date = parsed_start - timedelta(days=interval_length)
                 prev_end_date = parsed_end - timedelta(days=interval_length)
-                print(prev_start_date, prev_end_date)
 
-                # Previous session base on the prev date
-                previous_sessions = sessions.filter(
-                    date__date__range=(prev_start_date, prev_end_date)
-                )
-                print(previous_sessions)
+                filtered_sessions = sessions.filter(date__date__range=(parsed_start, parsed_end))
+                previous_sessions = sessions.filter(date__date__range=(prev_start_date, prev_end_date))
             else:
-                # use today as current and yesterday as previous (default)
                 filtered_sessions = sessions.filter(date__date=today)
                 previous_sessions = sessions.filter(date__date=yesterday)
 
-            previous_total_sessions_count = previous_sessions.count()
+            filtered_sessions_count = filtered_sessions.count()
+            previous_sessions_count = previous_sessions.count()
 
-            total_sessions_qs = (
-                sessions.filter(date__date__range=[parsed_start, parsed_end])
-                if dashboard_section == "total_session"
-                else PracticeSession.objects.filter(date__date__range=(today, today))
+            total_session_diff = self.calculate_percentage_difference(filtered_sessions_count, previous_sessions_count)
+
+            # All session types we expect
+            session_types = {
+                "pitch": "Pitch Practice",
+                "public": "Public Speaking",
+                "presentation": "Presentation",
+            }
+
+            # Current breakdown
+            current_breakdown = filtered_sessions.values("session_type").annotate(
+                count=Count("id")
             )
 
-            no_of_sessions_qs = (
-                sessions.filter(date__date__range=[parsed_start, parsed_end])
-                if dashboard_section == "no_of_session"
-                else PracticeSession.objects.filter(date__date__range=(today, today))
-            )
-            user_growth_qs = (
-                sessions.filter(date__date__range=[parsed_start, parsed_end])
-                if dashboard_section == "user_growth"
-                else sessions
-            )
-
-            total_sessions_count = total_sessions_qs.count()
-
-            #  Total session percentage difference
-            total_session_diff = self.calculate_percentage_difference(
-                total_sessions_count, previous_total_sessions_count
-            )
-
-            current_breakdown = total_sessions_qs.values("session_type").annotate(
-                session_type_display=Case(
-                    When(session_type="pitch", then=Value("Pitch Practice")),
-                    When(session_type="public", then=Value("Public Speaking")),
-                    When(session_type="presentation", then=Value("Presentation")),
-                    output_field=CharField(),
-                ),
-                count=Count("id"),
-            )
-            print(current_breakdown)
+            # Previous breakdown
             previous_breakdown = previous_sessions.values("session_type").annotate(
                 count=Count("id")
             )
-            print(previous_breakdown)
 
-            # Convert previous breakdown to dict for fast lookup
-            previous_counts = {
-                entry["session_type"]: entry["count"] for entry in previous_breakdown
-            }
-            print(previous_counts)
-            # Final list with percentage differences
+            # Convert previous breakdown to a dictionary
+            previous_counts = {entry["session_type"]: entry["count"] for entry in previous_breakdown}
+
+            # Build final breakdown
             breakdown_with_difference = [
                 {
-                    "total_new_session": total_sessions_count,
-                    "previous_total_sessions": previous_total_sessions_count,
+                    "total_new_session": filtered_sessions_count,
+                    "previous_total_sessions": previous_sessions_count,
                     "percentage_difference": total_session_diff,
                 }
             ]
-            for entry in current_breakdown:
-                session_type = entry["session_type_display"]
-                current_count = entry["count"]
-                previous_count = previous_counts.get(entry["session_type"], 0)
-                percentage_diff = self.calculate_percentage_difference(
-                    current_count, previous_count
-                )
-                breakdown_with_difference.append(
-                    {
-                        "session_type": session_type,
-                        "current_count": current_count,
-                        "previous_count": previous_count,
-                        "percentage_difference": percentage_diff,
-                    }
-                )
 
-            total_sessions = total_sessions_qs.count()
+            current_counts = {entry["session_type"]: entry["count"] for entry in current_breakdown}
 
-            breakdown = breakdown_with_difference
-            # breakdown = filtered_sessions.values("session_type").annotate(
-            #     count=Count("id")
-            # )
-            last_30_days = now() - timedelta(days=30)
+            for key, label in session_types.items():
+                current_count = current_counts.get(key, 0)
+                previous_count = previous_counts.get(key, 0)
+                percentage_diff = self.calculate_percentage_difference(current_count, previous_count)
+
+                breakdown_with_difference.append({
+                    "session_type": label,
+                    "current_count": current_count,
+                    "previous_count": previous_count,
+                    "percentage_difference": percentage_diff,
+                })
+
+            # Sessions over time
             sessions_over_time = (
-                (no_of_sessions_qs)
-                .extra(select={"day": "date(date)"})
+                filtered_sessions.extra(select={"day": "date(date)"})
                 .values("day")
                 .annotate(
                     session_type=Case(
@@ -413,10 +369,7 @@ class SessionDashboardView(APIView):
                 .order_by("day")
             )
 
-            # recent_sessions = sessions.order_by("-date")[:5].values(
-            #     "id", "session_name", "session_type", "date", "duration"
-            # )
-
+            # Recent sessions
             recent_sessions = (
                 sessions.annotate(
                     session_type_display=Case(
@@ -429,71 +382,24 @@ class SessionDashboardView(APIView):
                 )
                 .order_by("-date")[:5]
                 .values(
-                    "id",
-                    "session_name",
-                    "session_type_display",
-                    "date",
-                    "formatted_duration",
+                    "id", "session_name", "session_type_display", "date", "formatted_duration",
                 )
             )
 
-            # Total new sessions (per day) and the percentage difference from yesterday
-            # today_new_sessions_count = PracticeSession.objects.filter(
-            #     date__date=today
-            # ).count()
-            # yesterday_new_sessions_count = PracticeSession.objects.filter(
-            #     date__date=yesterday
-            # ).count()
-            # new_sessions_percentage_difference = self.calculate_percentage_difference(
-            #     today_new_sessions_count, yesterday_new_sessions_count
-            # )
-
-            # Session category breakdown with percentage difference from yesterday
-            # session_types = ["public", "pitch", "presentation"]
-            # session_breakdown_with_diff = []
-            # for session_type in session_types:
-            #     today_count = PracticeSession.objects.filter(
-            #         date__date=today, session_type=session_type
-            #     ).count()
-            #     yesterday_count = PracticeSession.objects.filter(
-            #         date__date=yesterday, session_type=session_type
-            #     ).count()
-            #     percentage_difference = self.calculate_percentage_difference(
-            #         today_count, yesterday_count
-            #     )
-            #     session_breakdown_with_diff.append(
-            #         {
-            #             "session_type": session_type,
-            #             "today_count": today_count,
-            #             "percentage_difference": percentage_difference,
-            #         }
-            #     )
-
-            # User growth per day
+            # User growth and activity
             today_new_users_count = User.objects.filter(date_joined__date=today).count()
-            yesterday_new_users_count = User.objects.filter(
-                date_joined__date=yesterday
-            ).count()
-            user_growth_percentage_difference = self.calculate_percentage_difference(
-                today_new_users_count, yesterday_new_users_count
-            )
+            yesterday_new_users_count = User.objects.filter(date_joined__date=yesterday).count()
+            user_growth_percentage_difference = self.calculate_percentage_difference(today_new_users_count, yesterday_new_users_count)
 
-            # Number of active and inactive users (assuming active means having created at least one session)
-            active_users_count = (
-                PracticeSession.objects.values("user").distinct().count()
-            )
+            active_users_count = PracticeSession.objects.values("user").distinct().count()
             total_users_count = User.objects.count()
             inactive_users_count = total_users_count - active_users_count
 
+            # Final Data
             data = {
-                # "total_sessions": total_sessions,
-                "session_breakdown": list(breakdown),
+                "session_breakdown": list(breakdown_with_difference),
                 "sessions_over_time": list(sessions_over_time),
                 "recent_sessions": list(recent_sessions),
-                "credits": user.user_profile.available_credits,
-                # "today_new_sessions_count": today_new_sessions_count,
-                # "new_sessions_percentage_difference": new_sessions_percentage_difference,
-                # "session_breakdown_with_difference": session_breakdown_with_diff,
                 "today_new_users_count": today_new_users_count,
                 "user_growth_percentage_difference": user_growth_percentage_difference,
                 "active_users_count": active_users_count,
@@ -544,7 +450,7 @@ class SessionDashboardView(APIView):
             for session in sessions:
                 for field in fields:
                     value = getattr(session, field, 0)
-                    if value >= 80 and  goals[field] < 10:
+                    if value >= 80 and goals[field] < 10:
                         goals[field] += 1
                     else:
                         goals[field] += 0
@@ -568,11 +474,10 @@ class SessionDashboardView(APIView):
                 "goals_and_achievement": dict(goals),
             }
         return Response(data, status=status.HTTP_200_OK)
-
     def calculate_percentage_difference(self, current_value, previous_value):
         if previous_value == 0:
             return 100.0 if current_value > 0 else 0.0
-        return ((current_value - previous_value) / previous_value) * 100
+        return round(((current_value - previous_value) / previous_value) * 100, 2)
 
 
 # class UploadSessionSlidesView(APIView):
@@ -631,8 +536,6 @@ class UploadSessionSlidesView(APIView):
 
     permission_classes = [IsAuthenticated]
     parser_classes = [MultiPartParser, FormParser]
-
-
 
     def get(self, request, pk=None):
         """
@@ -783,10 +686,10 @@ class UploadSessionSlidesView(APIView):
                     print('---processing pdf----')
                     with concurrent.futures.ThreadPoolExecutor() as executor:
                         future = executor.submit(generate_slide_summary, uploaded_pdf)
-                        result  = future.result()
+                        result = future.result()
                         practice_session.slide_efficiency = result['SlideEfficiency']
-                        practice_session.text_economy=result['TextEconomy']
-                        practice_session.visual_communication=result['VisualCommunication']
+                        practice_session.text_economy = result['TextEconomy']
+                        practice_session.visual_communication = result['VisualCommunication']
 
                     print(practice_session.slide_efficiency)
                     print(practice_session)
@@ -795,8 +698,6 @@ class UploadSessionSlidesView(APIView):
                 with  concurrent.futures.ThreadPoolExecutor() as db_executor:
                     db_executor.submit(serializer.save)
                     print(f"Slides uploaded successfully for session {pk}.")
-
-
 
                 # Save the uploaded file. This should use the storage backend and upload_to.
 
@@ -1377,9 +1278,9 @@ class SessionReportView(APIView):
                     "motion": round(session.motion or 0),
                     "transformative_potential": round(session.transformative_potential or 0),
                     "gestures_present": session.gestures,  # Boolean from session model
-                    "slide_efficiency":session.slide_efficiency,
-                    "text_economy":session.text_economy,
-                    "visual_communication":session.visual_communication
+                    "slide_efficiency": session.slide_efficiency,
+                    "text_economy": session.text_economy,
+                    "visual_communication": session.visual_communication
                 },
                 "derived_scores": {
                     "audience_engagement": round(session.audience_engagement or 0),
@@ -1508,6 +1409,7 @@ class SessionList(APIView):
 
 class PerformanceMetricsComparison(APIView):
     permission_classes = [IsAuthenticated]
+
     def get(self, request, sequence_id):
         session_metrics = (
             PracticeSession.objects
@@ -1535,6 +1437,7 @@ class PerformanceMetricsComparison(APIView):
             )
         )
         return Response(session_metrics)
+
 
 class CompareSessionsView(APIView):
     permission_classes = [IsAuthenticated]
