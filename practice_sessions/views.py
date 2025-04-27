@@ -1529,3 +1529,10 @@ class GoalAchievementView(APIView):
                     goals[field] += 0
 
         return Response(dict(goals))
+
+
+class ImproveExistingSequence(APIView):
+    permission_classes =  [IsAuthenticated]
+    def get(self, request):
+        user = request.user
+        sequences = PracticeSequence.objects.filter(user=user).selected_related("sessions")
