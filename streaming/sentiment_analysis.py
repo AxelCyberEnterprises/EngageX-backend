@@ -612,7 +612,7 @@ def analyze_sentiment(transcript, metrics, posture_data):
 
 
     Audience Emotion:
-      - Select one of these emotions that the audience will be feeling most strongly (curiosity, empathy, excitement, laughter, surprise, interested)
+      - Select one of these emotions that the audience is feeling most strongly ONLY choose from this list(curiosity, empathy, excitement, laughter, surprise, interested)
    
     Conviction:
       - Indicates firmness and clarity of beliefs or message. Evaluates how strongly and clearly the speaker presents their beliefs and message. Dependent on volume Volume_score: {metrics["Metrics"]["Volume"]} {metrics["Metrics"]["Volume Rationale"]}, pace_score: {metrics["Scores"]["Pace Score"]} {metrics["Metrics"]["Pace Rationale"]}, pause_score: {metrics["Scores"]["Pause Score"]} {metrics["Metrics"]["Pause Metric Rationale"]} and transcript content
@@ -658,7 +658,16 @@ def analyze_sentiment(transcript, metrics, posture_data):
                 "schema": {
                     "type": "object",
                     "properties": {
-                        "Audience Emotion": {"type": "string"},
+                        "Audience Emotion": {
+                        "type": "string",
+                        "enum": [
+                            "curiosity",
+                            "empathy",
+                            "excitement",
+                            "laughter",
+                            "surprise",
+                            "interested"
+                        ]},
                         "Conviction": {"type": "number"},
                         "Clarity": {"type": "number"},
                         "Impact": {"type": "number"},

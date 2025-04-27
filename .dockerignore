@@ -9,3 +9,4 @@ DEPLOY.md
 README.md
 *.jpeg
 .ebextensions/
+file_upload.py
