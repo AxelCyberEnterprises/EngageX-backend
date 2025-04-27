@@ -44,14 +44,14 @@ class QuickBooksToken(SingletonModel):
         return f"QuickBooks Token for  Realm ID: {self.realm_id}"
 
 class PaymentTransaction(models.Model):
-    # STATUS_PENDING = 'pending'
-    # STATUS_SUCCESS = 'success'
-    # STATUS_FAILED = 'failed'
-    # STATUS_CHOICES = [
-    #     (STATUS_PENDING, 'Pending'),
-    #     (STATUS_SUCCESS, 'Success'),
-    #     (STATUS_FAILED, 'Failed'),
-    # ]
+    STATUS_PENDING = 'pending'
+    STATUS_SUCCESS = 'success'
+    STATUS_FAILED = 'failed'
+    STATUS_CHOICES = [
+        (STATUS_PENDING, 'Pending'),
+        (STATUS_SUCCESS, 'Success'),
+        (STATUS_FAILED, 'Failed'),
+    ]
 
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL, 
@@ -68,6 +68,8 @@ class PaymentTransaction(models.Model):
     amount = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
     currency = models.CharField(max_length=10, default='USD')
 
+    status = models.CharField(max_length=20, default='pending', choices=STATUS_CHOICES)
+    tier = models.CharField(max_length=50, blank=True, null=True)
     credits = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
 
     payment_gateway_response = models.JSONField(blank=True, null=True)
