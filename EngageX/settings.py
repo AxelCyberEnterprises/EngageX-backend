@@ -310,7 +310,7 @@ if USE_S3:
             "BACKEND": "users.storages_backends.SlidesStorage",
             "OPTIONS": {
                 "bucket_name": AWS_STORAGE_BUCKET_NAME,
-                "location": "slides/",
+                # "location": "slides/",
             },
         },
         "StaticVideosStorage": {

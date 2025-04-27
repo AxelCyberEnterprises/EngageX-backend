@@ -1,556 +1,13 @@
-# import asyncio
-# import platform
-
-# if platform.system() == 'Windows':
-#     asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
-
-
-# import json
-# import os
-# import asyncio
-# import tempfile
-# import concurrent.futures
-# import subprocess
-# import boto3
-# import openai
-# import django
-# import time
-# import traceback
-
-# from base64 import b64decode
-# from datetime import timedelta
-
-# from channels.generic.websocket import AsyncWebsocketConsumer
-# from channels.db import database_sync_to_async
-
-# from .sentiment_analysis import analyze_results, transcribe_audio
-# from practice_sessions.models import PracticeSession, SessionChunk, ChunkSentimentAnalysis
-# from practice_sessions.serializers import SessionChunkSerializer, ChunkSentimentAnalysisSerializer, PracticeSessionSerializer
-
-# os.environ.setdefault("DJANGO_SETTINGS_MODULE", "EngageX.settings")
-# django.setup()
-
-# openai.api_key = os.environ.get("OPENAI_API_KEY")
-# client = openai.OpenAI()
-
-# s3 = boto3.client("s3", region_name=os.environ.get('AWS_REGION'))
-# BUCKET_NAME = "engagex-user-content-1234"
-# BASE_FOLDER = "user-videos/"
-# TEMP_MEDIA_ROOT = tempfile.gettempdir()
-# EMOTION_FOLDER = "static-videos"  # Folder in S3 bucket containing emotion files
-
-# class LiveSessionConsumer(AsyncWebsocketConsumer):
-#     def __init__(self, *args, **kwargs):
-#         super().__init__(*args, **kwargs)
-#         self.session_id = None
-#         self.chunk_counter = 0
-#         self.media_buffer = []
-#         self.audio_buffer = {}  # Dictionary to map media_path to audio_path
-#         self.chunk_paths = [] # This list seems unused, can potentially remove later
-#         self.media_path_to_chunk = {}
-
-#     async def connect(self):
-#         query_string = self.scope['query_string'].decode()
-#         query_params = {}
-#         if query_string:
-#             for param in query_string.split('&'):
-#                 try:
-#                     key, value = param.split('=', 1)
-#                     query_params[key] = value
-#                 except ValueError:
-#                     print(f"WS: Warning: Could not parse query parameter: {param}")
-#         self.session_id = query_params.get('session_id', None)
-#         if self.session_id:
-#             print(f"WS: Client connected for Session ID: {self.session_id}")
-#             await self.accept()
-#             await self.send(json.dumps({
-#                 "type": "connection_established",
-#                 "message": f"Connected to session {self.session_id}"
-#             }))
-#         else:
-#             print("WS: Connection rejected: Missing session_id.")
-#             await self.close()
-
-#     async def disconnect(self, close_code):
-#         print(f"WS: Client disconnected for Session ID: {self.session_id}. Cleaning up...")
-#         for media_path, audio_path in self.audio_buffer.items():
-#             try:
-#                 if audio_path and os.path.exists(audio_path):
-#                     os.remove(audio_path)
-#                     print(f"WS: Removed temporary audio file: {audio_path}")
-#             except Exception as e:
-#                 print(f"WS: Error removing audio file: {e}")
-#         # Adding cleanup for media_buffer paths as well
-#         for media_path in list(self.media_buffer):
-#              try:
-#                 if media_path and os.path.exists(media_path):
-#                     os.remove(media_path)
-#                     print(f"WS: Removed temporary media file: {media_path}")
-#              except Exception as e:
-#                 print(f"WS: Error removing temporary media file: {e}")
-
-#         print(f"WS: Session {self.session_id} cleanup complete.")
-
-
-#     async def receive(self, text_data=None, bytes_data=None):
-#         if not self.session_id:
-#             print("WS: Error: Session ID not available, cannot process data.")
-#             return
-
-#         try:
-#             if text_data:
-#                 data = json.loads(text_data)
-#                 message_type = data.get("type")
-#                 if message_type == "media":
-#                     self.chunk_counter += 1
-#                     media_blob = data.get("data")
-#                     if media_blob:
-#                         media_bytes = b64decode(media_blob)
-#                         media_path = os.path.join(TEMP_MEDIA_ROOT, f"{self.session_id}_{self.chunk_counter}_media.webm")
-#                         with open(media_path, "wb") as mf:
-#                             mf.write(media_bytes)
-#                         print(f"WS: Received media chunk {self.chunk_counter} for Session {self.session_id}. Saved to {media_path}")
-#                         self.media_buffer.append(media_path)
-#                         await self.send(json.dumps({
-#                             "status": "received",
-#                             "session_id": self.session_id,
-#                             "chunk_number": self.chunk_counter,
-#                             "media_type": "media"
-#                         }))
-#                         print(f"WS: Starting process_media_chunk for chunk {self.chunk_counter}")
-#                         process_task = asyncio.create_task(self.process_media_chunk(media_path))
-#                         await process_task # Wait for the chunk processing to complete - this might help with race conditions for analysis
-
-#                         # Trigger windowed analysis based on buffer size
-#                         if len(self.media_buffer) == 4:
-#                             window_paths = list(self.media_buffer)
-#                             print(f"WS: Triggering windowed analysis for initial window (chunks 1 to 4)")
-#                             # Pass the last chunk number in the window
-#                             asyncio.create_task(self.analyze_windowed_media(window_paths, self.chunk_counter))
-#                         elif len(self.media_buffer) > 4:
-#                             self.media_buffer.pop(0)
-#                             window_paths = self.media_buffer[-4:]
-#                             print(f"WS: Triggering windowed analysis for sliding window (chunks {self.chunk_counter - 3} to {self.chunk_counter})")
-#                              # Pass the last chunk number in the window
-#                             asyncio.create_task(self.analyze_windowed_media(window_paths, self.chunk_counter))
-#                     else:
-#                         print("WS: Error: Missing 'data' in media message.")
-#                 else:
-#                     print(f"WS: Received text message of type: {message_type}")
-#             elif bytes_data:
-#                 print(f"WS: Received binary data of length: {len(bytes_data)}")
-#         except Exception as e:
-#             print(f"WS: Error processing received data: {e}")
-
-#     async def process_media_chunk(self, media_path):
-#         # This method is kept exactly as in your provided code
-#         start_time = time.time()
-#         print(f"WS: process_media_chunk started for: {media_path} at {start_time}")
-#         audio_path = None
-#         try:
-#             with concurrent.futures.ThreadPoolExecutor() as executor:
-#                 futures = []
-#                 print(f"WS: Submitting upload_to_s3 for: {media_path}")
-#                 futures.append(executor.submit(self.upload_to_s3, media_path))
-#                 print(f"WS: Calling extract_audio for: {media_path}")
-#                 audio_path = await asyncio.to_thread(self.extract_audio, media_path)
-#                 if audio_path:
-#                     print(f"WS: Audio extracted to: {audio_path} after {time.time() - start_time:.2f} seconds")
-#                     self.audio_buffer[media_path] = audio_path # Store the mapping
-#                 else:
-#                     print("WS: Audio extraction failed.")
-
-#                 for future in concurrent.futures.as_completed(futures):
-#                     try:
-#                         future.result()
-#                     except Exception as e:
-#                         print(f"WS: Task failed in process_media_chunk: {e}")
-
-#             # Save the chunk data. This should happen for every chunk.
-#             # This method will save the SessionChunk object
-#             print(f"WS: Attempting to save SessionChunk for {media_path}.")
-#             await asyncio.to_thread(self._save_chunk_data, media_path, None, None)
-#         except Exception as e:
-#             print(f"WS: Error in process_media_chunk: {e}")
-#         print(f"WS: process_media_chunk finished for: {media_path} after {time.time() - start_time:.2f} seconds")
-
-#     async def analyze_windowed_media(self, window_paths, latest_chunk_number): # Added latest_chunk_number argument back
-#         """Handles concatenation, transcription, analysis, and saving sentiment data."""
-#         # Check buffer content and existence as in the provided code
-#         if len(window_paths) != 4: # Ensure correct window size
-#             print(f"WS: analyze_windowed_media called with {len(window_paths)} paths for window ending with chunk {latest_chunk_number}, expected 4.")
-#             return
-
-#         start_time = time.time()
-#         # Use the media path of the last chunk in the window as a reference for saving analysis
-#         last_media_path = window_paths[-1] # Get the last media path for saving later
-#         # Use the passed latest_chunk_number for logging and saving
-#         window_chunk_number = latest_chunk_number
-
-
-#         print(f"WS: analyze_windowed_media started for window ending with {last_media_path} (chunk {window_chunk_number}) at {start_time}")
-
-#         combined_audio_path = None
-#         transcript_text = None # Initialize transcript_text
-#         analysis_result = None # Initialize analysis_result
-
-#         try:
-#             # Get the audio paths from the buffer as in the provided code
-#             # This implicitly checks if the audio extraction for these chunks has completed
-#             valid_audio_paths = [self.audio_buffer.get(media_path) for media_path in window_paths if self.audio_buffer.get(media_path)]
-
-#             # Check if we got 4 valid audio paths - analysis proceeds ONLY if all 4 are found
-#             if not valid_audio_paths or len(valid_audio_paths) != 4:
-#                 print(f"WS: Could not retrieve 4 valid audio paths from buffer for window ending with {last_media_path} (chunk {window_chunk_number}). Cannot analyze this window.")
-#                 # If audio is not ready/available, we skip analysis for this window instance.
-#                 return # Skip analysis for this window if audio is missing/not ready
-
-
-#             print(f"WS: Valid audio paths for concatenation: {valid_audio_paths}")
-
-#             # --- MODIFIED FFmpeg command execution - Reverted to list format with shell=False ---
-#             combined_audio_path = os.path.join(TEMP_MEDIA_ROOT, f"{self.session_id}_window_{window_chunk_number}.mp3") # Use window_chunk_number for filename
-
-#             # Construct the command as a list of arguments
-#             concat_command = ["ffmpeg", "-y"]
-#             for audio_path in valid_audio_paths:
-#                 concat_command.extend(["-i", audio_path])
-#             concat_command.extend(["-filter_complex", f"concat=n={len(valid_audio_paths)}:a=1:v=0", "-acodec", "libmp3lame", combined_audio_path])
-
-#             print(f"WS: Running FFmpeg command to concatenate audio using Popen (list format): {' '.join(concat_command)}")
-
-#             # Run FFmpeg using Popen with list format (shell=False by default)
-#             process = subprocess.Popen(concat_command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-
-#             # Wait for the FFmpeg process to complete in a thread
-#             stdout, stderr = await asyncio.to_thread(process.communicate)
-#             returncode = await asyncio.to_thread(lambda p: p.returncode, process) # Get return code in thread
-
-#             # --- END MODIFIED FFmpeg command execution ---
-
-
-#             if returncode != 0:
-#                 error_output = stderr.decode()
-#                 print(f"WS: FFmpeg audio concatenation error (code {returncode}) for window ending with chunk {window_chunk_number}: {error_output}")
-#                 print(f"WS: FFmpeg stdout: {stdout.decode()}")
-#                 return # Stop analysis if concatenation fails
-
-#             print(f"WS: Audio files concatenated to: {combined_audio_path}")
-
-#             # --- With the Deepgram transcription (blocking network I/O) ---
-#             if client: # Check if OpenAI client was initialized (as in previous versions)
-#                 print(f"WS: Attempting Deepgram transcription for the combined window audio: {combined_audio_path}")
-#                 transcription_start_time = time.time()
-#                 transcript_text = await asyncio.to_thread(transcribe_audio, combined_audio_path)
-#                 print(f"WS: Deepgram Transcription Result for the window ending with chunk {window_chunk_number}: {transcript_text} after {time.time() - transcription_start_time:.2f} seconds")
-#             else:
-#                  print("WS: OpenAI client not initialized (missing API key?). Skipping transcription.")
-
-
-#             if transcript_text and client: # If transcript obtained AND client is available
-#                 # --- Analyze results using OpenAI (blocking network I/O) ---
-#                 print(f"WS: Running analyze_results for the combined window transcript.")
-#                 analysis_start_time = time.time()
-#                 # Pass the video path of the first chunk in the window for visual analysis reference
-#                 analysis_result = await asyncio.to_thread(analyze_results, transcript_text, window_paths[0], combined_audio_path) # Using window_paths[0] as before
-#                 print(f"WS: Analysis Result for the window ending with chunk {window_chunk_number}: {analysis_result} after {time.time() - analysis_start_time:.2f} seconds")
-#             elif transcript_text:
-#                  print("WS: OpenAI client not initialized. Skipping analysis despite having transcript.")
-#             else:
-#                 print(f"WS: No transcript obtained for window ending with chunk {window_chunk_number}. Skipping analysis.")
-
-
-#             # If analysis result is available, send updates and attempt to save
-#             if analysis_result:
-#                 # Send analysis updates to the frontend
-#                 audience_emotion = analysis_result.get('Feedback', {}).get('Audience Emotion')
-#                 # Check if S3 client is initialized before trying to construct S3 URL
-#                 if audience_emotion and s3:
-#                     capitalized_emotion = audience_emotion[0].upper() + audience_emotion[1:] if audience_emotion else ""
-#                     # Use AWS_REGION if AWS_S3_REGION_NAME is not set, or default to us-east-1
-#                     region_name = os.environ.get('AWS_S3_REGION_NAME', os.environ.get('AWS_REGION', 'us-east-1')) # Default region if none set
-#                     emotion_s3_url = f"https://{BUCKET_NAME}.s3.{region_name}.amazonaws.com/{EMOTION_FOLDER}/{capitalized_emotion}.mp4"
-#                     print(f"WS: Sending window emotion update: {audience_emotion}, URL: {emotion_s3_url}")
-#                     await self.send(json.dumps({
-#                         "type": "window_emotion_update",
-#                         "emotion": audience_emotion,
-#                         "emotion_s3_url": emotion_s3_url
-#                     }))
-#                 elif audience_emotion:
-#                      print("WS: Audience emotion detected but S3 client not configured, cannot send static video URL.")
-
-
-#                 print(f"WS: Sending full analysis update to frontend for chunk {window_chunk_number}: {analysis_result}")
-#                 await self.send(json.dumps({
-#                     "type": "full_analysis_update",
-#                     "analysis": analysis_result
-#                 }))
-
-#                 # Save the analysis for the last chunk in the window
-#                 # Call the synchronous _save_window_analysis using asyncio.to_thread
-#                 print(f"WS: Calling _save_window_analysis for chunk {window_chunk_number} ({last_media_path})...")
-#                 # Pass window_chunk_number which is the chunk_counter when this window analysis started
-#                 await asyncio.to_thread(self._save_window_analysis, last_media_path, analysis_result, transcript_text, window_chunk_number)
-
-
-#             else:
-#                 print(f"WS: No analysis result obtained for window ending with chunk {window_chunk_number}. Skipping analysis save.")
-
-
-#         except Exception as e:
-#             print(f"WS: Error during windowed media analysis ending with chunk {window_chunk_number}: {e}")
-#             traceback.print_exc() # Log traceback for general window analysis errors
-#         finally:
-#             # Clean up the temporary combined audio file for the window
-#             if combined_audio_path and os.path.exists(combined_audio_path):
-#                 try:
-#                     # Small delay before removing the file
-#                     await asyncio.sleep(0.05)
-#                     os.remove(combined_audio_path)
-#                     print(f"WS: Removed temporary combined audio file: {combined_audio_path}")
-#                 except Exception as e:
-#                     print(f"WS: Error removing temporary combined audio file {combined_audio_path}: {e}")
-
-
-#         print(f"WS: analyze_windowed_media finished for window ending with chunk {window_chunk_number} after {time.time() - start_time:.2f} seconds")
-
-
-#     def extract_audio(self, media_path):
-#         """Extracts audio from a media file using FFmpeg."""
-#         # This method is kept exactly as in your provided code
-#         start_time = time.time()
-#         base, _ = os.path.splitext(media_path)
-#         audio_mp3_path = f"{base}.mp3"
-#         ffmpeg_command = f"ffmpeg -y -i {media_path} -vn -acodec libmp3lame -ab 128k {audio_mp3_path}"
-#         print(f"WS: Running FFmpeg command: {ffmpeg_command}")
-#         try:
-#             process = subprocess.Popen(ffmpeg_command, shell=True, stderr=subprocess.PIPE, stdout=subprocess.PIPE)
-#             stdout, stderr = process.communicate()
-#             returncode = process.returncode
-#             if returncode == 0:
-#                 print(f"WS: Audio extracted to: {audio_mp3_path} after {time.time() - start_time:.2f} seconds")
-#                 return audio_mp3_path
-#             else:
-#                 error_output = stderr.decode()
-#                 print(f"WS: FFmpeg audio extraction error (code {returncode}): {error_output}")
-#                 return None
-#         except FileNotFoundError:
-#              print(f"WS: FFmpeg command not found. Is FFmpeg installed and in your PATH?")
-#              return None
-#         except Exception as e:
-#              print(f"WS: Error running FFmpeg for audio extraction: {e}")
-#              traceback.print_exc()
-#              return None
-
-
-#     def upload_to_s3(self, file_path):
-#         """Uploads a local file to S3."""
-#         # This method is kept exactly as in your provided code
-#         if s3 is None:
-#              print(f"WS: S3 client is not initialized. Cannot upload file: {file_path}.")
-#              return None
-
-#         start_time = time.time()
-#         file_name = os.path.basename(file_path)
-#         folder_path = f"{BASE_FOLDER}{self.session_id}/"
-#         s3_key = f"{folder_path}{file_name}"
-#         try:
-#             s3.upload_file(file_path, BUCKET_NAME, s3_key)
-#             # Construct S3 URL - using regional endpoint format as before
-#             region_name = os.environ.get('AWS_S3_REGION_NAME', os.environ.get('AWS_REGION', 'us-east-1'))
-#             s3_url = f"https://{BUCKET_NAME}.s3.{region_name}.amazonaws.com/{s3_key}"
-#             print(f"WS: Uploaded {file_path} to S3 successfully. S3 URL: {s3_url} after {time.time() - start_time:.2f} seconds.")
-#             return s3_url
-#         except Exception as e:
-#             print(f"WS: S3 upload failed for {file_path}: {e}")
-#             traceback.print_exc()
-#             return None
-
-
-#     # This method is kept exactly as in your provided code structure
-#     # It remains a synchronous method called via asyncio.to_thread from process_media_chunk
-#     def _save_chunk_data(self, media_path, analysis_result, transcript_text): # Arguments match old code signature
-#         """Saves the SessionChunk object and maps media path to chunk ID."""
-#         start_time = time.time()
-#         print(f"WS: _save_chunk_data called for chunk at {media_path} at {start_time}")
-#         if not self.session_id:
-#             print("WS: Error: Session ID not available, cannot save chunk data.")
-#             return
-
-#         try:
-#             # Synchronous DB call in this sync method
-#             print(f"WS: Attempting to get PracticeSession with id: {self.session_id}")
-#             session = PracticeSession.objects.get(id=self.session_id)
-#             print(f"WS: Retrieved PracticeSession: {session.id}, {session.session_name}")
-
-#             # Call upload_to_s3 here as in the old code structure
-#             s3_upload_start_time = time.time()
-#             s3_url = self.upload_to_s3(media_path) # Call the sync upload method
-#             print(f"WS: S3 upload finished after {time.time() - s3_upload_start_time:.2f} seconds.")
-
-#             if s3_url:
-#                 print(f"WS: S3 URL for SessionChunk: {s3_url}")
-#                 session_chunk_data = {
-#                     'session': session.id,
-#                     'video_file': s3_url
-#                 }
-#                 print(f"WS: SessionChunk data: {session_chunk_data}")
-#                 session_chunk_serializer = SessionChunkSerializer(data=session_chunk_data)
-#                 if session_chunk_serializer.is_valid():
-#                     print("WS: SessionChunkSerializer is valid.")
-#                     try:
-#                         # Synchronous DB call in this sync method
-#                         session_chunk = session_chunk_serializer.save()
-#                         print(f"WS: SessionChunk saved with ID: {session_chunk.id} for media path: {media_path} after {time.time() - start_time:.2f} seconds")
-#                         self.media_path_to_chunk[media_path] = session_chunk.id  # Store the mapping here
-#                     except Exception as save_error:
-#                         print(f"WS: Error during SessionChunk save: {save_error}")
-#                         traceback.print_exc()
-#                 else:
-#                     print("WS: Error saving SessionChunk:", session_chunk_serializer.errors)
-#             else:
-#                 # As in your old code, if S3 URL is not obtained, SessionChunk is NOT saved.
-#                 # This means media_path_to_chunk will NOT be populated for this chunk.
-#                 print("WS: Error: S3 URL not obtained, cannot save SessionChunk.")
-#                 # Note: This means subsequent window analysis depending on this chunk's ID will fail to find it.
-
-
-#         except PracticeSession.DoesNotExist:
-#             print(f"WS: Error: PracticeSession with id {self.session_id} not found.")
-#         except Exception as e:
-#             print(f"WS: Error in _save_chunk_data: {e}")
-#             traceback.print_exc()
-#         print(f"WS: _save_chunk_data finished after {time.time() - start_time:.2f} seconds")
-
-
-#     # --- MODIFIED _save_window_analysis based on the provided code ---
-#     # This method is *not* decorated with @database_sync_to_async as in your base code,
-#     # but is called using await asyncio.to_thread from analyze_windowed_media.
-#     # It has the corrected mapping and improved logging.
-#     def _save_window_analysis(self, media_path, analysis_result, transcript_text, chunk_number): # Accepting chunk_number
-#         start_time = time.time()
-#         print(f"WS: _save_window_analysis started for media path: {media_path} (chunk {chunk_number}) at {start_time}")
-#         if not self.session_id:
-#             print("WS: Error: Session ID not available, cannot save window analysis.")
-#             return
-
-#         try:
-#             # Get the SessionChunk ID from the map
-#             # This requires _save_chunk_data to have successfully saved the SessionChunk
-#             session_chunk_id = self.media_path_to_chunk.get(media_path)
-
-#             # --- ADDED LOG ---
-#             print(f"WS: In _save_window_analysis for {media_path} (chunk {chunk_number}): session_chunk_id found? {session_chunk_id is not None}. ID: {session_chunk_id}")
-#             # --- END ADDED LOG ---
-
-#             if session_chunk_id:
-#                 print(f"WS: Found SessionChunk ID: {session_chunk_id} for media path: {media_path}")
-
-#                 # Safely access nested dictionaries
-#                 feedback_data = analysis_result.get('Feedback', {})
-#                 # --- CORRECTED MAPPING KEYS ---
-#                 posture_data = analysis_result.get('Posture', {}) # Use 'Posture', not 'Posture Scores'
-#                 scores_data = analysis_result.get('Scores', {})
-#                 # --- END CORRECTED MAPPING KEYS ---
-
-
-#                 # Prepare data for ChunkSentimentAnalysis
-#                 sentiment_data = {
-#                     'chunk': session_chunk_id,
-#                     'chunk_number': chunk_number, # Using the passed chunk_number
-
-#                     # Map from 'Feedback' - as in your old code
-#                     'audience_emotion': feedback_data.get('Audience Emotion'), # Allow None if not present
-#                     'conviction': feedback_data.get('Conviction', 0),
-#                     'clarity': feedback_data.get('Clarity', 0),
-#                     'impact': feedback_data.get('Impact', 0),
-#                     'brevity': feedback_data.get('Brevity', 0),
-#                     'transformative_potential': feedback_data.get('Transformative Potential', 0),
-#                     'trigger_response': feedback_data.get('Trigger Response', 0),
-#                     'filler_words': feedback_data.get('Filler Words', 0),
-#                     'grammar': feedback_data.get('Grammar', 0),
-#                     'general_feedback_summary': feedback_data.get('General Feedback Summary', ''),
-
-#                     # --- CORRECTED MAPPING - Use data from posture_data ---
-#                     'posture': posture_data.get('Posture', 0),
-#                     'motion': posture_data.get('Motion', 0),
-#                     # Convert integer 0/1 to boolean False/True as needed by your model/serializer
-#                     'gestures': bool(posture_data.get('Gestures', False)), # Default to False if key missing
-#                     # --- END CORRECTED MAPPING ---
-
-#                     # Map from the 'Scores' nested dictionary - as in your old code
-#                     'volume': scores_data.get('Volume Score'), # Allow None if not present
-#                     'pitch_variability': scores_data.get('Pitch Variability Score'), # Allow None if not present
-#                     'pace': scores_data.get('Pace Score'), # Allow None if not present
-#                     # Assuming 'Pauses' key might be 'Pause Score' based on later logs
-#                     'pauses': scores_data.get('Pause Score', 0), # Use Pause Score key, default 0
-
-
-#                     'chunk_transcript': transcript_text, # Saving the combined transcript for each chunk
-#                 }
-#                 print(f"WS: ChunkSentimentAnalysis data (for window, chunk {chunk_number}): {sentiment_data}")
-
-#                 # Use the serializer to validate and prepare data for saving
-#                 sentiment_serializer = ChunkSentimentAnalysisSerializer(data=sentiment_data)
-
-#                 if sentiment_serializer.is_valid():
-#                     print(f"WS: ChunkSentimentAnalysisSerializer (for window, chunk {chunk_number}) is valid.")
-#                     try:
-#                         # Check if a ChunkSentimentAnalysis already exists for this chunk
-#                         # SYNCHRONOUS database call inside this sync method (run via asyncio.to_thread)
-#                         # Note: Your old code did NOT check for existing sentiment before saving.
-#                         # If you want to update, uncomment and use the update logic.
-#                         # For now, let's stick closer to the old code's save-always pattern.
-#                         # existing_sentiment = ChunkSentimentAnalysis.objects.filter(chunk_id=session_chunk_id).first()
-#                         # if existing_sentiment:
-#                         #     print("WS: Updating existing ChunkSentimentAnalysis...")
-#                         #     # Update fields from validated_data if needed
-#                         #     validated_data = sentiment_serializer.validated_data
-#                         #     for key, value in validated_data.items():
-#                         #         if key != 'chunk':
-#                         #             setattr(existing_sentiment, key, value)
-#                         #     sentiment_analysis_obj = existing_sentiment
-#                         #     sentiment_analysis_obj.save()
-#                         # else:
-#                         #     print("WS: Creating new ChunkSentimentAnalysis...")
-#                         #     sentiment_analysis_obj = sentiment_serializer.save() # Sync save
-
-#                         # --- Original Save Logic (always create new) ---
-#                         sentiment_analysis_obj = sentiment_serializer.save() # Synchronous save in this sync method
-#                         # --- End Original Save Logic ---
-
-#                         print(f"WS: Window analysis data saved for chunk ID: {session_chunk_id} (chunk {chunk_number}) with sentiment ID: {sentiment_analysis_obj.id} after {time.time() - start_time:.2f} seconds")
-
-#                     except Exception as save_error:
-#                         print(f"WS: Error during ChunkSentimentAnalysis save (for window, chunk {chunk_number}): {save_error}")
-#                         # --- ADDED TRACEBACK ---
-#                         traceback.print_exc() # Print traceback for save errors
-#                         # --- END ADDED TRACEBACK ---
-#                 else:
-#                     # Print validation errors if serializer is not valid
-#                     print(f"WS: Error saving ChunkSentimentAnalysis (chunk {chunk_number}):", sentiment_serializer.errors)
-
-#             else:
-#                 # This logs if session_chunk_id was None
-#                 error_message = f"SessionChunk ID not found in media_path_to_chunk for media path {media_path} during window analysis save for chunk {chunk_number}."
-#                 print(f"WS: {error_message}")
-
-#         except Exception as e:
-#             print(f"WS: Error in _save_window_analysis for media path {media_path} (chunk {chunk_number}): {e}")
-#             # --- ADDED TRACEBACK ---
-#             traceback.print_exc() # Print traceback for general _save_window_analysis errors
-#             # --- END ADDED TRACEBACK ---
-
-#         print(f"WS: _save_window_analysis finished for media path {media_path} (chunk {chunk_number}) after {time.time() - start_time:.2f} seconds")
-
-
+#################################################################################################################
+# This version eliminates race conditions by removing shared mutable state and making each operation self-contained
+#################################################################################################################
 
 import asyncio
 import platform
 
+# Set the event loop policy for Windows if necessary
 if platform.system() == 'Windows':
     asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
-
 
 import json
 import os
@@ -563,7 +20,8 @@ import openai
 import django
 import time
 import traceback
-import random # Import random for selecting variations
+import random
+import numpy as np
 
 from base64 import b64decode
 from datetime import timedelta
@@ -573,37 +31,58 @@ from channels.db import database_sync_to_async
 
 from .sentiment_analysis import analyze_results, transcribe_audio
 from practice_sessions.models import PracticeSession, SessionChunk, ChunkSentimentAnalysis
-from practice_sessions.serializers import SessionChunkSerializer, ChunkSentimentAnalysisSerializer, PracticeSessionSerializer
+from practice_sessions.serializers import SessionChunkSerializer, ChunkSentimentAnalysisSerializer
 
+# Ensure Django settings are configured
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "EngageX.settings")
 django.setup()
 
+# Initialize OpenAI client
 openai.api_key = os.environ.get("OPENAI_API_KEY")
-client = openai.OpenAI()
+client = openai.OpenAI() if openai.api_key else None
 
+# Initialize S3 client
 s3 = boto3.client("s3", region_name=os.environ.get('AWS_REGION'))
 BUCKET_NAME = "engagex-user-content-1234"
 BASE_FOLDER = "user-videos/"
 TEMP_MEDIA_ROOT = tempfile.gettempdir()
-EMOTION_STATIC_FOLDER = "static-videos"  # Top-level folder for static emotion videos
+EMOTION_STATIC_FOLDER = "static-videos"
 
-# Define the rooms the user can choose from. Used for validation.
+# Define the rooms the user can choose from
 POSSIBLE_ROOMS = ['conference_room', 'board_room_1', 'board_room_2']
 
-# Assume a fixed number of variations for each emotion video (1.mp4 to 5.mp4)
+# Assume a fixed number of variations for each emotion video
 NUMBER_OF_VARIATIONS = 5
 
+# Define the window size for analysis
+ANALYSIS_WINDOW_SIZE = 3
+
+# Helper function to convert numpy types to native Python types for JSON serialization
+def convert_numpy_types(obj):
+    """Recursively converts numpy types within a dict or list to native Python types."""
+    if isinstance(obj, np.integer):
+        return int(obj)
+    elif isinstance(obj, np.floating):
+        return float(obj)
+    elif isinstance(obj, np.ndarray):
+        return obj.tolist()
+    elif isinstance(obj, dict):
+        return {k: convert_numpy_types(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [convert_numpy_types(elem) for elem in obj]
+    else:
+        return obj
 
 class LiveSessionConsumer(AsyncWebsocketConsumer):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.session_id = None
-        self.room_name = None # Store the chosen room name
+        self.room_name = None
         self.chunk_counter = 0
-        self.media_buffer = []
-        self.audio_buffer = {}  # Dictionary to map media_path to audio_path
-        self.media_path_to_chunk = {} # Map media_path to SessionChunk ID
-
+        # Track active tasks for cleanup
+        self.active_tasks = set()
+        # Track media paths for cleanup
+        self.media_paths = set()
 
     async def connect(self):
         query_string = self.scope['query_string'].decode()
@@ -614,59 +93,59 @@ class LiveSessionConsumer(AsyncWebsocketConsumer):
                     key, value = param.split('=', 1)
                     query_params[key] = value
                 except ValueError:
-                    print(f"WS: Warning: Could not parse query parameter: {param}")
+                    continue
 
         self.session_id = query_params.get('session_id', None)
-        self.room_name = query_params.get('room_name', None) # Get room_name from query params
+        self.room_name = query_params.get('room_name', None)
 
-        # Validate session_id and room_name
         if self.session_id and self.room_name in POSSIBLE_ROOMS:
-            print(f"WS: Client connected for Session ID: {self.session_id}, Room: {self.room_name}")
             await self.accept()
             await self.send(json.dumps({
                 "type": "connection_established",
                 "message": f"Connected to session {self.session_id} in room {self.room_name}"
             }))
         else:
-            if not self.session_id:
-                print("WS: Connection rejected: Missing session_id.")
-            elif self.room_name is None:
-                 print("WS: Connection rejected: Missing room_name.")
-            else: # room_name is provided but not in POSSIBLE_ROOMS
-                 print(f"WS: Connection rejected: Invalid room_name '{self.room_name}'.")
-
             await self.close()
 
     async def disconnect(self, close_code):
-        print(f"WS: Client disconnected for Session ID: {self.session_id}. Cleaning up...")
-        # Add cleanup for audio and media files from buffers
-        # Get all paths from buffers and the map keys
-        audio_paths_to_clean = list(self.audio_buffer.values())
-        media_paths_to_clean_from_buffer = list(self.media_buffer)
-        media_paths_to_clean_from_map = list(self.media_path_to_chunk.keys()) # Clean up any not yet popped from buffer
-
-        # Combine all potential paths and remove duplicates
-        all_paths_to_clean = set(audio_paths_to_clean + media_paths_to_clean_from_buffer + media_paths_to_clean_from_map)
-
-        for file_path in all_paths_to_clean:
+        # Wait for all active tasks to complete
+        if self.active_tasks:
             try:
-                if file_path and os.path.exists(file_path):
+                await asyncio.wait_for(
+                    asyncio.gather(*self.active_tasks, return_exceptions=True),
+                    timeout=30.0
+                )
+            except (asyncio.TimeoutError, Exception):
+                pass
+
+        # Clean up all temporary files
+        await self._cleanup_all_files()
+
+    async def _cleanup_all_files(self):
+        """Clean up all temporary files associated with this session."""
+        cleanup_tasks = []
+        for file_path in self.media_paths:
+            if file_path and os.path.exists(file_path):
+                cleanup_tasks.append(self._remove_file_safe(file_path))
+
+        if cleanup_tasks:
+            await asyncio.gather(*cleanup_tasks, return_exceptions=True)
+
+    async def _remove_file_safe(self, file_path):
+        """Safely remove a file with retries."""
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                await asyncio.sleep(0.05 * (attempt + 1))
+                if os.path.exists(file_path):
                     os.remove(file_path)
-                    print(f"WS: Removed temporary file: {file_path}")
-            except Exception as e:
-                print(f"WS: Error removing file {file_path}: {e}")
-
-        # Clear buffers and maps
-        self.audio_buffer = {}
-        self.media_buffer = []
-        self.media_path_to_chunk = {}
-
-        print(f"WS: Session {self.session_id} cleanup complete.")
-
+                    return True
+            except Exception:
+                pass
+        return False
 
     async def receive(self, text_data=None, bytes_data=None):
         if not self.session_id:
-            print("WS: Error: Session ID not available, cannot process data.")
             return
 
         try:
@@ -675,403 +154,378 @@ class LiveSessionConsumer(AsyncWebsocketConsumer):
                 message_type = data.get("type")
                 if message_type == "media":
                     self.chunk_counter += 1
+                    
                     media_blob = data.get("data")
                     if media_blob:
                         media_bytes = b64decode(media_blob)
                         media_path = os.path.join(TEMP_MEDIA_ROOT, f"{self.session_id}_{self.chunk_counter}_media.webm")
+                        
                         with open(media_path, "wb") as mf:
                             mf.write(media_bytes)
-                        print(f"WS: Received media chunk {self.chunk_counter} for Session {self.session_id}. Saved to {media_path}")
-                        self.media_buffer.append(media_path)
-
-                        print(f"WS: Starting process_media_chunk for chunk {self.chunk_counter} and WAITING for it to complete.")
-                        # *** FIX: Await the process_media_chunk task ***
-                        # This ensures audio extraction and saving to buffer completes before analysis check
-                        process_task = asyncio.create_task(self.process_media_chunk(media_path))
-                        await process_task
-                        # *** End FIX ***
-
-
-                        # Trigger windowed analysis based on buffer size
-                        # Now that process_media_chunk is awaited, audio should be in buffer if extraction succeeded.
-                        if len(self.media_buffer) >= 4: # Trigger analysis when buffer is 4 or more
-                            window_paths = list(self.media_buffer[-4:]) # Always take the last 4 chunks
-                            print(f"WS: Triggering windowed analysis for sliding window (chunks ending with {self.chunk_counter})")
-                            # Pass the last chunk number in the window
-                            asyncio.create_task(self.analyze_windowed_media(window_paths, self.chunk_counter))
-
-                    else:
-                        print("WS: Error: Missing 'data' in media message.")
-                else:
-                    print(f"WS: Received text message of type: {message_type}")
-            elif bytes_data:
-                print(f"WS: Received binary data of length: {len(bytes_data)}")
-        except json.JSONDecodeError:
-             print(f"WS: Received invalid JSON data: {text_data}")
+                            
+                        self.media_paths.add(media_path)
+                        # Create a task for processing this chunk
+                        task = asyncio.create_task(self._process_new_chunk(media_path, self.chunk_counter))
+                        self.active_tasks.add(task)
+                        task.add_done_callback(self.active_tasks.discard)
         except Exception as e:
-            print(f"WS: Error processing received data: {e}")
             traceback.print_exc()
 
-
-    async def process_media_chunk(self, media_path):
-        start_time = time.time()
-        print(f"WS: process_media_chunk started for: {media_path} at {start_time}")
-        audio_path = None
-        s3_url = None
+    async def _process_new_chunk(self, media_path, chunk_number):
+        """Process a new media chunk and trigger window analysis if needed."""
         try:
-            # Use concurrent.futures.ThreadPoolExecutor for sync operations (upload and audio extraction)
-            with concurrent.futures.ThreadPoolExecutor() as executor:
-                # Submit upload to S3 as a task
-                upload_future = executor.submit(self.upload_to_s3, media_path)
-
-                # Submit audio extraction as a task
-                extract_future = executor.submit(self.extract_audio, media_path)
-
-                # Wait for both tasks to complete in a thread-safe way
-                s3_url = await asyncio.to_thread(upload_future.result)
-                audio_path = await asyncio.to_thread(extract_future.result) # Wait for audio extraction here
-
-            # *** FIX: Store audio_path in buffer AFTER extraction completes ***
-            if audio_path and os.path.exists(audio_path): # Also check if the extracted file actually exists
-                print(f"WS: Audio extracted and found at: {audio_path}")
-                self.audio_buffer[media_path] = audio_path # Store the mapping
-            else:
-                print(f"WS: Audio extraction failed or file not found for {media_path}. Audio path: {audio_path}")
-            # *** End FIX ***
-
-
-            if s3_url:
-                print(f"WS: Attempting to save SessionChunk for {media_path} with S3 URL {s3_url}.")
-                # Call _save_chunk_data with the S3 URL
-                await asyncio.to_thread(self._save_chunk_data, media_path, s3_url) # Pass the obtained s3_url
-            else:
-                print(f"WS: Error: S3 upload failed for {media_path}. Cannot save SessionChunk.")
-
-        except Exception as e:
-            print(f"WS: Error in process_media_chunk for {media_path}: {e}")
-            traceback.print_exc()
-
-        print(f"WS: process_media_chunk finished for: {media_path} after {time.time() - start_time:.2f} seconds")
-
-
-    async def analyze_windowed_media(self, window_paths, latest_chunk_number):
-        """
-        Handles concatenation, transcription, analysis, and saving sentiment data for a window.
-        Assumes audio data for chunks in window_paths is already in the audio_buffer
-        because process_media_chunk is awaited in receive.
-        """
-        # Check buffer content and existence - this check is now expected to pass if process_media_chunk succeeded
-        if len(window_paths) != 4:
-            print(f"WS: analyze_windowed_media called with {len(window_paths)} paths for window ending with chunk {latest_chunk_number}, expected 4. Skipping analysis for this window instance.")
-            # Cleanup of oldest chunk happens in finally block
-            return
-
-        start_time = time.time()
-        last_media_path = window_paths[-1]
-        window_chunk_number = latest_chunk_number
-
-        print(f"WS: analyze_windowed_media started for window ending with {last_media_path} (chunk {window_chunk_number}) at {start_time}")
-
-        combined_audio_path = None
-        transcript_text = None
-        analysis_result = None
-
-        try:
-            # Get the audio paths from the buffer
-            # Filter out None values or paths that don't exist on disk
-            required_audio_paths = [self.audio_buffer.get(media_path) for media_path in window_paths]
-            valid_audio_paths = [path for path in required_audio_paths if path is not None and os.path.exists(path)]
-
-
-            # *** SIMPLIFIED: No rescheduling. If data isn't ready here (unexpected), we skip this window analysis attempt. ***
-            if len(valid_audio_paths) != 4:
-                 print(f"WS: Audio not found for all 4 chunks in window ending with chunk {latest_chunk_number} despite waiting for process_media_chunk. Ready audio paths: {len(valid_audio_paths)}/4. Skipping analysis for this window instance.")
-                 # Cleanup of oldest chunk happens in finally block
-                 return
-            # *** End SIMPLIFIED ***
-
-            print(f"WS: Valid audio paths for concatenation: {valid_audio_paths}") # Now expected to have 4 valid paths
-
-
-            # --- FFmpeg concatenation ---
-            combined_audio_path = os.path.join(TEMP_MEDIA_ROOT, f"{self.session_id}_window_{window_chunk_number}.mp3")
-            concat_command = ["ffmpeg", "-y"]
-            for audio_path in valid_audio_paths: # Use the validated paths
-                concat_command.extend(["-i", audio_path])
-            concat_command.extend(["-filter_complex", f"concat=n={len(valid_audio_paths)}:a=1:v=0", "-acodec", "libmp3lame", "-b:a", "128k", combined_audio_path]) # Added bitrate for safety
-
-            print(f"WS: Running FFmpeg command: {' '.join(concat_command)}")
-            # Run FFmpeg using Popen with list format (shell=False by default)
-            process = subprocess.Popen(concat_command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            stdout, stderr = await asyncio.to_thread(process.communicate) # Run blocking communicate in a thread
-            returncode = await asyncio.to_thread(lambda p: p.returncode, process) # Get return code in thread
-
-
-            if returncode != 0:
-                error_output = stderr.decode()
-                print(f"WS: FFmpeg audio concatenation error (code {returncode}) for window ending with chunk {window_chunk_number}: {error_output}")
-                print(f"WS: FFmpeg stdout: {stdout.decode()}")
-                # Cleanup of oldest chunk happens in finally block
-                return # Stop analysis if concatenation fails
-
-            print(f"WS: Audio files concatenated to: {combined_audio_path}")
-
-            # --- Transcription (blocking network I/O) ---
+            print(f"Processing chunk {chunk_number} for session {self.session_id}")
+            
+            # Extract audio and get transcript concurrently
+            audio_task = asyncio.create_task(asyncio.to_thread(self.extract_audio, media_path))
+            transcript_task = None
             if client:
-                print(f"WS: Attempting transcription for {combined_audio_path}")
-                transcription_start_time = time.time()
-                # Using asyncio.to_thread for blocking Deepgram call
-                transcript_text = await asyncio.to_thread(transcribe_audio, combined_audio_path)
-                print(f"WS: Deepgram Transcription Result: {transcript_text} after {time.time() - transcription_start_time:.2f} seconds")
-            else:
-                 print("WS: OpenAI client not initialized (missing API key?). Skipping transcription.")
+                transcript_task = asyncio.create_task(asyncio.to_thread(transcribe_audio, media_path))
 
+            # Wait for audio extraction
+            audio_path = await audio_task
+            if audio_path:
+                print(f"Audio extracted for chunk {chunk_number}: {audio_path}")
+                self.media_paths.add(audio_path)
+                
+                # Get transcript if available
+                chunk_transcript = None
+                if transcript_task:
+                    chunk_transcript = await transcript_task
+                    print(f"Transcript received for chunk {chunk_number}: {chunk_transcript}")
+                    
+                    # Send immediate feedback about transcription
+                    await self.send(json.dumps({
+                        "type": "transcription_update",
+                        "chunk_number": chunk_number,
+                        "transcript": chunk_transcript
+                    }))
 
-            if transcript_text and client: # If transcript obtained AND client is available
-                # --- Analyze results using OpenAI (blocking network I/O) ---
-                print(f"WS: Running analyze_results for combined transcript.")
-                analysis_start_time = time.time()
-                # Pass the video path of the first chunk in the window for visual analysis reference
-                analysis_result = await asyncio.to_thread(analyze_results, transcript_text, window_paths[0], combined_audio_path) # Using window_paths[0] as before
-                print(f"WS: Analysis Result: {analysis_result} after {time.time() - analysis_start_time:.2f} seconds")
-            elif transcript_text:
-                 print("WS: OpenAI client not initialized. Skipping analysis despite having transcript.")
-            else:
-                print(f"WS: No transcript obtained. Skipping analysis.")
+                # Start S3 upload and wait for it to complete
+                try:
+                    s3_url = await asyncio.to_thread(self.upload_to_s3, media_path)
+                    if not s3_url:
+                        print(f"S3 upload failed for chunk {chunk_number}")
+                        return
+                    
+                    # Save chunk data and wait for it to complete
+                    chunk_id = await self._save_chunk_data(media_path, s3_url, chunk_number, chunk_transcript, audio_path)
+                    if not chunk_id:
+                        print(f"Failed to save chunk {chunk_number}")
+                        return
 
-            # --- Saving Analysis and sending updates ---
-            if analysis_result:
-                # Send analysis updates to the frontend
-                audience_emotion = analysis_result.get('Feedback', {}).get('Audience Emotion')
-
-                emotion_s3_url = None
-                # Only try to construct URL if we have an emotion, S3 client, and room name
-                if audience_emotion and s3 and self.room_name:
-                    try:
-                        # Convert emotion to lowercase for S3 path lookup
-                        lowercase_emotion = audience_emotion.lower()
-
-                        # Randomly select a variation number between 1 and NUMBER_OF_VARIATIONS
-                        selected_variation = random.randint(1, NUMBER_OF_VARIATIONS)
-
-                        # Construct the new S3 URL with room and variation
-                        region_name = os.environ.get('AWS_S3_REGION_NAME', os.environ.get('AWS_REGION', 'us-east-1')) # Default region if none set
-                        emotion_s3_url = f"https://{BUCKET_NAME}.s3.{region_name}.amazonaws.com/{EMOTION_STATIC_FOLDER}/{self.room_name}/{lowercase_emotion}/{selected_variation}.mp4"
-
-                        print(f"WS: Sending window emotion update: {audience_emotion}, URL: {emotion_s3_url} (Room: {self.room_name}, Variation: {selected_variation})")
-                        await self.send(json.dumps({
-                            "type": "window_emotion_update",
-                            "emotion": audience_emotion,
-                            "emotion_s3_url": emotion_s3_url
-                        }))
-                    except Exception as e:
-                         print(f"WS: Error constructing or sending emotion URL for emotion '{audience_emotion}': {e}")
-                         traceback.print_exc()
-
-                elif audience_emotion:
-                     print("WS: Audience emotion detected but S3 client not configured or room_name is missing, cannot send static video URL.")
-                else:
-                     print("WS: No audience emotion detected. Cannot send static video URL.")
-
-
-                print(f"WS: Sending full analysis update to frontend for chunk {window_chunk_number}: {analysis_result}")
-                await self.send(json.dumps({
-                    "type": "full_analysis_update",
-                    "analysis": analysis_result
-                }))
-
-                # Save the analysis for the last chunk in the window
-                # Call the synchronous _save_window_analysis using asyncio.to_thread
-                print(f"WS: Calling _save_window_analysis for chunk {window_chunk_number} ({last_media_path})...")
-                await asyncio.to_thread(self._save_window_analysis, last_media_path, analysis_result, transcript_text, window_chunk_number)
-            else:
-                print(f"WS: No analysis result obtained for window ending with chunk {window_chunk_number}. Skipping analysis save.")
+                    # Trigger window analysis if we have enough chunks
+                    if chunk_number >= ANALYSIS_WINDOW_SIZE:
+                        print(f"Triggering window analysis for chunk {chunk_number}")
+                        # Create a task for window analysis
+                        analysis_task = asyncio.create_task(
+                            self._analyze_window(chunk_number)
+                        )
+                        self.active_tasks.add(analysis_task)
+                        analysis_task.add_done_callback(self.active_tasks.discard)
+                except Exception as e:
+                    print(f"Error during S3 upload for chunk {chunk_number}: {e}")
 
         except Exception as e:
-            print(f"WS: Error during windowed media analysis ending with chunk {window_chunk_number}: {e}")
+            print(f"Error processing chunk {chunk_number}: {e}")
+            traceback.print_exc()
+
+    async def _analyze_window(self, latest_chunk_number):
+        """Analyze a window of chunks."""
+        try:
+            print(f"Starting window analysis for chunk {latest_chunk_number}")
+            
+            # Add a longer delay to ensure chunks are saved
+            await asyncio.sleep(1.0)
+            
+            # Add retry mechanism for database query
+            max_retries = 3
+            retry_delay = 0.5
+            chunks = None
+            
+            for attempt in range(max_retries):
+                try:
+                    chunks = await self._get_window_chunks(latest_chunk_number)
+                    if chunks:
+                        break
+                    print(f"Retry {attempt + 1}/{max_retries} for window ending with {latest_chunk_number}")
+                    await asyncio.sleep(retry_delay)
+                except RuntimeError as e:
+                    if "cannot schedule new futures after shutdown" in str(e):
+                        print("Event loop is shutting down, stopping window analysis")
+                        return
+                    raise
+            
+            if not chunks:
+                print(f"No chunks found for window ending with {latest_chunk_number} after {max_retries} retries")
+                return
+
+            print(f"Found {len(chunks)} chunks for window analysis")
+            # Get transcripts and audio paths
+            transcripts = []
+            audio_paths = []
+            for chunk in chunks:
+                if chunk.transcript:
+                    transcripts.append(chunk.transcript)
+                if chunk.audio_path and os.path.exists(chunk.audio_path):
+                    audio_paths.append(chunk.audio_path)
+
+            if not transcripts or not audio_paths:
+                print(f"Missing transcripts or audio paths for window {latest_chunk_number}")
+                return
+
+            print(f"Combining {len(transcripts)} transcripts and {len(audio_paths)} audio files")
+            # Combine transcripts and audio
+            combined_transcript = " ".join(transcripts)
+            combined_audio_path = await self._combine_audio_files(audio_paths, latest_chunk_number)
+
+            if not combined_audio_path:
+                print(f"Failed to combine audio files for window {latest_chunk_number}")
+                return
+
+            print(f"Running analysis for window {latest_chunk_number}")
+            # Run analysis with timeout
+            try:
+                analysis_result = await asyncio.wait_for(
+                    asyncio.to_thread(
+                        analyze_results,
+                        combined_transcript,
+                        chunks[0].video_file,
+                        combined_audio_path
+                    ),
+                    timeout=30.0
+                )
+
+                if analysis_result:
+                    print(f"Analysis completed for window {latest_chunk_number}")
+                    # Convert numpy types to native Python types before sending
+                    serializable_result = convert_numpy_types(analysis_result)
+                    
+                    # Add posture data to the analysis result
+                    if 'video_url' in analysis_result:
+                        serializable_result['Posture'] = {
+                            'video_url': analysis_result['video_url']
+                        }
+
+                    # Send updates to frontend immediately
+                    await self.send(json.dumps({
+                        "type": "full_analysis_update",
+                        "analysis": serializable_result
+                    }))
+
+                    # Handle emotion update if available
+                    audience_emotion = serializable_result.get('Feedback', {}).get('Audience Emotion')
+                    if audience_emotion and s3 and self.room_name:
+                        try:
+                            lowercase_emotion = audience_emotion.lower()
+                            selected_variation = random.randint(1, NUMBER_OF_VARIATIONS)
+                            region_name = os.environ.get('AWS_S3_REGION_NAME', os.environ.get('AWS_REGION', 'us-east-1'))
+                            emotion_s3_url = f"https://{BUCKET_NAME}.s3.{region_name}.amazonaws.com/{EMOTION_STATIC_FOLDER}/{self.room_name}/{lowercase_emotion}/{selected_variation}.mp4"
+                            await self.send(json.dumps({
+                                "type": "window_emotion_update",
+                                "emotion": audience_emotion,
+                                "emotion_s3_url": emotion_s3_url
+                            }))
+                        except Exception as e:
+                            print(f"Error sending emotion update: {e}")
+
+                    # Save analysis in background
+                    save_task = asyncio.create_task(
+                        self._save_window_analysis(chunks, serializable_result, combined_transcript, latest_chunk_number)
+                    )
+                    self.active_tasks.add(save_task)
+                    save_task.add_done_callback(self.active_tasks.discard)
+
+            except asyncio.TimeoutError:
+                print(f"Analysis timeout for window ending with chunk {latest_chunk_number}")
+            except Exception as e:
+                print(f"Error during analysis: {e}")
+                traceback.print_exc()
+
+        except Exception as e:
+            print(f"Error in window analysis: {e}")
             traceback.print_exc()
         finally:
-            # Clean up the temporary combined audio file
-            if combined_audio_path and os.path.exists(combined_audio_path):
-                try:
-                    await asyncio.sleep(0.05) # Small delay before removing
-                    os.remove(combined_audio_path)
-                    print(f"WS: Removed temporary combined audio file: {combined_audio_path}")
-                except Exception as e:
-                    print(f"WS: Error removing temporary combined audio file {combined_audio_path}: {e}")
+            # Clean up combined audio file
+            if 'combined_audio_path' in locals():
+                await self._remove_file_safe(combined_audio_path)
 
-            # Clean up the oldest chunk from the buffers after an analysis attempt for a window finishes.
-            # This happens for the oldest chunk if the buffer is >= 4.
-            if len(self.media_buffer) >= 4:
-                 try:
-                     oldest_media_path = self.media_buffer.pop(0)
-                     print(f"WS: Removed oldest media chunk {oldest_media_path} from buffer.")
-                     oldest_audio_path = self.audio_buffer.pop(oldest_media_path, None)
-                     if oldest_audio_path and os.path.exists(oldest_audio_path):
-                          try:
-                              os.remove(oldest_audio_path)
-                              print(f"WS: Removed oldest temporary audio file: {oldest_audio_path}")
-                          except Exception as e:
-                               print(f"WS: Error removing oldest temporary audio file {oldest_audio_path}: {e}")
-                     elif oldest_audio_path:
-                         print(f"WS: Oldest audio path {oldest_audio_path} was in buffer but file not found during cleanup.")
-                     else:
-                         print(f"WS: No audio path found in buffer for oldest media path {oldest_media_path} during cleanup.")
-                 except IndexError:
-                     # Buffer might have been cleared by disconnect during processing
-                     print("WS: media_buffer was empty during cleanup in analyze_windowed_media finally.")
+    @database_sync_to_async
+    def _get_window_chunks(self, latest_chunk_number):
+        """Get the chunks for a window from the database."""
+        try:
+            start_chunk = latest_chunk_number - ANALYSIS_WINDOW_SIZE + 1
+            print(f"Querying database for chunks from {start_chunk} to {latest_chunk_number}")
+            
+            # Use select_related to optimize the query
+            chunks = list(SessionChunk.objects.select_related('session').filter(
+                session_id=self.session_id,
+                chunk_number__gte=start_chunk,
+                chunk_number__lte=latest_chunk_number
+            ).order_by('chunk_number'))
+            
+            print(f"Found {len(chunks)} chunks in database")
+            if chunks:
+                print(f"Chunk IDs: {[chunk.id for chunk in chunks]}")
+                print(f"Chunk numbers: {[chunk.chunk_number for chunk in chunks]}")
+            return chunks
+        except Exception as e:
+            print(f"Error querying database for chunks: {e}")
+            traceback.print_exc()
+            return []
 
+    async def _combine_audio_files(self, audio_paths, window_number):
+        """Combine audio files with improved error handling."""
+        if not audio_paths:
+            return None
 
-        print(f"WS: analyze_windowed_media finished (instance) for window ending with chunk {window_chunk_number} after {time.time() - start_time:.2f} seconds")
+        combined_path = os.path.join(TEMP_MEDIA_ROOT, f"{self.session_id}_window_{window_number}.mp3")
+        try:
+            # Build FFmpeg command
+            cmd = ["ffmpeg", "-y"]
+            for path in audio_paths:
+                cmd.extend(["-i", path])
+            cmd.extend([
+                "-filter_complex", f"concat=n={len(audio_paths)}:a=1:v=0",
+                "-acodec", "libmp3lame", "-b:a", "128k",
+                "-nostats", "-loglevel", "0",
+                combined_path
+            ])
+
+            print(f"Running FFmpeg command: {' '.join(cmd)}")
+            
+            # Use subprocess.Popen directly like in consumers2.py
+            process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            
+            # Run the process in a thread pool to avoid blocking
+            stdout, stderr = await asyncio.to_thread(process.communicate)
+            returncode = process.returncode
+
+            if returncode == 0 and os.path.exists(combined_path):
+                # Verify the file was created and has content
+                if os.path.getsize(combined_path) > 0:
+                    print(f"Successfully combined {len(audio_paths)} audio files to {combined_path}")
+                    return combined_path
+                else:
+                    print(f"Combined audio file is empty: {combined_path}")
+                    return None
+            else:
+                error_output = stderr.decode() if stderr else "No error output"
+                print(f"FFmpeg audio concatenation error (code {returncode}) for window {window_number}: {error_output}")
+                return None
+                
+        except Exception as e:
+            print(f"Error during audio concatenation for window {window_number}: {e}")
+            traceback.print_exc()
+            return None
 
     def extract_audio(self, media_path):
         """Extracts audio from a media file using FFmpeg."""
-        start_time = time.time()
         base, _ = os.path.splitext(media_path)
         audio_mp3_path = f"{base}.mp3"
-        # Use list format for command for better security and compatibility
-        ffmpeg_command = ["ffmpeg", "-y", "-i", media_path, "-vn", "-acodec", "libmp3lame", "-ab", "128k", audio_mp3_path]
-        print(f"WS: Running FFmpeg command: {' '.join(ffmpeg_command)}")
+        ffmpeg_command = ["ffmpeg", "-y", "-i", media_path, "-vn", "-acodec", "libmp3lame", "-ab", "128k", "-nostats", "-loglevel", "0", audio_mp3_path]
+        
         try:
-            # Use shell=False (default) with list format
             process = subprocess.Popen(ffmpeg_command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             stdout, stderr = process.communicate()
-            returncode = process.returncode
-            if returncode == 0:
-                print(f"WS: Audio extracted to: {audio_mp3_path} after {time.time() - start_time:.2f} seconds")
-                # Verify file exists and has non-zero size
-                if os.path.exists(audio_mp3_path) and os.path.getsize(audio_mp3_path) > 0:
-                    return audio_mp3_path
-                else:
-                     print(f"WS: Extracted audio file is missing or empty: {audio_mp3_path}")
-                     return None
-
-            else:
-                error_output = stderr.decode()
-                print(f"WS: FFmpeg audio extraction error (code {returncode}): {error_output}")
-                print(f"WS: FFmpeg stdout: {stdout.decode()}")
-                # Clean up potentially created empty/partial file
-                if os.path.exists(audio_mp3_path):
-                     try:
-                         os.remove(audio_mp3_path)
-                         print(f"WS: Removed incomplete audio file after FFmpeg error: {audio_mp3_path}")
-                     except Exception as e:
-                         print(f"WS: Error removing incomplete audio file {audio_mp3_path}: {e}")
-                return None
-        except FileNotFoundError:
-             print(f"WS: FFmpeg command not found. Is FFmpeg installed and in your PATH?")
-             return None
-        except Exception as e:
-             print(f"WS: Error running FFmpeg for audio extraction: {e}")
-             traceback.print_exc()
-             return None
+            
+            if process.returncode == 0 and os.path.exists(audio_mp3_path) and os.path.getsize(audio_mp3_path) > 0:
+                return audio_mp3_path
+            return None
+        except Exception:
+            return None
 
     def upload_to_s3(self, file_path):
         """Uploads a local file to S3."""
         if s3 is None:
-             print(f"WS: S3 client is not initialized. Cannot upload file: {file_path}.")
-             return None
+            return None
 
-        start_time = time.time()
         file_name = os.path.basename(file_path)
         folder_path = f"{BASE_FOLDER}{self.session_id}/"
         s3_key = f"{folder_path}{file_name}"
+        
         try:
             s3.upload_file(file_path, BUCKET_NAME, s3_key)
-            # Construct S3 URL - using regional endpoint format
             region_name = os.environ.get('AWS_S3_REGION_NAME', os.environ.get('AWS_REGION', 'us-east-1'))
             s3_url = f"https://{BUCKET_NAME}.s3.{region_name}.amazonaws.com/{s3_key}"
-            print(f"WS: Uploaded {file_path} to S3 successfully. S3 URL: {s3_url} after {time.time() - start_time:.2f} seconds.")
             return s3_url
+        except Exception:
+            return None
+
+    @database_sync_to_async
+    def _save_chunk_data(self, media_path, s3_url, chunk_number, transcript, audio_path):
+        """Saves the SessionChunk object."""
+        try:
+            print(f"Saving chunk {chunk_number} data")
+            if not s3_url:
+                print(f"No S3 URL provided for chunk {chunk_number}")
+                return None
+
+            # Get the session
+            session = PracticeSession.objects.get(id=self.session_id)
+            
+            # Create and save the chunk
+            session_chunk_data = {
+                'session': session.id,
+                'video_file': s3_url,
+                'chunk_number': chunk_number,
+                'transcript': transcript,
+                'audio_path': audio_path
+            }
+            
+            print(f"Chunk data to save: {session_chunk_data}")
+            session_chunk_serializer = SessionChunkSerializer(data=session_chunk_data)
+            
+            if session_chunk_serializer.is_valid():
+                try:
+                    # Use transaction.atomic to ensure the save is committed
+                    from django.db import transaction
+                    with transaction.atomic():
+                        session_chunk = session_chunk_serializer.save()
+                        print(f"Chunk {chunk_number} saved with ID: {session_chunk.id}")
+                        # Verify the save by querying the database
+                        saved_chunk = SessionChunk.objects.get(id=session_chunk.id)
+                        print(f"Verified saved chunk: {saved_chunk.id}, number: {saved_chunk.chunk_number}")
+                        return session_chunk.id
+                except Exception as save_error:
+                    print(f"Error during chunk save: {save_error}")
+                    traceback.print_exc()
+                    return None
+            else:
+                print(f"Invalid chunk data for {chunk_number}: {session_chunk_serializer.errors}")
+            return None
         except Exception as e:
-            print(f"WS: S3 upload failed for {file_path}: {e}")
+            print(f"Error saving chunk {chunk_number}: {e}")
             traceback.print_exc()
             return None
 
-    def _save_chunk_data(self, media_path, s3_url):
-        """Saves the SessionChunk object and maps media path to chunk ID."""
-        start_time = time.time()
-        # Log the arguments received
-        print(f"WS: _save_chunk_data called for chunk at {media_path} with S3 URL {s3_url} at {start_time}")
-        if not self.session_id:
-            print("WS: Error: Session ID not available, cannot save chunk data.")
-            return
-
-        if not s3_url:
-             print(f"WS: Error: S3 URL not provided for {media_path}. Cannot save SessionChunk.")
-             return # Do not save if S3 URL is missing
+    @database_sync_to_async
+    def _save_window_analysis(self, chunks, analysis_result, combined_transcript_text, window_chunk_number):
+        """Saves the window's analysis result to the database."""
+        if not self.session_id or not chunks:
+            print("Missing session ID or chunks for window analysis save")
+            return None
 
         try:
-            # Synchronous DB call: Get the session
-            print(f"WS: Attempting to get PracticeSession with id: {self.session_id}")
-            try:
-                 session = PracticeSession.objects.get(id=self.session_id)
-                 print(f"WS: Retrieved PracticeSession: {session.id}, {session.session_name}")
-            except PracticeSession.DoesNotExist:
-                 print(f"WS: Error: PracticeSession with id {self.session_id} not found. Cannot save chunk data.")
-                 return # Exit if session doesn't exist
+            print(f"Saving window analysis for chunk {window_chunk_number}")
+            # Get the last chunk in the window
+            last_chunk = chunks[-1]
 
-            print(f"WS: S3 URL for SessionChunk: {s3_url}")
-            session_chunk_data = {
-                'session': session.id, # Link to the session using its ID
-                'video_file': s3_url # Use the passed S3 URL
+            # Initialize sentiment data
+            sentiment_data = {
+                'chunk': last_chunk.id,
+                'chunk_number': window_chunk_number,
+                'chunk_transcript': combined_transcript_text,
             }
-            print(f"WS: SessionChunk data: {session_chunk_data}")
-            session_chunk_serializer = SessionChunkSerializer(data=session_chunk_data)
 
-            if session_chunk_serializer.is_valid():
-                print("WS: SessionChunkSerializer is valid.")
-                try:
-                    # Synchronous DB call: Save the SessionChunk
-                    session_chunk = session_chunk_serializer.save()
-                    print(f"WS: SessionChunk saved with ID: {session_chunk.id} for media path: {media_path} after {time.time() - start_time:.2f} seconds")
-                    # Store the mapping from temporary media path to the saved chunk's ID
-                    self.media_path_to_chunk[media_path] = session_chunk.id
-                    print(f"WS: Added mapping: {media_path} -> {session_chunk.id}")
-
-                except Exception as save_error:
-                    print(f"WS: Error during SessionChunk save: {save_error}")
-                    traceback.print_exc()
-            else:
-                print("WS: Error saving SessionChunk:", session_chunk_serializer.errors)
-
-        except Exception as e: # Catching other potential exceptions during DB interaction etc.
-            print(f"WS: Error in _save_chunk_data: {e}")
-            traceback.print_exc()
-        print(f"WS: _save_chunk_data finished after {time.time() - start_time:.2f} seconds")
-
-    # This method is called using asyncio.to_thread from analyze_windowed_media.
-    # It saves the analysis results to the database.
-    def _save_window_analysis(self, media_path, analysis_result, transcript_text, chunk_number):
-        start_time = time.time()
-        print(f"WS: _save_window_analysis started for media path: {media_path} (chunk {chunk_number}) at {start_time}")
-        if not self.session_id:
-            print("WS: Error: Session ID not available, cannot save window analysis.")
-            return
-
-        try:
-            # Get the SessionChunk ID from the map that was populated in _save_chunk_data
-            # This is synchronous because _save_window_analysis is already running in a thread.
-            session_chunk_id = self.media_path_to_chunk.get(media_path)
-
-            print(f"WS: In _save_window_analysis for {media_path} (chunk {chunk_number}): session_chunk_id found? {session_chunk_id is not None}. ID: {session_chunk_id}")
-
-            if session_chunk_id:
-                print(f"WS: Found SessionChunk ID: {session_chunk_id} for media path: {media_path}")
-
-                # Safely access nested dictionaries from analysis_result
+            if isinstance(analysis_result, dict) and 'error' not in analysis_result:
                 feedback_data = analysis_result.get('Feedback', {})
                 posture_data = analysis_result.get('Posture', {})
                 scores_data = analysis_result.get('Scores', {})
 
-                # Prepare data for ChunkSentimentAnalysis based on the expected structure from analyze_results
-                sentiment_data = {
-                    'chunk': session_chunk_id, # Link to the SessionChunk using its ID
-                    'chunk_number': chunk_number, # Store the chunk number for context
-
-                    # Map from 'Feedback'
+                sentiment_data.update({
                     'audience_emotion': feedback_data.get('Audience Emotion'),
-                    'conviction': feedback_data.get('Conviction'), # Use get, default is None if key missing
+                    'conviction': feedback_data.get('Conviction'),
                     'clarity': feedback_data.get('Clarity'),
                     'impact': feedback_data.get('Impact'),
                     'brevity': feedback_data.get('Brevity'),
@@ -1079,53 +533,24 @@ class LiveSessionConsumer(AsyncWebsocketConsumer):
                     'trigger_response': feedback_data.get('Trigger Response'),
                     'filler_words': feedback_data.get('Filler Words'),
                     'grammar': feedback_data.get('Grammar'),
-                    'general_feedback_summary': feedback_data.get('General Feedback Summary', ''), # Default to empty string
-
-
-                    # Map from 'Posture'
+                    'general_feedback_summary': feedback_data.get('General Feedback Summary', ''),
                     'posture': posture_data.get('Posture'),
                     'motion': posture_data.get('Motion'),
-                    # Assuming Gestures is a boolean in analysis_result or can be converted
-                    'gestures': bool(posture_data.get('Gestures', False)), # Ensure boolean or default to False
-
-
-                    # Map from the 'Scores' nested dictionary
+                    'gestures': bool(posture_data.get('Gestures', False)) if posture_data.get('Gestures') is not None else False,
                     'volume': scores_data.get('Volume Score'),
                     'pitch_variability': scores_data.get('Pitch Variability Score'),
                     'pace': scores_data.get('Pace Score'),
-                    'pauses': scores_data.get('Pause Score'), # Use Pause Score key
+                    'pauses': scores_data.get('Pause Score'),
+                })
 
-                    # Add the combined transcript
-                    'chunk_transcript': transcript_text,
-                }
-
-                print(f"WS: ChunkSentimentAnalysis data (for window, chunk {chunk_number}): {sentiment_data}")
-
-                # Use the serializer to validate and prepare data for saving
-                sentiment_serializer = ChunkSentimentAnalysisSerializer(data=sentiment_data)
-
-                if sentiment_serializer.is_valid():
-                    print(f"WS: ChunkSentimentAnalysisSerializer (for window, chunk {chunk_number}) is valid.")
-                    try:
-                        # Synchronous database call to save the sentiment analysis
-                        sentiment_analysis_obj = sentiment_serializer.save()
-
-                        print(f"WS: Window analysis data saved for chunk ID: {session_chunk_id} (chunk {chunk_number}) with sentiment ID: {sentiment_analysis_obj.id} after {time.time() - start_time:.2f} seconds")
-
-                    except Exception as save_error:
-                        print(f"WS: Error during ChunkSentimentAnalysis save (for window, chunk {chunk_number}): {save_error}")
-                        traceback.print_exc() # Print traceback for save errors
-                else:
-                    # Print validation errors if serializer is not valid
-                    print(f"WS: Error saving ChunkSentimentAnalysis (chunk {chunk_number}):", sentiment_serializer.errors)
-
+            sentiment_serializer = ChunkSentimentAnalysisSerializer(data=sentiment_data)
+            if sentiment_serializer.is_valid():
+                sentiment_analysis_obj = sentiment_serializer.save()
+                print(f"Window analysis saved with ID: {sentiment_analysis_obj.id}")
+                return sentiment_analysis_obj.id
             else:
-                # This logs if session_chunk_id was None (meaning _save_chunk_data failed or hasn't run)
-                error_message = f"SessionChunk ID not found in media_path_to_chunk for media path {media_path} during window analysis save for chunk {chunk_number}. Analysis will not be saved for this chunk."
-                print(f"WS: {error_message}")
-
+                print(f"Invalid sentiment data: {sentiment_serializer.errors}")
+            return None
         except Exception as e:
-            print(f"WS: Error in _save_window_analysis for media path {media_path} (chunk {chunk_number}): {e}")
-            traceback.print_exc() # Print traceback for general _save_window_analysis errors
-
-        print(f"WS: _save_window_analysis finished for media path {media_path} (chunk {chunk_number}) after {time.time() - start_time:.2f} seconds")
+            print(f"Error saving window analysis: {e}")
+            return None

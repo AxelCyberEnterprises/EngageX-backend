@@ -12,6 +12,7 @@ from .views import (
     SessionList,
     CompareSessionsView,
     GoalAchievementView,
+PerformanceMetricsComparison,
 )
 
 router = DefaultRouter()
@@ -45,13 +46,15 @@ urlpatterns = [
         name="performance-analytics",
     ),
     path("sequences/", SequenceListView.as_view(), name="sequence-list"),
+    path("compare-sequences/<str:sequence_id>/",PerformanceMetricsComparison.as_view(),name="compare-sequences"),
+
     path(
         "sessions-list/",
         SessionList.as_view(),
         name="sessions-list",
     ),
     path(
-        "compare-sessions/<str:session1_id>/<str:session2_id>",
+        "compare-sessions/<str:session1_id>/<str:session2_id>/",
         CompareSessionsView.as_view(),
         name="compare-sessions",
     ),
