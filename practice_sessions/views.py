@@ -463,7 +463,7 @@ class SessionDashboardView(APIView):
                     "start_time": chunk.chunk.start_time if chunk.chunk.start_time is not None else 0,
                     "end_time": chunk.chunk.end_time if chunk.chunk.end_time is not None else 0,
                     "impact": chunk.impact if chunk.impact is not None else 0,
-                    "trigger_reponse": chunk.trigger_response if chunk.trigger_response is not None else 0,
+                    "trigger_response": chunk.trigger_response if chunk.trigger_response is not None else 0,
                     "conviction": chunk.conviction if chunk.conviction is not None else 0,
                 })
 
