@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Intuit Integration App</title>
+    <style>
+        body { font-family: sans-serif; margin: 20px; line-height: 1.6; }
+        h1, h2 { color: #006491; }
+        code { background-color: #f0f0f0; padding: 2px 5px; border-radius: 4px; font-family: Consolas, Monaco, 'Andale Mono', 'Ubuntu Mono', monospace; }
+        a { color: #006491; text-decoration: none; }
+        a:hover { text-decoration: underline; }
+        .status-connected { color: green; font-weight: bold; }
+        .status-disconnected { color: red; font-weight: bold; }
+        .info-box { border: 1px solid #ccc; padding: 15px; margin-top: 20px; border-radius: 5px; background-color: #f9f9f9; }
+    </style>
+</head>
+<body>
+    <h1>Intuit QuickBooks Integration Status</h1>
+
+    {% if is_connected %}
+        <p>QuickBooks Connection Status: <span class="status-connected">Connected</span></p>
+        <div class="info-box">
+            <p><strong>Realm ID:</strong> {{ realm_id }}</p>
+            <p><strong>Access Token Expires:</strong> {{ expires_at|date:"Y-m-d H:i:s T" }}</p> {# Format datetime nicely #}
+            <p>Tokens are stored persistently in your database models.</p>
+            <p>You can manage connection settings via API endpoints or Django Admin.</p>
+        </div>
+
+        <h2>Actions</h2>
+        {# Link to your DRF API endpoint for transactions (frontend will consume this) #}
+        <p><a href="{% url 'payments:payment-transaction-list' %}">View Processed Transactions (API Endpoint)</a></p> {# Assuming DRF ViewSet list URL name #}
+        {# Link to your DRF API endpoint for status (frontend will consume this) #}
+        <p><a href="{% url 'payments:quickbooks-status' %}">View Connection Status (API Endpoint)</a></p>
+        {# Link to clear data endpoint (use POST from frontend, but GET link for demo) #}
+        <p><a href="{% url 'payments:clear_data' %}" onclick="return confirm('Are you sure you want to clear all QuickBooks related data and disconnect?');">Clear All QuickBooks Data & Disconnect</a></p>
+        {# Link to re-initiate auth (if needed) #}
+         <p><a href="{% url 'payments:intuit_auth' %}">Reconnect to QuickBooks (if needed)</a></p>
+
+
+    {% else %}
+        <p>QuickBooks Connection Status: <span class="status-disconnected">Not Connected</span></p>
+        <div class="info-box">
+            <p>Click below to connect your QuickBooks Online account.</p>
+            <p>This is required for the app to fetch payment details from your account after receiving webhooks and to use other QuickBooks APIs.</p>
+            <p>Make sure your <code>settings.py</code> and the Redirect URI in the Intuit Developer Portal are configured correctly.</p>
+        </div>
+
+        <h2>Actions</h2>
+        {# Link to initiate the OAuth flow #}
+        <p><a href="{% url 'payments:intuit_auth' %}">Connect to QuickBooks</a></p>
+        {# Link to your DRF API endpoint for status (frontend will consume this) #}
+        <p><a href="{% url 'payments:quickbooks-status' %}">View Connection Status (API Endpoint)</a></p>
+
+    {% endif %}
+
+    <h2>Webhook Configuration</h2>
+    <p>Configure your webhook in the Intuit Developer Portal pointing to:</p>
+    {# Use request.build_absolute_uri in the view context to get the full URL #}
+    {# Pass the webhook URL to the template context from the view #}
+    {% if webhook_url_example %}
+        <p><code>{{ webhook_url_example }}</code></p>
+    {% else %}
+         <p><em>Webhook URL not available (ensure webhook_url_example is passed from view)</em></p>
+    {% endif %}
+    <p>Remember to verify the webhook signature in your webhook view.</p>
+
+</body>
+</html>
