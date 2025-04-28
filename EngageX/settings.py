@@ -235,11 +235,11 @@ else:
     OPENAI_API_KEY = config("OPENAI_API_KEY")
     DEEPGRAM_API_KEY = os.environ["DEEPGRAM_API_KEY"]
     
-    INTUIT_CLIENT_ID = os.environ('INTUIT_CLIENT_ID')
-    INTUIT_CLIENT_SECRET = os.environ('INTUIT_CLIENT_SECRET')
-    INTUIT_REDIRECT_URI = os.environ('INTUIT_REDIRECT_URI')
+    INTUIT_CLIENT_ID = os.environ['INTUIT_CLIENT_ID']
+    INTUIT_CLIENT_SECRET = os.environ['INTUIT_CLIENT_SECRET']
+    INTUIT_REDIRECT_URI = os.environ['NEW_INTUIT_REDIRECT_URI']
     INTUIT_ENVIRONMENT = 'production'
-    INTUIT_WEBHOOK_VERIFIER_TOKEN = os.environ('INTUIT_VERIFIER_TOKEN')
+    INTUIT_WEBHOOK_VERIFIER_TOKEN = os.environ['INTUIT_VERIFIER_TOKEN']
 
     INTUIT_API_BASE_URL = 'https://quickbooks.api.intuit.com' if INTUIT_ENVIRONMENT == 'production' else 'https://sandbox-quickbooks.api.intuit.com'
 
