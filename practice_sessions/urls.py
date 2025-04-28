@@ -12,7 +12,8 @@ from .views import (
     SessionList,
     CompareSessionsView,
     GoalAchievementView,
-PerformanceMetricsComparison,
+    PerformanceMetricsComparison,
+    ImproveExistingSequence, ImproveNewSequence,
 )
 
 router = DefaultRouter()
@@ -61,6 +62,11 @@ urlpatterns = [
     path(
         "goals-and-achievement/",
         GoalAchievementView.as_view(),
-        name="goals-and-achievmente",
+        name="goals-and-achievements",
     ),
+    path("improve-existing-sequence/",ImproveExistingSequence.as_view(),name="improve-existing-sequence"),
+
+path("improve-new-sequence/<str:session_id>/",ImproveNewSequence.as_view(),name="improve-new-sequence"),
+path("improve-new-sequence/",ImproveNewSequence.as_view(),name="sessionlistwithoutsequence"),
+
 ]
