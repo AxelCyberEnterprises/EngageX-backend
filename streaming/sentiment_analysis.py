@@ -525,8 +525,12 @@ def analyze_posture(video_path):
     print(f"analyze_posture called with video_path: {video_path}", flush=True) # Added logging
 
     with ThreadPoolExecutor(max_workers=3) as executor:
-        executor.submit(capture_frames, video_path)
-        executor.submit(process_frames)
+        future_capture = executor.submit(capture_frames, video_path)
+        future_process = executor.submit(process_frames)
+
+        # Wait for both to complete
+        future_capture.result()
+        future_process.result()
 
     # Final results calculation
     with lock:
@@ -612,7 +616,7 @@ def analyze_sentiment(transcript, metrics, posture_data):
 
 
     Audience Emotion:
-      - Select one of these emotions that the audience is feeling most strongly ONLY choose from this list(curiosity, empathy, excitement, laughter, surprise, interested)
+      - Select one of these emotions that the audience is feeling most strongly ONLY choose from this list(uncertain, empathy, excitement, laughter, surprise, interested)
    
     Conviction:
       - Indicates firmness and clarity of beliefs or message. Evaluates how strongly and clearly the speaker presents their beliefs and message. Dependent on volume Volume_score: {metrics["Metrics"]["Volume"]} {metrics["Metrics"]["Volume Rationale"]}, pace_score: {metrics["Scores"]["Pace Score"]} {metrics["Metrics"]["Pace Rationale"]}, pause_score: {metrics["Scores"]["Pause Score"]} {metrics["Metrics"]["Pause Metric Rationale"]} and transcript content
@@ -661,7 +665,7 @@ def analyze_sentiment(transcript, metrics, posture_data):
                         "Audience Emotion": {
                         "type": "string",
                         "enum": [
-                            "curiosity",
+                            "uncertain",
                             "empathy",
                             "excitement",
                             "laughter",

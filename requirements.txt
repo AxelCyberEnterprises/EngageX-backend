@@ -1,4 +1,9 @@
 absl-py==2.2.2
+aenum==3.1.15
+aiofiles==24.1.0
+aiohappyeyeballs==2.6.1
+aiohttp==3.11.18
+aiosignal==1.3.2
 amqp==5.3.1
 annotated-types==0.7.0
 anyio==4.9.0
@@ -25,8 +30,10 @@ contourpy==1.3.1
 cryptography==44.0.2
 cycler==0.12.1
 daphne==4.1.2
+dataclasses-json==0.6.7
 deepgram-sdk==3.10.1
 defusedxml==0.7.1
+deprecation==2.1.0
 distro==1.9.0
 Django==5.2
 django-cors-headers==4.7.0
@@ -35,8 +42,10 @@ djangorestframework==3.16.0
 djangorestframework_simplejwt==5.5.0
 djoser==2.3.1
 drf-yasg==1.21.10
+enum-compat==0.0.3
 flatbuffers==25.2.10
 fonttools==4.57.0
+frozenlist==1.6.0
 google-api-core==2.24.2
 google-api-python-client==2.166.0
 google-auth==2.38.0
@@ -52,15 +61,19 @@ hyperlink==21.0.0
 idna==3.10
 incremental==24.7.2
 inflection==0.5.1
+intuit-oauth==1.2.6
 jax==0.5.3
 jaxlib==0.5.3
 jiter==0.9.0
 jmespath==1.0.1
 kiwisolver==1.4.8
 kombu==5.5.2
+marshmallow==3.26.1
 matplotlib==3.10.1
 mediapipe==0.10.21
 ml_dtypes==0.5.1
+multidict==6.4.3
+mypy-extensions==1.0.0
 numpy==1.26.4
 oauth2client==4.1.3
 oauthlib==3.2.2
@@ -72,6 +85,7 @@ pandas==2.2.3
 pillow==11.1.0
 praat-parselmouth==0.4.5
 prompt_toolkit==3.0.50
+propcache==0.3.1
 proto-plus==1.26.1
 protobuf==4.25.6
 psycopg2-binary==2.9.10
@@ -105,6 +119,7 @@ sqlparse==0.5.3
 tqdm==4.67.1
 Twisted==24.11.0
 txaio==23.1.1
+typing-inspect==0.9.0
 typing-inspection==0.4.0
 typing_extensions==4.13.1
 tzdata==2025.2
@@ -112,4 +127,6 @@ uritemplate==4.1.1
 urllib3==2.3.0
 vine==5.1.0
 wcwidth==0.2.13
+websockets==15.0.1
+yarl==1.20.0
 zope.interface==7.2
