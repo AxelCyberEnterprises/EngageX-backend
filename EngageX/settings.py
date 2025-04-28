@@ -28,7 +28,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = "django-insecure-wfl*mho^tyaghxhwx4p^2u8)yl#gw+^ub&(=!m#=!x3rrqo1og"
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = False
 
 ALLOWED_HOSTS = [".elasticbeanstalk.com", "api.engagexai.io", "*"]
 
@@ -207,11 +207,14 @@ if "RDS_HOSTNAME" in os.environ:
     AWS_SECRET_ACCESS_KEY = os.environ("AWS_SECRET_ACCESS_KEY")
     AWS_SES_REGION = os.environ("AWS_SES_REGION", "us-west-1")
 
-    INTUIT_VERIFIER_TOKEN = os.environ["INTUIT_VERIFIER_TOKEN"]
-    INTUIT_CLIENT_ID = os.environ["INTUIT_CLIENT_ID"]
-    INTUIT_CLIENT_SECRET = os.environ["INTUIT_CLIENT_SECRET"]
-    INTUIT_REDIRECT_URI = os.environ["INTUIT_REDIRECT_URI"]
-    INTUIT_ENVIRONMENT = os.environ["INTUIT_ENVIRONMENT"]
+    INTUIT_CLIENT_ID = os.environ('INTUIT_CLIENT_ID')
+    INTUIT_CLIENT_SECRET = os.environ('INTUIT_CLIENT_SECRET')
+    INTUIT_REDIRECT_URI = os.environ('NEW_INTUIT_REDIRECT_URI')
+    INTUIT_ENVIRONMENT = 'production'
+    INTUIT_WEBHOOK_VERIFIER_TOKEN = os.environ('INTUIT_VERIFIER_TOKEN')
+
+    INTUIT_API_BASE_URL = 'https://quickbooks.api.intuit.com' if INTUIT_ENVIRONMENT == 'production' else 'https://sandbox-quickbooks.api.intuit.com'
+
 
 else:
     # Local development settings (PostgreSQL)
@@ -232,11 +235,13 @@ else:
     OPENAI_API_KEY = config("OPENAI_API_KEY")
     DEEPGRAM_API_KEY = os.environ["DEEPGRAM_API_KEY"]
     
-    INTUIT_VERIFIER_TOKEN = os.environ["INTUIT_VERIFIER_TOKEN"]
-    INTUIT_CLIENT_ID = os.environ["INTUIT_CLIENT_ID"]
-    INTUIT_CLIENT_SECRET = os.environ["INTUIT_CLIENT_SECRET"]
-    INTUIT_REDIRECT_URI = os.environ["INTUIT_REDIRECT_URI"]
-    INTUIT_ENVIRONMENT = os.environ["INTUIT_ENVIRONMENT"]
+    INTUIT_CLIENT_ID = os.environ('INTUIT_CLIENT_ID')
+    INTUIT_CLIENT_SECRET = os.environ('INTUIT_CLIENT_SECRET')
+    INTUIT_REDIRECT_URI = os.environ('INTUIT_REDIRECT_URI')
+    INTUIT_ENVIRONMENT = 'production'
+    INTUIT_WEBHOOK_VERIFIER_TOKEN = os.environ('INTUIT_VERIFIER_TOKEN')
+
+    INTUIT_API_BASE_URL = 'https://quickbooks.api.intuit.com' if INTUIT_ENVIRONMENT == 'production' else 'https://sandbox-quickbooks.api.intuit.com'
 
 
 # Password validation

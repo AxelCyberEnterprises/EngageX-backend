@@ -37,23 +37,50 @@ TIER_CREDITS = {
 }
 
 
-INTUIT_API_BASE_URL = "https://sandbox-quickbooks.api.intuit.com" 
+# INTUIT_API_BASE_URL = "https://sandbox-quickbooks.api.intuit.com" 
+# INTUIT_BASE_URL = "https://quickbooks.api.intuit.com"
+
 
 def get_quickbooks_token_obj(realm_id=None):
     """Retrieves the QuickBooksToken model instance from the database."""
+    print(f"Step 'get_quickbooks_token_obj': Attempting to load token. Requested realm_id: {realm_id}")
     try:
-        token = QuickBooksToken.load()
+        # Use the .load() method from your SingletonModel
+        # This should get or create the instance with pk=1_URL
+        token, created = QuickBooksToken.load()
+        print(f"Step 'get_quickbooks_token_obj': QuickBooksToken.load() returned: {token}")
+
+        # Check the values of the loaded token object's fields
+        if token:
+            print(f"Step 'get_quickbooks_token_obj': Loaded token details:")
+            print(f"  pk: {token.pk}")
+            print(f"  access_token (first 10): {token.access_token[:10] if token.access_token else 'None/Empty'}")
+            print(f"  refresh_token (first 10): {token.refresh_token[:10] if token.refresh_token else 'None/Empty'}")
+            print(f"  expires_at: {token.expires_at}")
+            print(f"  realm_id: {token.realm_id}")
+            print(f"  created_at: {token.created_at}")
+            print(f"  updated_at: {token.updated_at}")
+        else:
+             print("Step 'get_quickbooks_token_obj': QuickBooksToken.load() returned None.")
+             return None
+
+
+        # Now perform the checks to determine if it's a "valid" token for use
         if token and token.access_token and token.refresh_token and token.realm_id:
-            if realm_id and token.realm_id != str(realm_id):
-                print(f"Django Util: Realm ID mismatch. Expected {realm_id}, found {token.realm_id}.")
-                return None
-            print(f"Django Util: QuickBooks token data retrieved from DB for Realm ID: {token.realm_id}")
+            print("Step 'get_quickbooks_token_obj': Loaded token object has required fields.")
+            # Check if the loaded token is for the requested realm if realm_id is provided
+            # Convert realm_id to string for comparison as it's CharField
+            if realm_id and str(token.realm_id) != str(realm_id):
+                 print(f"Django Util: Realm ID mismatch. Expected {realm_id}, found {token.realm_id}. Returning None.")
+                 return None # Return None if realm ID doesn't match requested
+            print(f"Django Util: QuickBooks token data retrieved from DB for Realm ID: {token.realm_id}. Returning token.")
             return token
         else:
-            print("Django Util: No valid QuickBooks token data found in DB.")
+            # If .load() returned an object but it's incomplete (no tokens/realm)
+            print("Django Util: Loaded token object is incomplete (missing access_token, refresh_token, or realm_id). Returning None.")
             return None
     except Exception as e:
-        print(f"Django Util: Error retrieving QuickBooks token data: {e}")
+        print(f"Django Util: !!! ERROR LOADING TOKEN OBJECT FROM DATABASE: {e}")
         return None
 
 
@@ -62,14 +89,13 @@ def save_quickbooks_token_obj(access_token, refresh_token, expires_in, realm_id)
     try:
         token, created = QuickBooksToken.load()
 
-        token.access_token = access_token
-        token.refresh_token = refresh_token
-
-        token.expires_at = django_timezone.now() - timedelta(seconds=expires_in)
-        token.realm_id = realm_id
+        token.access_token=access_token
+        token.refresh_token=refresh_token
+        token.expires_at=django_timezone.now() + timedelta(seconds=expires_in)
+        token.realm_id=realm_id
 
         token.save()
-        print(f"Django Util: QuickBooks token data saved/updated in DB for Realm ID: {realm_id}")
+        print(f"QuickBooks token saved/updated for realm {realm_id} (created={created})")
         return token
     except Exception as e:
         print(f"Django Util: Error saving QuickBooks token data: {e}")
@@ -144,6 +170,8 @@ def clear_db_data():
     
 
 # --- INTUIT HELPERS ---- #
+# INTUIT_REDIRECT_URI="https://abb6-2a02-c7c-c476-4f00-a85e-243e-545b-2875.ngrok-free.app/payments/oauth_callback"
+# INTUIT_REDIRECT_URI="https://main.d2wwdi7x8g70xe.amplifyapp.com/payments/oauth_callback"
 
 
 def get_auth_client():
@@ -151,7 +179,7 @@ def get_auth_client():
     return AuthClient(
         client_id=settings.INTUIT_CLIENT_ID,
         client_secret=settings.INTUIT_CLIENT_SECRET,
-        redirect_uri=settings.INTUIT_REDIRECT_URI,
+        redirect_uri=settings.NEW_INTUIT_REDIRECT_URI,
         environment=settings.INTUIT_ENVIRONMENT
     )
 
@@ -302,7 +330,7 @@ def get_payment_details_from_intuit(token_obj, realm_id, payment_id):
         print("Django Util: No valid access token available AFTER proactive refresh for API call.")
         return None
 
-    url = f"{INTUIT_API_BASE_URL}/v3/company/{realm_id}/payment/{payment_id}"
+    url = f"{settings.INTUIT_API_BASE_URL}/v3/company/{realm_id}/payment/{payment_id}"
     response_data = make_api_call(token_obj, url) # Pass token_obj to make_api_call
     return response_data.get("Payment") if response_data else None
 
@@ -320,7 +348,7 @@ def get_customer_details_from_intuit(token_obj, realm_id, customer_id):
         print("Django Util: No valid access token available AFTER proactive refresh for Customer API call.")
         return None
 
-    url = f"{INTUIT_API_BASE_URL}/v3/company/{realm_id}/customer/{customer_id}?minorversion=75"
+    url = f"{settings.INTUIT_API_BASE_URL}/v3/company/{realm_id}/customer/{customer_id}?minorversion=75"
     response_data = make_api_call(token_obj, url)
     return response_data.get("Customer") if response_data else None
 

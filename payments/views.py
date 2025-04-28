@@ -73,62 +73,62 @@ TIER_CREDITS = {
 #   "time": "2014-12-30T10:26:03.668-08:00"
 # }
 
-class PaymentCallbackView(APIView):
-    """
-    Endpoint to be called after a payment is processed.
+# class PaymentCallbackView(APIView):
+#     """
+#     Endpoint to be called after a payment is processed.
     
-    Expected payload:
-    {
-       "transaction_id": "ABC123",
-       "status": "success",         // or "failed"
-       "tier": "starter",           // one of: "starter", "growth", "pro", "ultimate"
-       "user_email": "user@example.com",
-       "gateway_response": { ... }
-    }
-    """
-    permission_classes = [IsAuthenticated]
+#     Expected payload:
+#     {
+#        "transaction_id": "ABC123",
+#        "status": "success",         // or "failed"
+#        "tier": "starter",           // one of: "starter", "growth", "pro", "ultimate"
+#        "user_email": "user@example.com",
+#        "gateway_response": { ... }
+#     }
+#     """
+#     permission_classes = [IsAuthenticated]
 
-    def post(self, request):
-        data = request.data
-        transaction_id = data.get("Payment", {}).get("Id")
-        amount = data.get("TotalAmt")
-        transaction_date = data.get("TxnDate")
-        status_str = "success" if data.get("ProcessPayment", False) else "failed"
-        tier = data.get("tier")
-        user_email = data.get("user_email")
-        gateway_response = data.get("gateway_response", {})
+#     def post(self, request):
+#         data = request.data
+#         transaction_id = data.get("Payment", {}).get("Id")
+#         amount = data.get("TotalAmt")
+#         transaction_date = data.get("TxnDate")
+#         status_str = "success" if data.get("ProcessPayment", False) else "failed"
+#         tier = data.get("tier")
+#         user_email = data.get("user_email")
+#         gateway_response = data.get("gateway_response", {})
 
-        # Validate required fields
-        if not transaction_id or not status_str or not tier:
-            return Response({"error": "Missing required fields."}, status=status.HTTP_400_BAD_REQUEST)
+#         # Validate required fields
+#         if not transaction_id or not status_str or not tier:
+#             return Response({"error": "Missing required fields."}, status=status.HTTP_400_BAD_REQUEST)
         
-        tier = tier.lower()
-        if tier not in TIER_CREDITS:
-            return Response({"error": "Invalid tier specified."}, status=status.HTTP_400_BAD_REQUEST)
+#         tier = tier.lower()
+#         if tier not in TIER_CREDITS:
+#             return Response({"error": "Invalid tier specified."}, status=status.HTTP_400_BAD_REQUEST)
         
-        # Determine credits based on tier if payment succeeded; else, no credits.
-        credits_to_add = TIER_CREDITS[tier] if status_str.lower() == "success" else 0
+#         # Determine credits based on tier if payment succeeded; else, no credits.
+#         credits_to_add = TIER_CREDITS[tier] if status_str.lower() == "success" else 0
 
 
-        # Create or update the PaymentTransaction record.
-        transaction, created = PaymentTransaction.objects.update_or_create(
-            transaction_id=transaction_id,
-            defaults={
-                "status": status_str.lower(),
-                "gateway_response": gateway_response,
-                "amount": amount,
-                "credits": credits_to_add
-            }
-        )
+#         # Create or update the PaymentTransaction record.
+#         transaction, created = PaymentTransaction.objects.update_or_create(
+#             transaction_id=transaction_id,
+#             defaults={
+#                 "status": status_str.lower(),
+#                 "gateway_response": gateway_response,
+#                 "amount": amount,
+#                 "credits": credits_to_add
+#             }
+#         )
 
-        # On successful payment, update the user's available credits.
-        if status_str.lower() == "success":
-            profile = user_email.userprofile
-            profile.available_credits += credits_to_add
-            profile.save()
+#         # On successful payment, update the user's available credits.
+#         if status_str.lower() == "success":
+#             profile = user_email.userprofile
+#             profile.available_credits += credits_to_add
+#             profile.save()
         
-        serializer = PaymentTransactionSerializer(transaction)
-        return Response(serializer.data, status=status.HTTP_200_OK)
+#         serializer = PaymentTransactionSerializer(transaction)
+#         return Response(serializer.data, status=status.HTTP_200_OK)
         
 
 # def intuit_auth(request):
@@ -295,8 +295,8 @@ def intuit_index(request):
     expires_at = token.expires_at if token else None
 
     # Get the webhook URL to display in the template
-    # Assuming your webhook URL name is 'payments:payment-callback' as per your urls.py
-    webhook_url_example = request.build_absolute_uri(reverse('payments:payment-callback'))
+    # Assuming your webhook URL name is 'payments:payment_callback' as per your urls.py
+    webhook_url_example = request.build_absolute_uri(reverse('payments:payment_callback'))
 
 
     context = {
@@ -338,14 +338,13 @@ def intuit_auth(request):
     print(f"Step 'intuit_auth': Generated Authorization URL: {auth_url}")
     print(f"Step 'intuit_auth': Redirecting user to Intuit for authorization...")
 
-    # Redirect the user's browser to the generated authorization URL.
     return redirect(auth_url)
 
 
 # This view handles the redirect from Intuit after the user has granted or denied authorization.
 # The URL path for this view MUST exactly match the Redirect URI configured in your Intuit Developer Portal.
 @require_http_methods(["GET"]) # This view should only respond to GET requests
-def intuit_oauth_callback(request):
+def oauth_callback(request):
     """Handles the redirect from Intuit after user authorization."""
     print("Step 'oauth_callback': Received redirect from Intuit.")
 
@@ -382,7 +381,7 @@ def intuit_oauth_callback(request):
             'error': error,
             'error_description': error_description,
             # Use the URL name for your QuickBooks status API endpoint or a frontend route
-            'index_url_name': 'payments:quickbooks-status'
+            'index_url_name': 'payments:quickbooks_status'
         }, status=400) # Use a 400 status code for client errors
 
     # --- Process Successful Callback ---
@@ -397,7 +396,7 @@ def intuit_oauth_callback(request):
             'error': 'Missing parameters',
             'error_description': 'Did not receive auth code or realmId from Intuit. Check Redirect URI configuration in Intuit Developer Portal.',
             'received_params': request.GET, # Include received GET params for debugging
-            'index_url_name': 'payments:quickbooks-status'
+            'index_url_name': 'payments:quickbooks_status'
         }, status=400)
 
 
@@ -421,6 +420,15 @@ def intuit_oauth_callback(request):
         # Use your utility function to save or update the received tokens in your database model (QuickBooksToken).
         # This function should handle the logic of finding the single token row (or creating it)
         # and updating its fields.
+        # new_token_data = {
+        #     'access_token': auth_client.access_token,
+        #     'refresh_token': auth_client.refresh_token,
+        #     'expires_at': auth_client.expires_in, # Use expires_in (seconds) from the client
+        #     'realm_id': auth_client.realm_id # Use realm_id from the client
+        # }
+        # saved_token = save_quickbooks_token_obj(
+        #     **new_token_data 
+        # )
         saved_token = save_quickbooks_token_obj(
             auth_client.access_token,
             auth_client.refresh_token,
@@ -433,7 +441,7 @@ def intuit_oauth_callback(request):
             # Redirect the user back to your application's frontend or a status page after successful connection.
             # Redirecting to a DRF status API endpoint might not be the final user experience,
             # but it's useful for confirming the connection status.
-            return redirect(reverse('payments:quickbooks-status')) # Redirect to your status API endpoint
+            return redirect(reverse('payments:quickbooks_status')) # Redirect to your status API endpoint
 
         else:
             print("Step 'oauth_callback': Failed to save tokens to database.")
@@ -441,7 +449,7 @@ def intuit_oauth_callback(request):
             return render(request, 'payments/oauth_error.html', {
                 'error': 'Token Save Failed',
                 'error_description': 'Successfully received tokens from Intuit, but failed to save them to the database.',
-                'index_url_name': 'payments:quickbooks-status'
+                'index_url_name': 'payments:quickbooks_status'
             }, status=500)
 
 
@@ -451,7 +459,7 @@ def intuit_oauth_callback(request):
         return render(request, 'payments/oauth_error.html', {
             'error': 'Intuit Token Exchange Error',
             'error_description': str(e), # Convert exception to string for display
-            'index_url_name': 'payments:quickbooks-status'
+            'index_url_name': 'payments:quickbooks_status'
         }, status=500) # Use a 500 status code for server-side errors like failed exchange
     except Exception as e:
         print(f"Step 'oauth_callback': General Error during token exchange: {e}")
@@ -459,7 +467,7 @@ def intuit_oauth_callback(request):
         return render(request, 'payments/oauth_error.html', {
             'error': 'Token Exchange Failed',
             'error_description': str(e), # Convert exception to string for display
-             'index_url_name': 'payments:quickbooks-status'
+             'index_url_name': 'payments:quickbooks_status'
         }, status=500)
     
 
@@ -628,7 +636,7 @@ from django.utils.decorators import method_decorator # For applying decorators t
 # from rest_framework.views import APIView
 # from rest_framework.response import Response
 # from rest_framework import status # Use DRF status codes
-# from rest_framework.permissions import IsAuthenticated, IsAdminUser, AllowAny # DRF permission classes
+from rest_framework.permissions import IsAuthenticated, IsAdminUser, AllowAny # DRF permission classes
 from rest_framework.request import Request # Import DRF Request object
 # from rest_framework import viewsets # If using ViewSets elsewhere
 
@@ -883,6 +891,9 @@ class QuickbooksStatusAPIView(APIView):
     """
     API view to get the current QuickBooks connection status.
     """
+
+    permission_classes = [AllowAny]
+
     def get(self, request, *args, **kwargs):
         print("Step 'QuickbooksStatusAPIView': Getting QuickBooks connection status.")
         # Retrieve the QuickBooks token object from the database
@@ -897,13 +908,10 @@ class QuickbooksStatusAPIView(APIView):
         status_data = {
             'is_connected': is_connected,
             'realm_id': token.realm_id if token else None,
-            # Format datetime for JSON using isoformat()
             'expires_at': expires_at.isoformat() if expires_at else None,
-            # Add URLs for frontend consumption using reverse() and build_absolute_uri()
             'auth_initiate_url': request.build_absolute_uri(reverse('payments:intuit_auth')),
             'clear_data_url': request.build_absolute_uri(reverse('payments:clear_data')),
-            # Use the correct URL name for the webhook endpoint
-            'webhook_url_example': request.build_absolute_uri(reverse('payments:payment-callback')),
+            'webhook_url_example': request.build_absolute_uri(reverse('payments:payment_callback')),
             'token_storage_info': 'database models', # Indicate where tokens are stored
         }
 
@@ -915,6 +923,7 @@ class QuickbooksStatusAPIView(APIView):
 class TransactionListView(APIView):
     # Restrict to authenticated staff users
     permission_classes = [IsAuthenticated, IsAdminUser]
+    # permission_classes = [AllowAny]
 
     def get(self, request: Request, *args, **kwargs):
         print("Django DRF View (List): Accessing processed transactions from DB.")
@@ -933,7 +942,7 @@ class TransactionListView(APIView):
         # Return a DRF Response
         return Response({
             "processed_transactions": transactions,
-            "customer_credits": credits_data, # Use credits_data directly
+            "customer_credits": credits_data,
             "token_status": "Loaded from DB" if token else "Not Loaded (No token in DB)",
             "connected_realm": token.realm_id if token else "None"
         }, status=status.HTTP_200_OK)

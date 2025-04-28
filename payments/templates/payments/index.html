@@ -29,7 +29,7 @@
         {# Link to your DRF API endpoint for transactions (frontend will consume this) #}
         <p><a href="{% url 'payments:payment-transaction-list' %}">View Processed Transactions (API Endpoint)</a></p> {# Assuming DRF ViewSet list URL name #}
         {# Link to your DRF API endpoint for status (frontend will consume this) #}
-        <p><a href="{% url 'payments:quickbooks-status' %}">View Connection Status (API Endpoint)</a></p>
+        <p><a href="{% url 'payments:quickbooks_status' %}">View Connection Status (API Endpoint)</a></p>
         {# Link to clear data endpoint (use POST from frontend, but GET link for demo) #}
         <p><a href="{% url 'payments:clear_data' %}" onclick="return confirm('Are you sure you want to clear all QuickBooks related data and disconnect?');">Clear All QuickBooks Data & Disconnect</a></p>
         {# Link to re-initiate auth (if needed) #}
@@ -48,7 +48,7 @@
         {# Link to initiate the OAuth flow #}
         <p><a href="{% url 'payments:intuit_auth' %}">Connect to QuickBooks</a></p>
         {# Link to your DRF API endpoint for status (frontend will consume this) #}
-        <p><a href="{% url 'payments:quickbooks-status' %}">View Connection Status (API Endpoint)</a></p>
+        <p><a href="{% url 'payments:quickbooks_status' %}">View Connection Status (API Endpoint)</a></p>
 
     {% endif %}
 
