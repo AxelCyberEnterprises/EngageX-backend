@@ -2,6 +2,9 @@
 # This version eliminates race conditions by removing shared mutable state and making each operation self-contained
 #################################################################################################################
 
+### Works but is slow on deployed (probably due to direct and excessive db querying) ###
+
+
 import asyncio
 import platform
 
