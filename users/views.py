@@ -599,6 +599,7 @@ class UserProfileViewSet(viewsets.ModelViewSet):
                 return UserProfile.objects.all()
 
             elif user.user_profile.is_user():
+                print(UserProfile.objects.filter(user=user))
                 return UserProfile.objects.filter(user=user)
 
         # Default: Return an empty queryset for non-admin, non-presenter, non-coach and users without userprofile
@@ -607,7 +608,7 @@ class UserProfileViewSet(viewsets.ModelViewSet):
     # def list(self, request, *args, **kwargs):
     #     queryset = self.get_queryset()
     #     serializer = self.get_serializer(queryset, many=True)
-
+    #
     #     return Response(serializer.data)
 
 

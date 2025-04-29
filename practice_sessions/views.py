@@ -10,6 +10,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework.exceptions import PermissionDenied
+from django.core.files.uploadedfile import UploadedFile
 
 from django.db.models.functions import Round
 from django.conf import settings
@@ -194,7 +195,22 @@ def generate_slide_summary(pdf_path):
 
     return result
 
+def format_timedelta_12h(td):
+    # Get the total seconds from the timedelta
+    total_seconds = int(td.total_seconds())
 
+    # Calculate hours, minutes, and seconds
+    hours, remainder = divmod(total_seconds, 3600)
+    minutes, seconds = divmod(remainder, 60)
+
+    # If hours are less than 12, we keep it as 00:xx:xx format
+    if hours >= 12:
+        hours = hours % 12  # Convert to 12-hour clock
+        if hours == 0:
+            hours = 12  # If hours % 12 is 0, show as 12 (since 12:xx:xx is correct for noon/midnight)
+
+    # If the hours are less than 12, we leave the format as is (00:xx:xx)
+    return f"{hours:02}:{minutes:02}:{seconds:02}"
 class PracticeSequenceViewSet(viewsets.ModelViewSet):
     """
     ViewSet for handling practice session sequences.
@@ -528,7 +544,6 @@ class SessionDashboardView(APIView):
 #                 },
 #                 status=status.HTTP_400_BAD_REQUEST,
 #             )
-from django.core.files.uploadedfile import UploadedFile
 
 
 class UploadSessionSlidesView(APIView):
@@ -790,6 +805,7 @@ class ChunkSentimentAnalysisViewSet(viewsets.ModelViewSet):
         serializer.save()
 
 
+
 class SessionReportView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -914,7 +930,7 @@ class SessionReportView(APIView):
     def post(self, request, session_id):
         print(f"Starting report generation and summary for session ID: {session_id}")
         duration_seconds = request.data.get("duration")
-
+        slide_specific_seconds=request.data.get("slide_specific_timing")
         try:
             session = get_object_or_404(PracticeSession, id=session_id, user=request.user)
             print(f"Session found: {session.session_name}")
@@ -930,6 +946,26 @@ class SessionReportView(APIView):
                     print(f"Invalid duration value received: {duration_seconds}")
                 except Exception as e:
                     print(f"Error saving duration: {e}")
+
+            if slide_specific_seconds is not None:
+                slide_specific = {}
+                for key, value in slide_specific_seconds.items():
+                    try:
+                        seconds = int(value)
+                        td = timedelta(seconds=seconds)
+                        formatted_time = format_timedelta_12h(td)
+                        slide_specific[key] = formatted_time
+                    except (ValueError, TypeError):
+                        print(f"Invalid value for slide '{key}': {value}")
+                        continue
+                session.slide_specific_timing = slide_specific
+                session.save()
+                print(f"Session Slide updated to: {session.slide_specific_timing}")
+
+
+
+
+
 
             # --- Aggregate Chunk Sentiment Analysis Data ---
             print("Aggregating chunk sentiment analysis data...")
@@ -1135,6 +1171,7 @@ class SessionReportView(APIView):
                 "session_id": session.id,
                 "session_name": session.session_name,
                 "duration": str(session.duration) if session.duration else None,
+                "slide_specific_timing":session.slide_specific_timing if session.slide_specific_timing else {},
                 "aggregated_scores": {
                     "volume": round(session.volume or 0),
                     "pitch_variability": round(session.pitch_variability or 0),
