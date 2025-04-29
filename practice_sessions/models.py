@@ -118,6 +118,7 @@ class PracticeSession(models.Model):
         ("conference_room", "Conference Room"),
         ("board_room_1", "Board Room 1"),
         ("board_room_2", "Board Room 2"),
+        ("pitch_studio","pitch_studio"),
     ]
     virtual_environment = models.CharField(
         max_length=50,
@@ -247,6 +248,8 @@ class PracticeSession(models.Model):
     visual_communication = models.FloatField(
         default=0, help_text=""
     )
+    created_at = models.DateField(auto_now_add=True)
+    updated_at = models.DateField(auto_now=True)
 
     def __str__(self):
         return f"{self.session_name} by {self.user.email}"

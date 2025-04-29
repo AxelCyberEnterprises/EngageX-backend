@@ -1,0 +1,38 @@
+{# payments/templates/payments/oauth_error.html #}
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Intuit Connection Failed</title>
+    <style>
+        body { font-family: sans-serif; margin: 20px; line-height: 1.6; }
+        h1 { color: red; }
+        code { background-color: #f0f0f0; padding: 2px 5px; border-radius: 4px; font-family: Consolas, Monaco, 'Andale Mono', 'Ubuntu Mono', monospace; }
+        a { color: #006491; text-decoration: none; }
+        a:hover { text-decoration: underline; }
+        pre { background-color: #eee; padding: 10px; border-radius: 5px; overflow-x: auto; }
+    </style>
+</head>
+<body>
+    <h1>Intuit QuickBooks Connection Failed</h1>
+    <p>An error occurred during the connection process:</p>
+
+    {% if error %}
+        <p><strong>Error:</strong> {{ error }}</p>
+    {% endif %}
+
+    {% if error_description %}
+        <p><strong>Details:</strong> {{ error_description }}</p>
+    {% endif %}
+
+    {% if received_params %}
+        {# Optional: Display received parameters for debugging during development #}
+        <h2>Received Parameters:</h2>
+        <pre>{{ received_params }}</pre>
+    {% endif %}
+
+    {# Link back to a relevant page - maybe a frontend route or the status API #}
+    {# Using the status API endpoint name here, frontend would handle displaying it #}
+    <p><a href="{% url 'payments:intuit_index' %}">Back to Status Page</a></p>
+
+</body>
+</html>

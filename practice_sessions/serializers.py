@@ -1,8 +1,12 @@
+from django.db.models import CharField
 from rest_framework import serializers
 from rest_framework.exceptions import  ValidationError
 from django.db import transaction
 
 from datetime import timedelta
+
+from rest_framework.fields import DictField
+
 from .models import (
     PracticeSession,
     PracticeSequence,
@@ -152,3 +156,4 @@ class ChunkSentimentAnalysisSerializer(serializers.ModelSerializer):
 
 class SessionReportSerializer(serializers.Serializer):
     duration = serializers.CharField(allow_null=True, allow_blank=True)
+    slide_specific_timing = DictField( allow_empty=True)

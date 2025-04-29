@@ -335,6 +335,12 @@ class CustomTokenCreateView(TokenCreateView):
             serializer.is_valid(raise_exception=True)
             token = serializer.validated_data["auth_token"]
 
+            # First login logic
+            first_login = not user.has_logged_in
+            if first_login:
+                user.has_logged_in = True
+                user.save(update_fields=["has_logged_in"])
+
             response_data = {
                 "status": "success",
                 "message": "Login successful.",
@@ -345,6 +351,7 @@ class CustomTokenCreateView(TokenCreateView):
                     "first_name": user.first_name,
                     "last_name": user.last_name,
                     "is_admin": user.is_superuser,
+                    "first_login": first_login,
                 },
             }
             return Response(response_data, status=status.HTTP_200_OK)
@@ -592,6 +599,7 @@ class UserProfileViewSet(viewsets.ModelViewSet):
                 return UserProfile.objects.all()
 
             elif user.user_profile.is_user():
+                print(UserProfile.objects.filter(user=user))
                 return UserProfile.objects.filter(user=user)
 
         # Default: Return an empty queryset for non-admin, non-presenter, non-coach and users without userprofile
@@ -600,7 +608,7 @@ class UserProfileViewSet(viewsets.ModelViewSet):
     # def list(self, request, *args, **kwargs):
     #     queryset = self.get_queryset()
     #     serializer = self.get_serializer(queryset, many=True)
-
+    #
     #     return Response(serializer.data)
 
 
@@ -774,6 +782,12 @@ class GoogleLoginView(APIView):
             )
             user_profile.save()
 
+            # First login logic for social login
+            first_login = not user.has_logged_in
+            if first_login:
+                user.has_logged_in = True
+                user.save(update_fields=["has_logged_in"])
+
             print("Token generated:", token.key)
 
             return Response(
@@ -788,6 +802,7 @@ class GoogleLoginView(APIView):
                         # "profile_picture": user_profile.profile_picture,
                         "gender": user_profile.gender,
                         "language_preference": user_profile.language_preference,
+                        "first_login": first_login,
                     },
                 },
                 status=status.HTTP_200_OK,

@@ -36,6 +36,8 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
         max_length=6, blank=True, null=True
     )  # To store the 6-digit code
 
+    has_logged_in = models.BooleanField(default=False, help_text="Tracks if the user has logged in at least once.")
+
     objects = CustomUserManager()
 
     USERNAME_FIELD = "email"
@@ -96,16 +98,15 @@ class UserProfile(models.Model):
     ]
     role = models.CharField(max_length=20, choices=ROLE_CHOICES, default=USER)
 
-    PUBLIC_SPEAKING = "public_speaking"
-    PITCH = "pitch"
-    PRESENTING = "presenting"
+    # Onboarding fields updated to match UI
     PURPOSE_CHOICES = [
-        (PUBLIC_SPEAKING, "Public_speaking"),
-        (PITCH, "Pitch"),
-        (PRESENTING, "Presenting"),
+        ("pitch", "Pitch"),
+        ("present", "Present"),
+        ("speak_storytelling", "Speak/Storytelling"),
+        ("interview", "Interview"),
     ]
     purpose = models.CharField(
-        max_length=20, choices=PURPOSE_CHOICES, default=PUBLIC_SPEAKING
+        max_length=30, choices=PURPOSE_CHOICES, blank=True, null=True
     )
 
     def is_admin(self):
@@ -120,11 +121,12 @@ class UserProfile(models.Model):
     # New signup field: user intent, now as a choice field.
     INTENT_CHOICES = [
         ("early", "Early Career Professional"),
-        ("mid", "Mid Level Professional"),
-        ("executive", "Executive"),
-        ("c_suite", "C-Suite"),
-        ("athlete", "Athlete"),
-        ("entrepreneur", "Entrepreneur"),
+        ("mid", "Mid-level Professionals"),
+        ("sales", "Sales Professionals"),
+        ("c_suite", "C-suites"),
+        ("entrepreneur", "Entrepreneurs"),
+        ("athlete", "Major League Sports Athlete"),
+        ("executive", "Major League Sports Executive"),
     ]
     user_intent = models.CharField(
         max_length=50,
@@ -143,6 +145,14 @@ class UserProfile(models.Model):
     )
 
     # Additional profile fields.
+    quickbooks_customer_id = models.CharField(
+        max_length=100,
+        blank=True,
+        null=True,
+        unique=True,
+        help_text="QuickBooks Customer ID linked to this user."
+    )
+
     country = models.CharField(
         max_length=100, blank=True, null=True, help_text="Country of the user."
     )

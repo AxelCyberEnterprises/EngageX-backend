@@ -3,3 +3,4 @@ venv/
 *.pyc
 /migrations
 testdata.txt
+file_upload.py

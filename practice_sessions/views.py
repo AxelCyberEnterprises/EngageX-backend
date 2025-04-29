@@ -2,6 +2,7 @@ import base64
 import concurrent.futures
 
 import openai
+from requests import session
 from rest_framework import viewsets, status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.decorators import action
@@ -9,6 +10,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework.exceptions import PermissionDenied
+from django.core.files.uploadedfile import UploadedFile
 
 from django.db.models.functions import Round
 from django.conf import settings
@@ -193,7 +195,22 @@ def generate_slide_summary(pdf_path):
 
     return result
 
+def format_timedelta_12h(td):
+    # Get the total seconds from the timedelta
+    total_seconds = int(td.total_seconds())
 
+    # Calculate hours, minutes, and seconds
+    hours, remainder = divmod(total_seconds, 3600)
+    minutes, seconds = divmod(remainder, 60)
+
+    # If hours are less than 12, we keep it as 00:xx:xx format
+    if hours >= 12:
+        hours = hours % 12  # Convert to 12-hour clock
+        if hours == 0:
+            hours = 12  # If hours % 12 is 0, show as 12 (since 12:xx:xx is correct for noon/midnight)
+
+    # If the hours are less than 12, we leave the format as is (00:xx:xx)
+    return f"{hours:02}:{minutes:02}:{seconds:02}"
 class PracticeSequenceViewSet(viewsets.ModelViewSet):
     """
     ViewSet for handling practice session sequences.
@@ -389,7 +406,8 @@ class SessionDashboardView(APIView):
             # User growth and activity
             today_new_users_count = User.objects.filter(date_joined__date=today).count()
             yesterday_new_users_count = User.objects.filter(date_joined__date=yesterday).count()
-            user_growth_percentage_difference = self.calculate_percentage_difference(today_new_users_count, yesterday_new_users_count)
+            user_growth_percentage_difference = self.calculate_percentage_difference(today_new_users_count,
+                                                                                     yesterday_new_users_count)
 
             active_users_count = PracticeSession.objects.values("user").distinct().count()
             total_users_count = User.objects.count()
@@ -423,7 +441,6 @@ class SessionDashboardView(APIView):
             fields = [
                 "vocal_variety",
                 "body_language",
-                "gestures_score_for_body_language",
                 "structure_and_clarity",
                 "overall_captured_impact",
                 "transformative_communication",
@@ -463,7 +480,7 @@ class SessionDashboardView(APIView):
                     "start_time": chunk.chunk.start_time if chunk.chunk.start_time is not None else 0,
                     "end_time": chunk.chunk.end_time if chunk.chunk.end_time is not None else 0,
                     "impact": chunk.impact if chunk.impact is not None else 0,
-                    "trigger_reponse": chunk.trigger_response if chunk.trigger_response is not None else 0,
+                    "trigger_response": chunk.trigger_response if chunk.trigger_response is not None else 0,
                     "conviction": chunk.conviction if chunk.conviction is not None else 0,
                 })
 
@@ -474,6 +491,7 @@ class SessionDashboardView(APIView):
                 "goals_and_achievement": dict(goals),
             }
         return Response(data, status=status.HTTP_200_OK)
+
     def calculate_percentage_difference(self, current_value, previous_value):
         if previous_value == 0:
             return 100.0 if current_value > 0 else 0.0
@@ -526,7 +544,6 @@ class SessionDashboardView(APIView):
 #                 },
 #                 status=status.HTTP_400_BAD_REQUEST,
 #             )
-from django.core.files.uploadedfile import UploadedFile
 
 
 class UploadSessionSlidesView(APIView):
@@ -744,135 +761,6 @@ class UploadSessionSlidesView(APIView):
             )
 
 
-class ChunkSentimentAnalysisView(APIView):
-    """
-    Calculates Averages of Scores and generate summary
-    """
-
-    permission_classes = [IsAuthenticated]
-
-    def generate_full_summary(self, session_id):
-        """Creates a cohesive summary for Strengths, Improvements, and Feedback."""
-        client = OpenAI(api_key=settings.OPENAI_API_KEY)
-
-        general_feedback_summary = ChunkSentimentAnalysis.objects.filter(
-            chunk__session__id=session_id
-        ).values_list("general_feedback_summary", flat=True)
-
-        combined_feedback = " ".join([g for g in general_feedback_summary if g])
-
-        # get strenghts and areas of improvements
-        # grade content_organisation (0-100), from transcript
-
-        prompt = f"""
-        Using the following presentation evaluation data, provide a structured JSON response containing three key elements:
-
-        1. **Strength**: Identify the speaker’s most notable strengths based on their delivery, clarity, and engagement.
-        2. **Area of Improvement**: Provide actionable and specific recommendations for improving the speaker’s performance.
-        3. **General Feedback Summary**: Summarize the presentation’s overall effectiveness, balancing positive feedback with constructive advice.
-
-        Data to analyze:
-        {combined_feedback}
-        """
-
-        try:
-            completion = client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[{"role": "user", "content": prompt}],
-                response_format={
-                    "type": "json_schema",
-                    "json_schema": {
-                        "name": "Feedback",
-                        "schema": {
-                            "type": "object",
-                            "properties": {
-                                "Strength": {"type": "string"},
-                                "Area of Improvement": {"type": "string"},
-                                "General Feedback Summary": {"type": "string"},
-                            },
-                        },
-                    },
-                },
-            )
-
-            refined_summary = completion.choices[0].message.content
-            parsed_summary = json.loads(refined_summary)
-
-        except Exception as e:
-            print(f"Error generating summary: {e}")
-            parsed_data = {
-                "Strength": "N/A",
-                "Area of Improvement": "N/A",
-                "General Feedback Summary": combined_feedback,
-            }
-        return parsed_summary
-
-    def get(self, request, session_id):
-        session = get_object_or_404(PracticeSession, id=session_id, user=request.user)
-
-        averages = ChunkSentimentAnalysis.objects.filter(
-            chunk__session=session
-        ).aggregate(
-            avg_conviction=Avg("conviction"),
-            structure_and_clarity=Avg("clarity"),
-            overall_captured_impact=Avg("impact"),
-            avg_brevity=Avg("brevity"),
-            avg_emotional_impact=Avg("trigger_response"),
-            avg_transformative_potential=Avg("transformative_potential"),
-            avg_filler_words=Avg("filler_words"),
-            avg_grammar=Avg("grammar"),
-            avg_posture=Avg("posture"),
-            avg_motion=Avg("motion"),
-            # num_of_true/total_number_of_gestures
-            avg_gestures=Avg("gestures"),
-            avg_volume=Avg("volume"),
-            avg_pitch=Avg("pitch_variability"),
-            avg_pace=Avg("pace"),
-            avg_pauses=Avg("pauses"),
-            body_language=ExpressionWrapper(
-                ((Avg("posture") or 0) + (Avg("motion") or 0) + (Avg("gestures") or 0))
-                / 3,
-                output_field=FloatField(),
-            ),
-            vocal_variety=ExpressionWrapper(
-                (
-                        (Avg("volume") or 0)
-                        + (Avg("pitch_variability") or 0)
-                        + (Avg("pace") or 0)
-                        + (Avg("pauses") or 0)
-                )
-                / 4,
-                output_field=FloatField(),
-            ),
-            language_and_word_choice=ExpressionWrapper(
-                (
-                        (Avg("brevity") or 0)
-                        + (Avg("filler_words") or 0)
-                        + (Avg("grammar") or 0)
-                )
-                / 3,
-                output_field=FloatField(),
-            ),
-            audience_engagement=ExpressionWrapper(
-                (
-                        (Avg("impact") or 0)
-                        + (Avg("trigger_response") or 0)
-                        + (Avg("conviction") or 0)
-                )
-                / 3,
-                output_field=FloatField(),
-            ),
-        )
-
-        averages["avg_gestures"] = min((averages.get("avg_gestures") or 0) * 100, 100)
-
-        full_summary = self.generate_full_summary(session_id)
-
-        return Response(
-            {"average_scores": averages, "full_summary": full_summary},
-            status=status.HTTP_200_OK,
-        )
-
 
 class SessionChunkViewSet(viewsets.ModelViewSet):
     """
@@ -915,6 +803,7 @@ class ChunkSentimentAnalysisViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         # Optionally add checks here, e.g., ensure the chunk belongs to a user's session
         serializer.save()
+
 
 
 class SessionReportView(APIView):
@@ -1041,7 +930,7 @@ class SessionReportView(APIView):
     def post(self, request, session_id):
         print(f"Starting report generation and summary for session ID: {session_id}")
         duration_seconds = request.data.get("duration")
-
+        slide_specific_seconds=request.data.get("slide_specific_timing")
         try:
             session = get_object_or_404(PracticeSession, id=session_id, user=request.user)
             print(f"Session found: {session.session_name}")
@@ -1057,6 +946,26 @@ class SessionReportView(APIView):
                     print(f"Invalid duration value received: {duration_seconds}")
                 except Exception as e:
                     print(f"Error saving duration: {e}")
+
+            if slide_specific_seconds is not None:
+                slide_specific = {}
+                for key, value in slide_specific_seconds.items():
+                    try:
+                        seconds = int(value)
+                        td = timedelta(seconds=seconds)
+                        formatted_time = format_timedelta_12h(td)
+                        slide_specific[key] = formatted_time
+                    except (ValueError, TypeError):
+                        print(f"Invalid value for slide '{key}': {value}")
+                        continue
+                session.slide_specific_timing = slide_specific
+                session.save()
+                print(f"Session Slide updated to: {session.slide_specific_timing}")
+
+
+
+
+
 
             # --- Aggregate Chunk Sentiment Analysis Data ---
             print("Aggregating chunk sentiment analysis data...")
@@ -1262,6 +1171,7 @@ class SessionReportView(APIView):
                 "session_id": session.id,
                 "session_name": session.session_name,
                 "duration": str(session.duration) if session.duration else None,
+                "slide_specific_timing":session.slide_specific_timing if session.slide_specific_timing else {},
                 "aggregated_scores": {
                     "volume": round(session.volume or 0),
                     "pitch_variability": round(session.pitch_variability or 0),
@@ -1410,7 +1320,9 @@ class SessionList(APIView):
 class PerformanceMetricsComparison(APIView):
     permission_classes = [IsAuthenticated]
 
+
     def get(self, request, sequence_id):
+
         session_metrics = (
             PracticeSession.objects
             .filter(sequence=sequence_id)
@@ -1529,3 +1441,105 @@ class GoalAchievementView(APIView):
                     goals[field] += 0
 
         return Response(dict(goals))
+
+class ImproveNewSequence(APIView):
+    permission_classes = [IsAuthenticated]
+
+
+    @swagger_auto_schema(
+        operation_description="",
+        request_body=PracticeSequenceSerializer,
+        responses={},
+    )
+    def post(self, request, session_id):
+        sequence_serializer = PracticeSequenceSerializer(data=request.data)
+        if sequence_serializer.is_valid():
+            sequence = sequence_serializer.save(user=request.user)
+
+            try:
+                session = PracticeSession.objects.get(id=session_id)
+                if session.sequence:
+                    return  Response(data={"error":"Session already in a seqeunce"},status=404)
+            except PracticeSession.DoesNotExist:
+                return Response({"error": "Session not found"}, status=404)
+
+            session.sequence = sequence
+            session.save()
+
+            # Step 4: Return session details in the response
+            session_serializer = PracticeSessionSerializer(session)  # Assuming you have a session serializer
+            return Response({
+                "message": "Sequence created and session added successfully",
+                "session": session_serializer.data  # Returning the session data
+            }, status=status.HTTP_201_CREATED)
+
+        return Response(sequence_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+
+    def get(self, request):
+        # Retrieve all sessions for the current user that don't have an associated sequence
+        sessions = PracticeSession.objects.filter(user=request.user, sequence__isnull=True)
+
+        # Serialize the sessions
+        session_serializer = PracticeSessionSerializer(sessions, many=True)
+
+        return Response(session_serializer.data)
+
+
+from django.db.models import Min, Max, Count
+
+
+class ImproveExistingSequence(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def format_timedelta(self, td):
+        if not td:
+            return "0 min"
+        total_minutes = int(td.total_seconds() // 60)
+        hours = total_minutes // 60
+        minutes = total_minutes % 60
+
+        if hours and minutes:
+            return f"{hours} hr {minutes} min"
+        elif hours:
+            return f"{hours} hr"
+        else:
+            return f"{minutes} min"
+
+    def get(self, request):
+        user = request.user
+
+        sequences = (
+            PracticeSequence.objects
+            .filter(user=user)  # or whatever filter
+            .annotate(
+                start_date=Min("sessions__created_at"),
+                updated_at=Max("sessions__updated_at"),
+                total_sessions=Count("sessions")
+            )
+            .prefetch_related("sessions")
+        )
+        print(sequences)
+        response_data = []
+        if sequences:
+            for sequence in sequences:
+                print(sequence.sessions.all())
+                response_data.append({
+                    "sequence_name": sequence.sequence_name,
+                    "start_date": sequence.start_date,
+                    "updated_at": sequence.updated_at,
+                    "total_sessions": sequence.total_sessions,
+                    "sessions": [
+                        {
+                            "name": session.session_name,  # assuming your PracticeSession has a 'name' field
+                            "date": session.created_at,
+                            "duration": self.format_timedelta(session.duration ) # assuming you store session duration
+                        }
+                        for session in sequence.sessions.all()
+                    ]
+                })
+        else:
+            response_data = None
+
+        return Response(response_data)

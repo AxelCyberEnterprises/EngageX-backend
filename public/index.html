@@ -284,7 +284,7 @@
                 // Ensure API_BASE_URL port is consistent if you changed it
                 const wsProtocol = API_BASE_URL.startsWith("https") ? "wss" : "ws";
                 // Include room_name as a query parameter
-                const wsUrl = `${wsProtocol}://${API_BASE_URL.split('://')[1]}/ws/socket_server/?session_id=${sessionId}&room_name=${selectedRoom}`;
+                const wsUrl = `${wsProtocol}://${API_BASE_URL.split('://')[1]}/ws/socket_server2/?session_id=${sessionId}&room_name=${selectedRoom}`;
                 console.log("Connecting to WebSocket:", wsUrl);
                 socket = new WebSocket(wsUrl);
                 socket.binaryType = "arraybuffer"; // Or 'blob' depending on how your server handles it
@@ -435,7 +435,7 @@
 
                // Call the session report endpoint
                try {
-                   const response = await fetch(`${API_BASE_URL}/sessions/sessions-report/${sessionId}/`, {
+                   const response = await fetch(`${API_BASE_URL}/sessions/['sessions']-report/${sessionId}/`, {
                         method: 'POST',
                         headers: {
                              'Content-Type': 'application/json',
