@@ -2,6 +2,7 @@
 # This version uses the original mechanism but now runs the database querying and s3 upload in the background
 #################################################################################################################
 
+# Cleanest working version 6-8 secs sentiment analysis
 
 import asyncio
 import platform
