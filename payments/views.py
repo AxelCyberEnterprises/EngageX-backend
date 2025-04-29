@@ -35,6 +35,11 @@ from intuitlib.client import AuthClient
 from intuitlib.enums import Scopes
 from intuitlib.exceptions import AuthClientError
 
+from .serializers import PaymentTransactionSerializer
+from django.utils.decorators import method_decorator
+from rest_framework.permissions import IsAuthenticated, IsAdminUser, AllowAny
+from rest_framework.request import Request 
+
 # Fixed credits for each payment tier
 TIER_CREDITS = {
     "tester": 1,
@@ -44,258 +49,16 @@ TIER_CREDITS = {
     "ultimate": 12,
 }
 
-# {
-#   "Payment": {
-#     "SyncToken": "0", 
-#     "domain": "QBO", 
-#     "DepositToAccountRef": {
-#       "value": "4"
-#     }, 
-#     "UnappliedAmt": 25.0, 
-#     "TxnDate": "2014-12-30", 
-#     "TotalAmt": 25.0, 
-#     "ProjectRef": {
-#       "value": "39298034"
-#     }, 
-#     "ProcessPayment": false, 
-#     "sparse": false, 
-#     "Line": [], 
-#     "CustomerRef": {
-#       "name": "Red Rock Diner", 
-#       "value": "20"
-#     }, 
-#     "Id": "154", 
-#     "MetaData": {
-#       "CreateTime": "2014-12-30T10:26:03-08:00", 
-#       "LastUpdatedTime": "2014-12-30T10:26:03-08:00"
-#     }
-#   }, 
-#   "time": "2014-12-30T10:26:03.668-08:00"
-# }
-
-# class PaymentCallbackView(APIView):
-#     """
-#     Endpoint to be called after a payment is processed.
-    
-#     Expected payload:
-#     {
-#        "transaction_id": "ABC123",
-#        "status": "success",         // or "failed"
-#        "tier": "starter",           // one of: "starter", "growth", "pro", "ultimate"
-#        "user_email": "user@example.com",
-#        "gateway_response": { ... }
-#     }
-#     """
-#     permission_classes = [IsAuthenticated]
-
-#     def post(self, request):
-#         data = request.data
-#         transaction_id = data.get("Payment", {}).get("Id")
-#         amount = data.get("TotalAmt")
-#         transaction_date = data.get("TxnDate")
-#         status_str = "success" if data.get("ProcessPayment", False) else "failed"
-#         tier = data.get("tier")
-#         user_email = data.get("user_email")
-#         gateway_response = data.get("gateway_response", {})
-
-#         # Validate required fields
-#         if not transaction_id or not status_str or not tier:
-#             return Response({"error": "Missing required fields."}, status=status.HTTP_400_BAD_REQUEST)
-        
-#         tier = tier.lower()
-#         if tier not in TIER_CREDITS:
-#             return Response({"error": "Invalid tier specified."}, status=status.HTTP_400_BAD_REQUEST)
-        
-#         # Determine credits based on tier if payment succeeded; else, no credits.
-#         credits_to_add = TIER_CREDITS[tier] if status_str.lower() == "success" else 0
-
-
-#         # Create or update the PaymentTransaction record.
-#         transaction, created = PaymentTransaction.objects.update_or_create(
-#             transaction_id=transaction_id,
-#             defaults={
-#                 "status": status_str.lower(),
-#                 "gateway_response": gateway_response,
-#                 "amount": amount,
-#                 "credits": credits_to_add
-#             }
-#         )
-
-#         # On successful payment, update the user's available credits.
-#         if status_str.lower() == "success":
-#             profile = user_email.userprofile
-#             profile.available_credits += credits_to_add
-#             profile.save()
-        
-#         serializer = PaymentTransactionSerializer(transaction)
-#         return Response(serializer.data, status=status.HTTP_200_OK)
-        
-
-# def intuit_auth(request):
-#     """Index page: Initiate OAuth flow or show connection status."""
-#     print("Step 'index': Loading index page.")
-#     token = get_quickbooks_token_obj() # Try to load the token object from the database
-
-#     # Check if a valid token object exists and has an access token and realm ID
-#     is_connected = token is not None and token.access_token is not None and token.realm_id is not None
-
-#     if is_connected:
-#         # Construct the HTML string for the connected state
-#         html_content = f"""
-#         <!DOCTYPE html>
-#         <html>
-#         <head>
-#             <title>Intuit Integration App</title>
-#             <style>
-#                 body {{ font-family: sans-serif; margin: 20px; }}
-#                 code {{ background-color: #f0f0f0; padding: 2px 5px; border-radius: 4px; }}
-#                 a {{ color: #006491; text-decoration: none; }}
-#                 a:hover {{ text-decoration: underline; }}
-#             </style>
-#         </head>
-#         <body>
-#             <h1>Intuit Integration App</h1>
-#             <p>QuickBooks Connected (Realm ID: {token.realm_id})</p>
-#             <p>Access Token Expires: {token.expires_at.strftime('%Y-%m-%d %H:%M:%S %Z') if token.expires_at else 'N/A'}</p>
-#             <p>Tokens are stored persistently in your database models.</p>
-#             <p><a href="{reverse('payments:list_transactions_api')}">View Processed Transactions (API Endpoint)</a></p>
-#             <p><a href="{reverse('payments:intuit_auth')}">Reconnect to QuickBooks (if needed)</a></p>
-#             <p><a href="{reverse('payments:clear_data')}" onclick="return confirm('Are you sure you want to clear all QuickBooks related data and disconnect?');">Clear All QuickBooks Data & Disconnect</a></p>
-#             <p>Configure your webhook in Intuit Developer Portal pointing to <code>{request.build_absolute_uri(reverse('payments:webhook_payment'))}</code></p>
-#         </body>
-#         </html>
-#         """
-#     else:
-#         auth_url = reverse('payments:intuit_auth')
-#         redirect_uri_setting = settings.INTUIT_REDIRECT_URI
-
-#         html_content = f"""
-#         <!DOCTYPE html>
-#         <html>
-#         <head>
-#             <title>Intuit Integration App</title>
-#             <style>
-#                 body {{ font-family: sans-serif; margin: 20px; }}
-#                 code {{ background-color: #f0f0f0; padding: 2px 5px; border-radius: 4px; }}
-#                 a {{ color: #006491; text-decoration: none; }}
-#                 a:hover {{ text-decoration: underline; }}
-#             </style>
-#         </head>
-#         <body>
-#             <h1>Intuit Integration App</h1>
-#             <p>QuickBooks not connected.</p>
-#             <p>Click below to connect your QuickBooks Online account. This is required for the app to fetch payment details from your account after receiving webhooks.</p>
-#             <p>Make sure your <code>settings.py</code> and the Redirect URI (<code>{redirect_uri_setting}</code>) in the Intuit Developer Portal are configured correctly.</p>
-#             <p><a href="{auth_url}">Connect to QuickBooks</a></p>
-#         </body>
-#         </html>
-#         """
-
-#     # Return the HTML content as an HttpResponse
-#     return HttpResponse(html_content)
-
-# @require_http_methods(["GET"]) # Only allow GET requests
-# def intuit_auth(request):
-#     """Initiates the OAuth 2.0 authorization flow by redirecting to Intuit."""
-#     print("Step 'intuit_auth': Initiating OAuth flow.")
-
-#     auth_client = get_auth_client()
-
-#     scopes = [Scopes.PAYMENT, Scopes.ACCOUNTING]
-
-#     state = os.urandom(16).hex()  # Generate a random state parameter for CSRF protection
-#     request.session['oauth_state'] = state
-#     print(f"Step 'intuit_auth' stored in session.")
-
-#     # Get the authorization URL from Intuit
-#     auth_url = auth_client.get_authorization_url(scopes=scopes, state_token=state)
-#     print(f"Step 'intuit_auth': Generated Authorization URL: {auth_url}")
-#     print(f"Step 'intuit_auth': Redirecting user to Intuit for authorization...")
-
-#     # Redirect the user's browser to the Intuit authorization server
-#     return redirect(auth_url)
-
-# @require_http_methods(["GET"])
-# def intuit_oauth_callback(request):
-#     """Handles the OAuth 2.0 calback from Intuit."""
-#     print("Step 'oauth_callback': Handling OAuth callback.")
-
-#     auth_code = request.GET.get("code")
-#     realm_id = request.GET.get("realmId")
-#     state = request.GET.get("state")
-#     error = request.GET.get("error")
-#     error_description = request.GET.get("error_description")
-
-#     print(f"Step 'oauth_callback': Received auth_code: {auth_code}, realm_id: {realm_id}, state: {state}")
-
-#     stored_state = request.session.get('oauth_state')
-#     print(f"Step 'oauth_callback': Stored state from session: {stored_state}")
-#     if not stored_state or state != stored_state:
-#         print("Step 'oauth_callback': State mismatch. Possible CSRF attack.")
-#         return HttpResponse("State mismatch. Possible CSRF attack.")
-
-#     if error:
-#         print(f"Step 'oauth_callback': Error: {error}, Description: {error_description}")
-#         return HttpResponse(f"Error: {error}, Description: {error_description}")
-         
-#     if not auth_code or not realm_id:
-#         print("Step 'oauth_callback': Missing auth_code or realm_id.")
-#         return HttpResponse("Missing auth_code or realm_id.")
-    
-#     auth_client = get_auth_client()
-
-#     print("Step 'oauth_callback': Exchanging auth code for tokens.")
-#     try:
-#         auth_client.get_bearer_token(auth_code, realm_id=realm_id)
-#         print("Step 'oauth_callback': Tokens exchanged successfully.")
-#         saved_token = save_quickbooks_token_obj(
-#             auth_client.access_token,
-#             auth_client.refresh_token,
-#             auth_client.expires_at,
-#             auth_client.realm_id,
-#         )
-
-#         if saved_token:
-#             print("Step 'oauth_callback': Tokens saved successfully.")
-#             return HttpResponse("QuickBooks connected successfully!")
-#         else:
-#             print("Step 'oauth_callback': Failed to save tokens.")
-#             return HttpResponse("Failed to save tokens.")
-        
-#     except AuthClientError as e:
-#         print(f"Step 'oauth_callback': Error exchanging auth code: {e}")
-#         return HttpResponse(f"Error exchanging auth code: {e}")
-#     except Exception as e:
-#         print(f"Step 'oauth_callback': Unexpected error: {e}")
-#         return HttpResponse(f"Unexpected error: {e}")
-    
-
-# @require_http_methods(["POST"])
-# def clear_data_route(request):
-#     """Clears all QuickBooks related data from the database."""
-#     print("Step 'clear_data_route': Clearing all QuickBooks related data.")
-#     success = clear_db_data() # Call the utility function
-
-#     if success:
-#         print("Step 'clear_data_route': Data cleared successfully.")
-#         # Return a success response (e.g., JSON) for an API endpoint
-#         return JsonResponse({'status': 'success', 'message': 'QuickBooks data cleared.'}, status=status.HTTP_200_OK)
-#     else:
-#         print("Step 'clear_data_route': Failed to clear data.")
-#         # Return an error response (e.g., JSON)
-#         return JsonResponse({'status': 'error', 'message': 'Failed to clear QuickBooks data.'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
 
 def intuit_index(request):
     """Basic index view to show connection status and link to auth."""
     print("Step 'index': Loading index page.")
-    token = get_quickbooks_token_obj() # Try to load the token
+    token = get_quickbooks_token_obj()
 
     is_connected = token is not None and token.access_token is not None and token.realm_id is not None
     expires_at = token.expires_at if token else None
 
     # Get the webhook URL to display in the template
-    # Assuming your webhook URL name is 'payments:payment_callback' as per your urls.py
     webhook_url_example = request.build_absolute_uri(reverse('payments:payment_callback'))
 
 
@@ -304,13 +67,11 @@ def intuit_index(request):
         'realm_id': token.realm_id if token else None,
         'expires_at': expires_at, # Pass the datetime object
         'webhook_url_example': webhook_url_example,
-        # The template uses {% url 'payments:...' %} directly for other links
     }
-    # Render the index.html template, passing the context
     return render(request, 'payments/index.html', context)
 
 
-@require_http_methods(["GET"]) # This view should only respond to GET requests
+@require_http_methods(["GET"])
 def intuit_auth(request):
     """Initiates the OAuth 2.0 authorization flow by redirecting to Intuit."""
     print("Step 'intuit_auth': Initiating OAuth flow.")
@@ -321,7 +82,6 @@ def intuit_auth(request):
     # Define the scopes your application needs to request from Intuit.
     # Scopes.PAYMENT is required for receiving payment webhooks and using payment-related APIs.
     # Scopes.ACCOUNTING is often needed to fetch related data like Customers, Invoices, etc.
-    # Add other scopes here if your application needs them (e.g., Scopes.OPENID, Scopes.PROFILE)
     scopes = [Scopes.PAYMENT, Scopes.ACCOUNTING]
 
     # Generate a unique state parameter for CSRF protection.
@@ -415,20 +175,6 @@ def oauth_callback(request):
         print(f"Step 'oauth_callback': Received Expires In (seconds): {auth_client.expires_in}")
         print(f"Step 'oauth_callback': Received Realm ID: {auth_client.realm_id}")
 
-
-        # --- Save Tokens to Database ---
-        # Use your utility function to save or update the received tokens in your database model (QuickBooksToken).
-        # This function should handle the logic of finding the single token row (or creating it)
-        # and updating its fields.
-        # new_token_data = {
-        #     'access_token': auth_client.access_token,
-        #     'refresh_token': auth_client.refresh_token,
-        #     'expires_at': auth_client.expires_in, # Use expires_in (seconds) from the client
-        #     'realm_id': auth_client.realm_id # Use realm_id from the client
-        # }
-        # saved_token = save_quickbooks_token_obj(
-        #     **new_token_data 
-        # )
         saved_token = save_quickbooks_token_obj(
             auth_client.access_token,
             auth_client.refresh_token,
@@ -469,256 +215,6 @@ def oauth_callback(request):
             'error_description': str(e), # Convert exception to string for display
              'index_url_name': 'payments:quickbooks_status'
         }, status=500)
-    
-
-# import hmac
-# import hashlib
-# import base64
-# import requests
-# from django.shortcuts import get_object_or_404
-# from django.contrib.auth import get_user_model
-# from django.conf import settings
-# from django.utils import timezone
-# from datetime import timedelta
-# from rest_framework.views import APIView
-# from rest_framework.response import Response
-# from rest_framework import status, viewsets
-# from rest_framework.permissions import IsAuthenticated, IsAdminUser
-# from .models import PaymentTransaction, QuickbooksToken
-from .serializers import PaymentTransactionSerializer
-# from intuitlib.client import AuthClient
-# from intuitlib.enums import Scopes
-
-
-# AMOUNT_TO_TIER = {
-#     5.0: "tester",
-#     10.0: "starter",
-#     15.0: "growth",
-#     20.0: "pro",
-#     25.0: "ultimate",
-# }
-
-# TIER_CREDITS = {
-#     "tester": 5,
-#     "starter": 4,
-#     "growth": 6,
-#     "pro": 8,
-#     "ultimate": 12,
-# }
-
-# class PaymentCallbackView(APIView):
-#     permission_classes = [IsAuthenticated]
-
-#     def verify_signature(self, request):
-#         """Verify Intuit's webhook signature"""
-#         verifier_token = settings.INTUIT_WEBHOOK_VERIFIER_TOKEN
-#         signature_header = request.headers.get("intuit-signature")
-#         raw_body = request.body
-        
-#         computed_hash = hmac.new(
-#             key=verifier_token.encode(),
-#             msg=raw_body,
-#             digestmod=hashlib.sha256
-#         ).digest()
-        
-#         return hmac.compare_digest(
-#             base64.b64encode(computed_hash).decode(),
-#             signature_header
-#         )
-    
-#     def refresh_tokens(self):
-#         token = QuickbooksToken.get_singleton()
-#         auth_client = AuthClient(
-#             client_id=settings.CLIENT_ID,
-#             client_secret=settings.CLIENT_SECRET,
-#             redirect_uri=settings.REDIRECT_URI,
-#             environment="sandbox"
-#         )
-#         auth_client.refresh()
-#         token.access_token = auth_client.access_token
-#         token.refresh_token = auth_client.refresh_token
-#         token.expires_at = timezone.now() + timedelta(seconds=auth_client.expires_in)
-#         token.save()
-#         return token
-    
-#     def get_payment_details(self, payment_id):
-#         token = QuickbooksToken.get_singleton()
-#         if token.is_expired():
-#             self.refresh_tokens()
-#             token = QuickbooksToken.get_singleton()
-
-#         response = requests.get(
-#             url=f"https://sandbox.api.intuit.com/quickbooks/v4/payments/{payment_id}/Payment",
-#             headers={"Authorization": f"Bearer {token.access_token}"}
-#         )
-
-#         if response.status_code == 401:
-#             return self.get_payment_details(payment_id)  # Retry with new token
-        
-#         return response.json()
-
-#     def post(self, request):
-#         if not self.verify_signature(request):
-#             return Response({"error": "Invalid signature"}, status=status.HTTP_401_UNAUTHORIZED)
-
-#         data = request.data
-#         processed_transactions = []
-
-#         for notification in data.get("eventNotifications", []):
-#             realm_id = notification.get("realmId")
-            
-#             for entity in notification.get("dataChangeEvent", {}).get("entities", []):
-#                 if entity.get("name") == "Payment" and entity.get("operation") == "Create":
-#                     payment_id = entity.get("id")
-#                     transaction_date = entity.get("lastUpdated")
-                    
-#                     payment_payload = self.get_payment_details(payment_id)
-                    
-#                     amount = float(payment_payload.get("amount", 0))
-#                     status_str = payment_payload.get("status", "").lower()
-
-#                     tier = AMOUNT_TO_TIER.get(amount)
-#                     if not tier:
-#                         continue  # Skip unrecognized amounts
-
-#                     credits = TIER_CREDITS.get(tier, 0)
-
-#                     transaction = PaymentTransaction.objects.update_or_create(
-#                         user=get_object_or_404(get_user_model())
-#                         transaction_id=payment_id,
-#                         transaction_date=transaction_date,
-#                         status=status_str,
-#                         tier=tier,
-#                         amount=amount,
-#                         # customer_email=customer_email,
-#                         credits=credits,
-#                         gateway_response=payment_payload
-#                     )
-
-#                     # Update user credits if payment succeeded
-#                     if status_str == "captured":
-#                         try:
-#                             user = User.objects.get(email=customer_email)
-#                             user.profile.available_credits += credits
-#                             user.profile.save()
-#                         except User.DoesNotExist:
-#                             pass
-
-#                     processed_transactions.append(PaymentTransactionSerializer(transaction).data)
-
-#         return Response({"processed": processed_transactions}, status=status.HTTP_200_OK)
-    
-
-            
-
-
-
-# import hmac
-# import hashlib
-# import base64
-# import requests
-# import json
-# import os
-# from datetime import datetime, timedelta, timezone
-
-# # Django imports
-# from django.shortcuts import render, redirect
-# from django.urls import reverse
-# from django.http import HttpResponse, JsonResponse, HttpResponseRedirect
-# from django.views.decorators.csrf import csrf_exempt # Still needed for webhook POST
-# from django.views import View # Can still use for non-API HTML views if preferred
-# from django.conf import settings
-# from django.contrib.auth import get_user_model # Needed for linking transactions to users
-from django.utils.decorators import method_decorator # For applying decorators to class-based views
-# from django.contrib.auth.decorators import user_passes_test # For restricting views to staff/admins
-
-# # DRF imports
-# from rest_framework.views import APIView
-# from rest_framework.response import Response
-# from rest_framework import status # Use DRF status codes
-from rest_framework.permissions import IsAuthenticated, IsAdminUser, AllowAny # DRF permission classes
-from rest_framework.request import Request # Import DRF Request object
-# from rest_framework import viewsets # If using ViewSets elsewhere
-
-# # Import Intuit libraries
-# from intuitlib.client import AuthClient
-# from intuitlib.enums import Scopes
-# from intuitlib.exceptions import AuthClientError
-
-# # Import your models (assuming they are in payments/models.py)
-# from .models import QuickbooksToken, PaymentTransaction, CustomerCredits
-
-# # Import your utility functions (assuming they are in payments/utils.py)
-# from .utils import (
-#     get_auth_client, get_quickbooks_token_obj, save_quickbooks_token_obj,
-#     verify_signature, get_payment_details_from_intuit,
-#     get_customer_details_from_intuit,
-#     process_payment_create, process_payment_update, process_payment_delete,
-#     get_transactions_from_db, get_credits_from_db, clear_db_data
-# )
-
-
-# class IntuitStatusView(APIView):
-#     # Restrict to authenticated staff users
-#     permission_classes = [IsAuthenticated, IsAdminUser]
-
-#     def get(self, request: Request, *args, **kwargs):
-#         """Shows the QuickBooks connection status and relevant links."""
-#         print("Django DRF View (Status): Accessing QuickBooks connection status.")
-#         token = get_quickbooks_token_obj() # Load token from DB using utility
-#         # Return JSON response with status and links
-#         if token and token.access_token and token.realm_id:
-#              return Response({
-#                  'status': 'QuickBooks Connected',
-#                  'realm_id': token.realm_id,
-#                  'expires_at': token.expires_at.isoformat() if token.expires_at else None, # Serialize datetime
-#                  'webhook_url': request.build_absolute_uri(reverse('payments:webhook_payment')), # Build absolute URL
-#                  'connect_url': request.build_absolute_uri(reverse('payments:intuit_auth')), # Link to re-auth
-#                  'list_transactions_url': request.build_absolute_uri(reverse('payments:list_intuit_transactions')), # Link to list view
-#                  'clear_data_url': request.build_absolute_uri(reverse('payments:clear_intuit_data')), # Link to clear data
-#              }, status=status.HTTP_200_OK)
-#         else:
-#              return Response({
-#                  'status': 'QuickBooks Not Connected',
-#                  'message': 'Click connect to link your QuickBooks Online account.',
-#                  'connect_url': request.build_absolute_uri(reverse('payments:intuit_auth')), # Link to connect
-#                  'redirect_uri_setting': settings.INTUIT_REDIRECT_URI # Show setting value for debugging
-#              }, status=status.HTTP_200_OK)
-
-
-# # Admin-facing view to initiate the OAuth flow
-# class IntuitAuthView(APIView):
-#     """Initiates the OAuth 2.0 authorization flow (for the app owner's account)."""
-#     # Restrict to authenticated staff users
-#     permission_classes = [IsAuthenticated, IsAdminUser]
-
-#     def get(self, request: Request, *args, **kwargs):
-#         print("Django DRF View (Auth): Initiating Intuit OAuth flow.")
-#         auth_client = get_auth_client() # Get AuthClient using settings
-
-#         # Request scopes needed for your application
-#         scopes = [Scopes.PAYMENT, Scopes.ACCOUNTING]
-
-#         # Generate and store a state parameter for CSRF protection in session
-#         state = os.urandom(16).hex()
-#         request.session['oauth_state'] = state # Store state in Django session
-
-#         try:
-#             # Get the authorization URL from intuitlib
-#             auth_url = auth_client.get_authorization_url(scopes=scopes, state_token=state)
-#             print(f"Django DRF View (Auth): Generated Authorization URL: {auth_url}")
-#             print("Django DRF View (Auth): Redirecting user to Intuit for authorization...")
-#             # Redirect the user's browser to the Intuit authorization URL
-#             # Return HttpResponseRedirect for browser redirects
-#             return HttpResponseRedirect(auth_url)
-
-#         except Exception as e:
-#             print(f"Django DRF View (Auth): Error generating authorization URL: {e}")
-#             # Return a DRF Response with an error status
-#             return Response({
-#                 'error_message': 'Could not generate authorization URL',
-#                 'details': str(e)
-#             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 # This standard Django view handles clearing all QuickBooks related data.
