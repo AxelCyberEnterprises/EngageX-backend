@@ -118,6 +118,7 @@ class PracticeSession(models.Model):
         ("conference_room", "Conference Room"),
         ("board_room_1", "Board Room 1"),
         ("board_room_2", "Board Room 2"),
+        ("pitch_studio","pitch_studio"),
     ]
     virtual_environment = models.CharField(
         max_length=50,

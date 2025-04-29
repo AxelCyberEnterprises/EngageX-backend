@@ -10,7 +10,7 @@
 
 
 from django.contrib import admin
-from .models import QuickBooksToken, PaymentTransaction, UserCredit
+from .models import QuickBooksToken, PaymentTransaction
 
 class QuickBooksTokenAdmin(admin.ModelAdmin):
     list_display = ('realm_id', 'expires_at', 'created_at', 'updated_at')
@@ -28,11 +28,3 @@ class PaymentTransactionAdmin(admin.ModelAdmin):
 
 
 admin.site.register(PaymentTransaction, PaymentTransactionAdmin)
-
-
-class UserCreditAdmin(admin.ModelAdmin):
-    list_display = ('user', 'credits', 'last_updated')
-
-    search_fields = ('user__username', 'user__email')
-
-admin.site.register(UserCredit, UserCreditAdmin)

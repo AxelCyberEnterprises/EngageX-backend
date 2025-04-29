@@ -93,6 +93,8 @@ class LiveSessionConsumer(AsyncWebsocketConsumer):
         self.media_path_to_chunk = {} # Map temporary media_path to SessionChunk ID (from DB, after saving)
         # Dictionary to store background tasks for chunk saving, keyed by media_path
         self.background_chunk_save_tasks = {}
+        self._running_tasks = []
+
 
 
     async def connect(self):
@@ -322,42 +324,20 @@ class LiveSessionConsumer(AsyncWebsocketConsumer):
             # This task runs in the background. Store the task so analyze_windowed_media can potentially wait for it.
             # Create the task first, then add it to the dictionary to ensure it's registered
             chunk_save_task = asyncio.create_task(self._complete_chunk_save_in_background(media_path, s3_upload_task))
-            
-            # Register the task immediately
+            print(f"WS: Created background chunk save task for {media_path}: {chunk_save_task}")
+            self._running_tasks.append(chunk_save_task)
+
+            await asyncio.sleep(0.1)  # Increase delay slightly in case of task registration lag
+
+            if media_path in self.background_chunk_save_tasks:
+                print(f"WS: WARNING: Overwriting existing task for {media_path}")
             self.background_chunk_save_tasks[media_path] = chunk_save_task
-            print(f"WS: Registered background chunk save task for {media_path}")
 
-            # Add a small delay to ensure the task is properly registered and started
-            await asyncio.sleep(0.05)  # 50ms delay to ensure task visibility
-
-            # Trigger windowed analysis if buffer size is sufficient
-            # analyze_windowed_media will run concurrently
-            # It will handle waiting for background chunk save before saving analysis results
-            if len(self.media_buffer) >= ANALYSIS_WINDOW_SIZE:
-                # Take the last ANALYSIS_WINDOW_SIZE chunks for the sliding window
-                window_paths = list(self.media_buffer[-ANALYSIS_WINDOW_SIZE:])
-                last_media_path = window_paths[-1]
-                
-                # Verify task registration before triggering analysis
-                if last_media_path in self.background_chunk_save_tasks:
-                    print(f"WS: [DEBUG] Triggering window analysis for {last_media_path}. Save task exists: True")
-                    # Use call_soon to ensure proper task scheduling
-                    self.loop.call_soon(
-                        asyncio.create_task,
-                        self.analyze_windowed_media(window_paths, self.chunk_counter)
-                    )
-                else:
-                    print(f"WS: [DEBUG] Delaying window analysis for {last_media_path}. Save task not yet visible.")
-                    # If task not visible, wait a bit longer and try again
-                    await asyncio.sleep(0.1)  # Additional 100ms delay
-                    if last_media_path in self.background_chunk_save_tasks:
-                        print(f"WS: [DEBUG] Now triggering window analysis for {last_media_path}. Save task exists: True")
-                        self.loop.call_soon(
-                            asyncio.create_task,
-                            self.analyze_windowed_media(window_paths, self.chunk_counter)
-                        )
-                    else:
-                        print(f"WS: [WARNING] Could not find save task for {last_media_path} after delay. Skipping window analysis.")
+            # Confirm it was successfully added
+            if media_path in self.background_chunk_save_tasks:
+                print(f"WS: Registered background chunk save task for {media_path} ✅")
+            else:
+                print(f"WS: ❌ Failed to register background task for {media_path}")
 
 
         except Exception as e:
@@ -389,12 +369,14 @@ class LiveSessionConsumer(AsyncWebsocketConsumer):
         finally:
             # Clean up the task tracking entry once this task is done (success or failure)
             if media_path in self.background_chunk_save_tasks:
-                 # Give a brief moment for any dependent awaits (like in cleanup) to potentially register
-                 await asyncio.sleep(0.01)
-                 if media_path in self.background_chunk_save_tasks: # Re-check in case something added it back
-                      del self.background_chunk_save_tasks[media_path]
-                      print(f"WS: Removed background chunk save task tracking for {media_path}")
-
+                await asyncio.sleep(0.01)
+                if media_path in self.background_chunk_save_tasks:
+                    print(f"WS: ✅ Task for {media_path} finished. Removing from tracking.")
+                    del self.background_chunk_save_tasks[media_path]
+                else:
+                    print(f"WS: ⚠️ Task for {media_path} already removed before cleanup.")
+            else:
+                print(f"WS: ⚠️ Task for {media_path} was not found in tracking dict at cleanup time.")
 
     async def analyze_windowed_media(self, window_paths, latest_chunk_number):
         """
@@ -606,14 +588,18 @@ class LiveSessionConsumer(AsyncWebsocketConsumer):
                     # If task not found, wait a bit and retry
                     await asyncio.sleep(0.5) # Increased sleep time between retries
                     retry_count += 1
-                    print(f"WS: Retry {retry_count}/{max_retries} to find background save task for {last_media_path}")
+                    print(f"WS: Retry {retry_count}/{max_retries} - waiting for background task of {last_media_path}")
+                    print(f"WS: Current keys in self.background_chunk_save_tasks: {list(self.background_chunk_save_tasks.keys())}")
+                    print(f"WS: Current keys in self.media_path_to_chunk: {list(self.media_path_to_chunk.keys())}")
 
                 if not last_chunk_save_task:
-                    print(f"WS: Background save task for the last chunk ({last_media_path}) in the window was not found within timeout. Cannot save window analysis.")
-                    # Log additional debug information
-                    print(f"WS: DEBUG: Current background_chunk_save_tasks keys: {list(self.background_chunk_save_tasks.keys())}")
-                    print(f"WS: DEBUG: Current media_path_to_chunk keys: {list(self.media_path_to_chunk.keys())}")
-
+                    if last_media_path in self.media_path_to_chunk:
+                        print(f"WS: ⚠️ Background save task missing, but chunk ID found for {last_media_path}. Proceeding to save window analysis.")
+                        asyncio.create_task(self._save_window_analysis(last_media_path, analysis_result, combined_transcript_text, window_chunk_number))
+                    else:
+                        print(f"WS: ❌ Background save task for the last chunk ({last_media_path}) in the window was not found within timeout AND no chunk ID. Cannot save window analysis.")
+                        print(f"WS: DEBUG: Current background_chunk_save_tasks keys: {list(self.background_chunk_save_tasks.keys())}")
+                        print(f"WS: DEBUG: Current media_path_to_chunk keys: {list(self.media_path_to_chunk.keys())}")
 
             else:
                 print(f"WS: No analysis result obtained for window ending with chunk {window_chunk_number}. Skipping analysis save and sending updates.")

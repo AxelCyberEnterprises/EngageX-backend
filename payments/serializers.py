@@ -15,7 +15,7 @@
 #         ]
 
 from rest_framework import serializers
-from .models import QuickBooksToken, PaymentTransaction, UserCredit
+from .models import QuickBooksToken, PaymentTransaction
 from django.contrib.auth import get_user_model
 
 User = get_user_model()
@@ -58,7 +58,7 @@ class PaymentTransactionSerializer(serializers.ModelSerializer):
             'created_at',
             'updated_at',
         ]
-        
+
         # read_only_fields = [
         #      'id',
         #      'user_email',
@@ -76,23 +76,3 @@ class PaymentTransactionSerializer(serializers.ModelSerializer):
         #      'created_at',
         #      'updated_at',
         # ]
-
-
-class UserCreditSerializer(serializers.ModelSerializer):
-    user_email = serializers.EmailField(source="user.email", read_only=True)
-
-    class Meta:
-        model = UserCredit
-        fields = [
-            'id',
-            'user',
-            'user_email',
-            'credits',
-            'last_updated',
-        ]
-        # Fields that are typically read-only or managed automatically
-        read_only_fields = [
-            'id',
-            'user_email',
-            'last_updated', 
-        ]

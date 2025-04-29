@@ -2,6 +2,7 @@ import base64
 import concurrent.futures
 
 import openai
+from requests import session
 from rest_framework import viewsets, status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.decorators import action
@@ -389,7 +390,8 @@ class SessionDashboardView(APIView):
             # User growth and activity
             today_new_users_count = User.objects.filter(date_joined__date=today).count()
             yesterday_new_users_count = User.objects.filter(date_joined__date=yesterday).count()
-            user_growth_percentage_difference = self.calculate_percentage_difference(today_new_users_count, yesterday_new_users_count)
+            user_growth_percentage_difference = self.calculate_percentage_difference(today_new_users_count,
+                                                                                     yesterday_new_users_count)
 
             active_users_count = PracticeSession.objects.values("user").distinct().count()
             total_users_count = User.objects.count()
@@ -423,7 +425,6 @@ class SessionDashboardView(APIView):
             fields = [
                 "vocal_variety",
                 "body_language",
-                "gestures_score_for_body_language",
                 "structure_and_clarity",
                 "overall_captured_impact",
                 "transformative_communication",
@@ -474,6 +475,7 @@ class SessionDashboardView(APIView):
                 "goals_and_achievement": dict(goals),
             }
         return Response(data, status=status.HTTP_200_OK)
+
     def calculate_percentage_difference(self, current_value, previous_value):
         if previous_value == 0:
             return 100.0 if current_value > 0 else 0.0
@@ -1410,7 +1412,9 @@ class SessionList(APIView):
 class PerformanceMetricsComparison(APIView):
     permission_classes = [IsAuthenticated]
 
+
     def get(self, request, sequence_id):
+
         session_metrics = (
             PracticeSession.objects
             .filter(sequence=sequence_id)
@@ -1530,9 +1534,104 @@ class GoalAchievementView(APIView):
 
         return Response(dict(goals))
 
+class ImproveNewSequence(APIView):
+    permission_classes = [IsAuthenticated]
+
+
+    @swagger_auto_schema(
+        operation_description="",
+        request_body=PracticeSequenceSerializer,
+        responses={},
+    )
+    def post(self, request, session_id):
+        sequence_serializer = PracticeSequenceSerializer(data=request.data)
+        if sequence_serializer.is_valid():
+            sequence = sequence_serializer.save(user=request.user)
+
+            try:
+                session = PracticeSession.objects.get(id=session_id)
+                if session.sequence:
+                    return  Response(data={"error":"Session already in a seqeunce"},status=404)
+            except PracticeSession.DoesNotExist:
+                return Response({"error": "Session not found"}, status=404)
+
+            session.sequence = sequence
+            session.save()
+
+            # Step 4: Return session details in the response
+            session_serializer = PracticeSessionSerializer(session)  # Assuming you have a session serializer
+            return Response({
+                "message": "Sequence created and session added successfully",
+                "session": session_serializer.data  # Returning the session data
+            }, status=status.HTTP_201_CREATED)
+
+        return Response(sequence_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+
+    def get(self, request):
+        # Retrieve all sessions for the current user that don't have an associated sequence
+        sessions = PracticeSession.objects.filter(user=request.user, sequence__isnull=True)
+
+        # Serialize the sessions
+        session_serializer = PracticeSessionSerializer(sessions, many=True)
+
+        return Response(session_serializer.data)
+
+
+from django.db.models import Min, Max, Count
+
 
 class ImproveExistingSequence(APIView):
-    permission_classes =  [IsAuthenticated]
+    permission_classes = [IsAuthenticated]
+
+    def format_timedelta(self, td):
+        if not td:
+            return "0 min"
+        total_minutes = int(td.total_seconds() // 60)
+        hours = total_minutes // 60
+        minutes = total_minutes % 60
+
+        if hours and minutes:
+            return f"{hours} hr {minutes} min"
+        elif hours:
+            return f"{hours} hr"
+        else:
+            return f"{minutes} min"
+
     def get(self, request):
         user = request.user
-        sequences = PracticeSequence.objects.filter(user=user).selected_related("sessions")
+
+        sequences = (
+            PracticeSequence.objects
+            .filter(user=user)  # or whatever filter
+            .annotate(
+                start_date=Min("sessions__created_at"),
+                updated_at=Max("sessions__updated_at"),
+                total_sessions=Count("sessions")
+            )
+            .prefetch_related("sessions")
+        )
+        print(sequences)
+        response_data = []
+        if sequences:
+            for sequence in sequences:
+                print(sequence.sessions.all())
+                response_data.append({
+                    "sequence_name": sequence.sequence_name,
+                    "start_date": sequence.start_date,
+                    "updated_at": sequence.updated_at,
+                    "total_sessions": sequence.total_sessions,
+                    "sessions": [
+                        {
+                            "name": session.session_name,  # assuming your PracticeSession has a 'name' field
+                            "date": session.created_at,
+                            "duration": self.format_timedelta(session.duration ) # assuming you store session duration
+                        }
+                        for session in sequence.sessions.all()
+                    ]
+                })
+        else:
+            response_data = None
+
+        return Response(response_data)
