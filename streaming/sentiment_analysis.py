@@ -333,7 +333,6 @@ def transcribe_audio(audio_file):
         print(f"Exception: {e}")
 
 
-
 # Calculate Distance
 def find_distance(x1, y1, x2, y2):
     return m.sqrt(((x2 - x1) ** 2) + ((y2 - y1) ** 2))
@@ -456,12 +455,9 @@ def capture_frames(video_path):
             break
         if not frame_queue.full():
             frame_queue.put(frame)
-            frame_count += 1
-            print(f"Captured frame {frame_count}", flush=True)  # <---- ADD THIS
 
     cap.release()
     stop_flag.set()  # signal other threads to stop
-    print("Capture complete. Stop flag set.", flush=True)  # <---- ADD THIS
 
 
 # Processing Thread
@@ -469,16 +465,13 @@ def process_frames():
     posture_threshold = 5
 
     while not stop_flag.is_set() or not frame_queue.empty():
-       if not frame_queue.empty():
+        if not frame_queue.empty():
             frame = frame_queue.get()
-            print("Processing frame...", flush=True)  # <---- ADD THIS
-
             image_height, image_width, _ = frame.shape
             frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             results = pose.process(frame_rgb)
 
             if results.pose_landmarks:
-                print("Pose landmarks found!", flush=True)  # <---- ADD THIS
                 angles = extract_posture_angles(results.pose_landmarks.landmark, image_width, image_height)
                 with lock:
                     results_data["back_angles"].append(angles['back_inclination'])
@@ -523,9 +516,6 @@ def process_frames():
                         results_data["neck_feedback"] = "Good neck posture"
 
                 mp.solutions.drawing_utils.draw_landmarks(frame, results.pose_landmarks, mp_pose.POSE_CONNECTIONS)
-            else:
-                print("No pose landmarks detected for this frame.", flush=True)  # <---- ADD THIS
-
 
 
 # Main Analysis Function
@@ -600,7 +590,6 @@ def analyze_posture(video_path):
             "bad_neck_time": round(bad_neck_time, 2),
             "is_hand_present": is_hand_present
         }
-
 
 # ---------------------- SENTIMENT ANALYSIS ----------------------
 
