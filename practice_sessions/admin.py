@@ -21,15 +21,14 @@ class PracticeSessionAdmin(admin.ModelAdmin):
         "session_type",
         "date",
         "duration",
-        "user_id",  # Changed 'user' to 'user_id'
+        "user",
         "pauses",
-        # Removed 'tone' from list_display
         "audience_engagement",
         "sequence",  # Added sequence to the list display
         "allow_ai_questions",  # Added allow_ai_questions to the list display
         # Add other aggregated fields here as needed (e.g., 'pronunciation', 'content_organization')
     )
-    search_fields = ("session_name", "user_id__email")  # Updated to user_id
+    search_fields = ("session_name", "user__email")
     list_filter = (
         "session_type",
         "date",

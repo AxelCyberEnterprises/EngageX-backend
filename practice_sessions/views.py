@@ -1,8 +1,11 @@
 import base64
 import concurrent.futures
-
 import openai
-from requests import session
+import os
+import json
+import traceback
+import boto3
+
 from rest_framework import viewsets, status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.decorators import action
@@ -10,33 +13,19 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework.exceptions import PermissionDenied
-from django.core.files.uploadedfile import UploadedFile
 
+from django.core.files.uploadedfile import UploadedFile
 from django.db.models.functions import Round
 from django.conf import settings
-from django.db.models import (
-    Count,
-    Avg,
-    Case,
-    When,
-    Value,
-    CharField,
-    Sum,
-    IntegerField,
-    Q,
-    ExpressionWrapper,
-    FloatField,
+from django.db.models import (Count, Avg, Case, When, Value, CharField, Sum, IntegerField, Q,
+                              ExpressionWrapper, FloatField,
 )
 from django.utils.timezone import now
 from django.shortcuts import get_object_or_404
 from django.contrib.auth import get_user_model
 from django.db.models.functions import Cast, TruncMonth, TruncDay
 
-import os
-import json
-import traceback
-import boto3
-
+from requests import session
 from datetime import timedelta
 from datetime import datetime, timedelta
 from collections import Counter
@@ -211,6 +200,8 @@ def format_timedelta_12h(td):
 
     # If the hours are less than 12, we leave the format as is (00:xx:xx)
     return f"{hours:02}:{minutes:02}:{seconds:02}"
+
+
 class PracticeSequenceViewSet(viewsets.ModelViewSet):
     """
     ViewSet for handling practice session sequences.
@@ -260,16 +251,6 @@ class PracticeSessionViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
-
-    # @action(detail=True, methods=["get"])
-    # def report(self, request, pk=None):
-    #     """
-    #     Retrieve the full session report for the given session.
-    #     Admins can view any session; regular users can view only their own.
-    #     """
-    #     session = self.get_object()
-    #     serializer = PracticeSessionSerializer(session)
-    #     return Response(serializer.data)
 
 
 class SessionDashboardView(APIView):
@@ -498,54 +479,6 @@ class SessionDashboardView(APIView):
         return round(((current_value - previous_value) / previous_value) * 100, 2)
 
 
-# class UploadSessionSlidesView(APIView):
-#     """
-#     Endpoint to upload slides to a specific practice session.
-#     """
-
-#     permission_classes = [IsAuthenticated]
-#     parser_classes = [MultiPartParser, FormParser]  # To handle file uploads
-
-#     def put(self, request, pk=None):
-#         """
-#         Upload slides for a practice session.
-#         """
-#         practice_session = get_object_or_404(PracticeSession, pk=pk)
-
-#         # Ensure the user making the request is the owner of the session
-#         if practice_session.user != request.user:
-#             return Response(
-#                 {
-#                     "message": "You do not have permission to upload slides for this session."
-#                 },
-#                 status=status.HTTP_403_FORBIDDEN,
-#             )
-
-#         serializer = PracticeSessionSlidesSerializer(
-#             practice_session, data=request.data, partial=True
-#         )  # partial=True for updates
-
-#         if serializer.is_valid():
-#             serializer.save()
-#             return Response(
-#                 {
-#                     "status": "success",
-#                     "message": "Slides uploaded successfully.",
-#                     "data": serializer.data,
-#                 },
-#                 status=status.HTTP_200_OK,
-#             )
-#         else:
-#             return Response(
-#                 {
-#                     "status": "fail",
-#                     "message": "Slide upload failed.",
-#                     "errors": serializer.errors,
-#                 },
-#                 status=status.HTTP_400_BAD_REQUEST,
-#             )
-
-
 class UploadSessionSlidesView(APIView):
     """
     Endpoint to upload slides to a specific practice session, and retrieve the slide URL.
@@ -595,9 +528,6 @@ class UploadSessionSlidesView(APIView):
                     )
 
                 try:
-                    # The S3 key is the path stored in the FileField's .name attribute
-                    # Based on your S3 location, this *should* be 'slides/Nourish_Final_pitch_deck.pdf'.
-                    # The S3 error shows it's currently 'slides/Nourish_Final_pitch_deck.pdf'.
                     s3_key = practice_session.slides_file.name  # This is the value from the database field
 
                     print(f"Attempting to generate pre-signed URL for S3 key: {s3_key}")  # Log the key from .name
@@ -716,12 +646,6 @@ class UploadSessionSlidesView(APIView):
                     db_executor.submit(serializer.save)
                     print(f"Slides uploaded successfully for session {pk}.")
 
-                # Save the uploaded file. This should use the storage backend and upload_to.
-
-                # serializer.save()
-                # result = future.result()
-                # print(result)
-
                 # *** CHECK THIS LOG AFTER A PUT REQUEST ***
                 if practice_session.slides_file:
                     print(
@@ -759,7 +683,6 @@ class UploadSessionSlidesView(APIView):
                 {"error": "An internal error occurred during slide upload.", "details": str(e)},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
-
 
 
 class SessionChunkViewSet(viewsets.ModelViewSet):
@@ -803,7 +726,6 @@ class ChunkSentimentAnalysisViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         # Optionally add checks here, e.g., ensure the chunk belongs to a user's session
         serializer.save()
-
 
 
 class SessionReportView(APIView):
@@ -962,11 +884,6 @@ class SessionReportView(APIView):
                 session.save()
                 print(f"Session Slide updated to: {session.slide_specific_timing}")
 
-
-
-
-
-
             # --- Aggregate Chunk Sentiment Analysis Data ---
             print("Aggregating chunk sentiment analysis data...")
             # Get chunks with sentiment analysis data
@@ -978,10 +895,6 @@ class SessionReportView(APIView):
             # If no chunks with sentiment analysis, return a basic report
             if not chunks_with_sentiment.exists():
                 print("No chunks with sentiment analysis found. Returning basic report.")
-                # You might want to populate session with default N/A or 0 values here
-                # session.volume = 0 # etc.
-                # session.strength = "No analysis data available." # etc.
-                # session.save() # Save defaults if needed
 
                 return Response({
                     "session_id": session.id,
@@ -1028,34 +941,7 @@ class SessionReportView(APIView):
                 avg_grammar=Round(Avg("sentiment_analysis__grammar"), output_field=IntegerField()),
                 avg_posture=Round(Avg("sentiment_analysis__posture"), output_field=IntegerField()),
                 avg_motion=Round(Avg("sentiment_analysis__motion"), output_field=IntegerField()),
-                # avg_volume=Avg("sentiment_analysis__volume"),
-                # avg_pitch_variability=Avg("sentiment_analysis__pitch_variability"),
-                # avg_pace=Avg("sentiment_analysis__pace"),
-                # avg_pauses=Ceil(Avg("sentiment_analysis__pauses")), # Use Avg for aggregated pauses
-                # avg_conviction=Avg("sentiment_analysis__conviction"),
-                # avg_clarity=Avg("sentiment_analysis__clarity"),
-                # avg_impact=Avg("sentiment_analysis__impact"),
-                # avg_brevity=Avg("sentiment_analysis__brevity"),
-                # avg_trigger_response=Avg("sentiment_analysis__trigger_response"),
-                # avg_filler_words=Avg("sentiment_analysis__filler_words"),
-                # avg_grammar=Avg("sentiment_analysis__grammar"),
-                # avg_posture=Avg("sentiment_analysis__posture"),
-                # avg_motion=Avg("sentiment_analysis__motion"),
-                # avg_volume=Avg("sentiment_analysis__volume"),
-                # savg_pitch_variability=Avg("sentiment_analysis__pitch_variability"),
-                # avg_pace=Avg("sentiment_analysis__pace"),
                 avg_pauses=Round(Avg("sentiment_analysis__pauses"), output_field=IntegerField()),
-                # Use Avg for aggregated pauses
-                # avg_conviction=Avg("sentiment_analysis__conviction"),
-                # avg_clarity=Avg("sentiment_analysis__clarity"),
-                # avg_impact=Avg("sentiment_analysis__impact"),
-                # avg_brevity=Avg("sentiment_analysis__brevity"),
-                # avg_trigger_response=Avg("sentiment_analysis__trigger_response"),
-                # avg_filler_words=Avg("sentiment_analysis__filler_words"),
-                # avg_grammar=Avg("sentiment_analysis__grammar"),
-                # avg_posture=Avg("sentiment_analysis__posture"),
-                # avg_motion=Avg("sentiment_analysis__motion"),
-                # To sum boolean gestures, explicitly cast to IntegerField before summing
                 total_true_gestures=Round(Sum(Cast('sentiment_analysis__gestures', output_field=IntegerField()))),
                 # Count the number of chunks considered for aggregation
                 total_chunks_for_aggregation=Count('sentiment_analysis__conviction'),
@@ -1366,52 +1252,7 @@ class CompareSessionsView(APIView):
             "session1": session1_serialized,
             "session2": session2_serialized,
         }
-
-        # def get_session_data(session):
-        #     return {}
-
-        # data = {
-        #     "session1": get_session_data(session1),
-        #     "session2": get_session_data(session2),
-        # }
-
         return Response(data)
-        # def get_avg_metrics(session_id):
-        #     analyses = ChunkSentimentAnalysis.objects.filter(
-        #         chunk__session__id=session_id,
-        #     )
-        #     count = analyses.count()
-        #     print(analyses)
-        #     print(count)
-        #     if count == 0:
-        #         return {}
-
-        #     return {
-        #         "brevity": sum(a.brevity for a in analyses) / count,
-        #         "impact": sum(a.impact for a in analyses) / count,
-        #         "conviction": sum(a.conviction for a in analyses) / count,
-        #         "clarity": sum(a.clarity for a in analyses) / count,
-        #         "transformative_potential": sum(
-        #             a.transformative_potential for a in analyses
-        #         )
-        #         / count,
-        #     }
-
-        # session1_metrics = get_avg_metrics(session1_id)
-        # session2_metrics = get_avg_metrics(session2_id)
-        # return Response(
-        #     {
-        #         "session1": {
-        #             "id": session1_id,
-        #             "metrics": session1_metrics,
-        #         },
-        #         "session2": {
-        #             "id": session2_id,
-        #             "metrics": session2_metrics,
-        #         },
-        #     }
-        # )
-
 
 class GoalAchievementView(APIView):
 
