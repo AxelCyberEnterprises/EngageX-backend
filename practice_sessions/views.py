@@ -44,6 +44,8 @@ from openai import OpenAI
 from drf_yasg.utils import swagger_auto_schema
 from collections import defaultdict
 from botocore.exceptions import NoCredentialsError, PartialCredentialsError, ClientError
+from itertools import chain
+
 
 from .models import (
     PracticeSession,
@@ -63,61 +65,61 @@ from .serializers import (
 User = get_user_model()
 
 
-def generate_full_summary(self, session_id):
-    """Creates a cohesive summary for Strengths, Improvements, and Feedback."""
-    client = OpenAI(api_key=settings.OPENAI_API_KEY)
+# def generate_full_summary(self, session_id):
+#     """Creates a cohesive summary for Strengths, Improvements, and Feedback."""
+#     client = OpenAI(api_key=settings.OPENAI_API_KEY)
 
-    general_feedback_summary = ChunkSentimentAnalysis.objects.filter(
-        chunk__session__id=session_id
-    ).values_list("general_feedback_summary", flat=True)
+#     general_feedback_summary = ChunkSentimentAnalysis.objects.filter(
+#         chunk__session__id=session_id
+#     ).values_list("general_feedback_summary", flat=True)
 
-    combined_feedback = " ".join([g for g in general_feedback_summary if g])
+#     combined_feedback = " ".join([g for g in general_feedback_summary if g])
 
-    # get strenghts and areas of improvements
-    # grade content_organisation (0-100), from transcript
+#     # get strenghts and areas of improvements
+#     # grade content_organisation (0-100), from transcript
 
-    prompt = f"""
-        Using the following presentation evaluation data, provide a structured JSON response containing three key elements:
+#     prompt = f"""
+#         Using the following presentation evaluation data, provide a structured JSON response containing three key elements:
 
-        1. **Strength**: Identify the speaker’s most notable strengths based on their delivery, clarity, and engagement.
-        2. **Area of Improvement**: Provide actionable and specific recommendations for improving the speaker’s performance.
-        3. **General Feedback Summary**: Summarize the presentation’s overall effectiveness, balancing positive feedback with constructive advice.
+#         1. **Strength**: Identify the speaker’s most notable strengths based on their delivery, clarity, and engagement.
+#         2. **Area of Improvement**: Provide actionable and specific recommendations for improving the speaker’s performance.
+#         3. **General Feedback Summary**: Summarize the presentation’s overall effectiveness, balancing positive feedback with constructive advice.
 
-        Data to analyze:
-        {combined_feedback}
-        """
+#         Data to analyze:
+#         {combined_feedback}
+#         """
 
-    try:
-        completion = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[{"role": "user", "content": prompt}],
-            response_format={
-                "type": "json_schema",
-                "json_schema": {
-                    "name": "Feedback",
-                    "schema": {
-                        "type": "object",
-                        "properties": {
-                            "Strength": {"type": "string"},
-                            "Area of Improvement": {"type": "string"},
-                            "General Feedback Summary": {"type": "string"},
-                        },
-                    },
-                },
-            },
-        )
+#     try:
+#         completion = client.chat.completions.create(
+#             model="gpt-4o-mini",
+#             messages=[{"role": "user", "content": prompt}],
+#             response_format={
+#                 "type": "json_schema",
+#                 "json_schema": {
+#                     "name": "Feedback",
+#                     "schema": {
+#                         "type": "object",
+#                         "properties": {
+#                             "Strength": {"type": "string"},
+#                             "Area of Improvement": {"type": "string"},
+#                             "General Feedback Summary": {"type": "string"},
+#                         },
+#                     },
+#                 },
+#             },
+#         )
 
-        refined_summary = completion.choices[0].message.content
-        parsed_summary = json.loads(refined_summary)
+#         refined_summary = completion.choices[0].message.content
+#         parsed_summary = json.loads(refined_summary)
 
-    except Exception as e:
-        print(f"Error generating summary: {e}")
-        parsed_data = {
-            "Strength": "N/A",
-            "Area of Improvement": "N/A",
-            "General Feedback Summary": combined_feedback,
-        }
-    return parsed_summary
+#     except Exception as e:
+#         print(f"Error generating summary: {e}")
+#         parsed_data = {
+#             "Strength": "N/A",
+#             "Area of Improvement": "N/A",
+#             "General Feedback Summary": combined_feedback,
+#         }
+#     return parsed_summary
 
 
 def generate_slide_summary(pdf_path):
@@ -809,9 +811,12 @@ class ChunkSentimentAnalysisViewSet(viewsets.ModelViewSet):
 class SessionReportView(APIView):
     permission_classes = [IsAuthenticated]
 
-    def generate_full_summary(self, session_id):
+    def generate_full_summary(self, session_id, metrics_string):
         """Creates a cohesive summary for Strengths, Improvements, and Feedback using OpenAI."""
         client = OpenAI(api_key=settings.OPENAI_API_KEY)
+        
+        goals = PracticeSession.objects.filter(id=session_id).values_list("goals", flat=True).first()
+
 
         # Retrieve all general feedback summaries for the session's chunks
         general_feedback_summaries = ChunkSentimentAnalysis.objects.filter(
@@ -828,17 +833,30 @@ class SessionReportView(APIView):
                 "Area of Improvement": "N/A - No feedback available.",
                 "General Feedback Summary": "No feedback was generated for the chunks in this session.",
             }
+        
 
         prompt = f"""
-        Using the presentation evaluation data provided, generate a structured JSON response with the following three components:
-        Strengths: List the speaker’s top strengths based on their delivery, clarity, and audience engagement. Format the output as a Python string representing a list, with each of the 3 strengths as points separated by a comma with the quotes outside the list brackets (e.g., "[Strength 1. Strength 2. Strength 3]").
-        Areas for Improvement: Provide 3 specific, actionable suggestions to help the speaker enhance their performance. Format the output as a Python string representing a list, with each of the 3 area of improvement points separated by a comma with the quotes outside the list brackets (e.g., "[Area of Improvement 1. Area of Improvement 2. Area of Improvement 3]").
+                You are my speaking coach, using my provided presentation evaluation data and transcript, generate a structured JSON response with the following three components:
 
-        General Feedback Summary: Write a concise paragraph summarizing the overall effectiveness of the presentation, balancing both positive observations and constructive feedback.
+                1. Strengths: Identify my most impactful strengths. Focus on *concrete content choices*, tone, delivery techniques, and audience engagement strategies.  Format the output as a Python string representing a list, also make sure not to use commas in your points as that may conflict with the list , with each of strength as points separated by a comma with the quotes outside the list brackets (e.g., "[Strength 1, Strength 2, Strength 3]").
 
-        Data to analyze:
-        {combined_feedback}
-        """
+                2. Areas for Improvement: Provide *clear, actionable, and specific feedback* on areas where I can improve. Emphasize delivery habits (e.g., filler word usage), missed emotional beats, and structural weaknesses. Format the output as a Python string representing a list, with each of the area of improvement points separated by a comma with the quotes outside the list brackets (e.g., "[Area of Improvement 1, Area of Improvement 2, Area of Improvement 3, Area of Improvement 4]").
+
+                3. General Feedback Summary: Craft a detailed, content-specific analysis of my presentation. Your response *must be grounded in specific parts of my transcript*. Include the following:
+                - Identify any impactful opening or closing (Was it emotionally charged? Memorable?).
+                - Highlight specific trigger words or emotionally resonant phrases that effectively drove engagement and how they influenced the audience.
+                - List filler words that were overused.
+                - Assess my motivational tone: Is it strong or weak? Do I inspire action or provoke thought?
+                - Analyze whether my style or story made them memorable.
+                - Clearly state whether my talk was effective — and if so, *effective at what specifically* (e.g., persuading the audience, building trust, sparking interest).
+
+                Evaluation data: {metrics_string}
+                Transcript:
+                {combined_feedback}
+
+                If I had goals with this presentation reference them: {goals}.
+                """
+
 
         try:
             print("Calling OpenAI for summary generation...")
@@ -861,8 +879,10 @@ class SessionReportView(APIView):
                     }
                 },
                 temperature=0.7,  # Adjust temperature as needed
-                max_tokens=500  # Limit tokens to control response length
+                max_tokens=2000  # Limit tokens to control response length
             )
+            print(f"prompt: {prompt}")
+
 
             refined_summary = completion.choices[0].message.content
             print(f"OpenAI raw response: {refined_summary}")
@@ -1115,12 +1135,7 @@ class SessionReportView(APIView):
             language_and_word_choice = safe_division((brevity + filler_words + grammar),
                                                      3.0)  # Use 3.0 for float division
 
-            # --- Generate Full Summary using OpenAI ---
-            print("Generating full summary...")
-            full_summary_data = self.generate_full_summary(session_id)
-            strength_summary = full_summary_data.get("Strength", "N/A")
-            improvement_summary = full_summary_data.get("Area of Improvement", "N/A")
-            general_feedback = full_summary_data.get("General Feedback Summary", "N/A")
+            
 
             # --- Save Calculated Data and Summary to PracticeSession ---
             print("Saving aggregated and summary data to PracticeSession...")
@@ -1157,12 +1172,24 @@ class SessionReportView(APIView):
             # Save boolean gestures field (True if any positive gestures were recorded)
             session.gestures = total_true_gestures > 0  # True if sum > 0
 
+            metrics_string = f"Final Scores: volume score: {session.volume}, pitch variability score: {session.pitch_variability}, pace score: {session.pace}, pauses score: {session.pauses}, conviction score: {session.conviction}, clarity score: {session.clarity}, impact score: {session.impact}, brevity score: {session.brevity}, trigger response score: {session.trigger_response}, filler words score: {session.filler_words}, grammar score: {session.grammar}, posture score: {session.posture}, motion score: {session.motion}, transformative potential score: {session.transformative_potential}, gestures score: {session.gestures_score_for_body_language}"
+
+
+            # --- Generate Full Summary using OpenAI ---
+            print("Generating full summary...")
+            full_summary_data = self.generate_full_summary(session_id, metrics_string)
+            strength_summary = full_summary_data.get("Strength", "N/A")
+            improvement_summary = full_summary_data.get("Area of Improvement", "N/A")
+            general_feedback = full_summary_data.get("General Feedback Summary", "N/A")
+
             # Save the text summaries
             session.strength = strength_summary
             session.area_of_improvement = improvement_summary
             session.general_feedback_summary = general_feedback
 
             session.save()
+            print(f"session.strength: {session.strength}")
+            print(f"session.area_of_improvement: {session.area_of_improvement}")
             print(f"PracticeSession {session_id} updated with report data and summary.")
 
             # --- Prepare Response ---

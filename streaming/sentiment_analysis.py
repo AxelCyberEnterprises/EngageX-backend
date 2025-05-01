@@ -153,15 +153,17 @@ def score_posture(angle, min_value, max_value, body):
     
     # Rationale logic for back posture interpretation
     if (5/3) * min_value <= angle <= (7/10) * max_value:
-        rationale = f"Optimal {body} posture; steady, balanced, and confident presence."
+        rationale = f"Optimal {body}; steady, balanced, and confident presence."
     elif min_value <= angle < (5/3) * min_value:
-        rationale = f"Good {body} posture; may appear rigid but controlled."
+        rationale = f"Good {body}; may appear rigid but controlled."
     elif (7/10) * max_value < angle <= max_value:
-        rationale = f"Slightly unstable {body} posture; movement may reduce perceived confidence."
+        rationale = f"Slightly unstable {body}; may reduce perceived confidence."
     elif angle < min_value:
-        rationale = f"Extremely stiff {body} posture; may appear unnatural and uncomfortable."
+        rationale = f"Extremely stiff {body}; may appear unnatural and uncomfortable."
     else:
-        rationale = f"Excessive {body} movement; suggests restlessness or discomfort."
+        rationale = f"Excessive {body}; suggests restlessness or discomfort."
+    
+    print(f"score_posture: {body}: {angle} {rationale}")
 
     return score, rationale
 
@@ -543,7 +545,7 @@ def analyze_posture(video_path):
         is_hand_present = results_data["is_hand_present"] if results_data["is_hand_present"] else 0
 
         # Normalize to match the known video length (60 seconds)
-        video_duration = 28
+        video_duration = 21
 
         # Time spent in good/bad posture
         gb_time = results_data["good_back_frames"] / 30
@@ -596,12 +598,12 @@ def analyze_posture(video_path):
 def analyze_sentiment(transcript, metrics, posture_data):
 
     # Get posture scores
-    mean_back_score, mean_back_rationale = score_posture(posture_data["mean_back_inclination"] ,1.5, 5, "Back")
-    mean_neck_score, mean_neck_rationale = score_posture(posture_data["mean_neck_inclination"] ,1.5, 5, "Neck")
+    mean_back_score, mean_back_rationale = score_posture(posture_data["mean_back_inclination"] ,0, 10, "Back Posture")
+    mean_neck_score, mean_neck_rationale = score_posture(posture_data["mean_neck_inclination"] ,1, 13, "Neck Posture")
     mean_body_posture = (mean_back_score + mean_neck_score)/2
 
-    range_back_score, range_back_rationale = score_posture(posture_data["range_back_inclination"] ,1.5, 5, "Back")
-    range_neck_score, range_neck_rationale = score_posture(posture_data["range_neck_inclination"] ,1.5, 5, "Neck")
+    range_back_score, range_back_rationale = score_posture(posture_data["range_back_inclination"] ,0, 15, "Back range of movement")
+    range_neck_score, range_neck_rationale = score_posture(posture_data["range_neck_inclination"] ,7, 27, "Neck range of movement")
     range_body_posture = (range_back_score + range_neck_score)/2
 
     is_hand_present = posture_data["is_hand_present"]
@@ -694,9 +696,18 @@ def analyze_sentiment(transcript, metrics, posture_data):
     print(f"DATA TYPE OF RESPONSE:  {type(response)}")
 
     try:
-        general_feedback_summary = f"Posture rationale: {mean_back_rationale}, {mean_neck_rationale}. Stiffness rationale: {range_back_rationale}, {range_neck_rationale}. Volume rationale: {metrics['Metrics']['Volume Rationale']}. Pitch variability rationale: {metrics['Metrics']['Pitch Variability Rationale']}. Pace rationale: {metrics['Metrics']['Pace Rationale']}. Pause rationale: {metrics['Metrics']['Pause Metric Rationale']}."
+
         parsed_response = {}
         parsed_response['Feedback'] = json.loads(response)
+        feedback = parsed_response['Feedback']
+        general_feedback_summary = f"""Chunk analysis: The dominant audience emotion perceived was '{feedback['Audience Emotion']}'. Chunk Transcript: {transcript}\n"""
+        
+        # general_feedback_summary = f"""Speaker grades: conviction:{feedback['Conviction']}, clarity:{feedback['Clarity']}, impact: {feedback['Impact']}. 
+        # Brevity: {feedback['Brevity']}, transformative potential: {feedback['Transformative Potential']}. The audience's trigger response: {feedback['Trigger Response']}, filler words usage score: {feedback['Filler Words']}, 
+        # and grammar:{feedback['Grammar']}. The dominant audience emotion perceived was '{feedback['Audience Emotion']}'."""
+
+        # Body posture score: {mean_body_posture}, Body movement score: {range_body_posture} Speaker Transcript: {transcript}\n Volume_score: {metrics["Metrics"]["Volume"]}, pitch_variability_score: {metrics["Scores"]["Pitch Variability Score"]}. pace score: {metrics["Scores"]["Pace Score"]}, pauses score: {metrics["Scores"]["Pause Score"]}, Hand Motion: {is_hand_present}"""
+        # Speaker Transcript: {transcript}\n Body Language rationale: {mean_back_rationale}, {mean_neck_rationale}, {range_back_rationale}, {range_neck_rationale}. Volume rationale: {metrics['Metrics']['Volume Rationale']}. Pitch variability rationale: {metrics['Metrics']['Pitch Variability Rationale']}. Pace rationale: {metrics['Metrics']['Pace Rationale']}. Pause rationale: {metrics['Metrics']['Pause Metric Rationale']}."""
         parsed_response['Feedback']["General Feedback Summary"] = general_feedback_summary
         parsed_response['Posture Scores'] = {
             "Posture": round(mean_body_posture),

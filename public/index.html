@@ -152,7 +152,9 @@
                     body: JSON.stringify({
                         session_name: "Live Practice Session",
                         session_type: "public",
-                        virtual_environment: selectedRoom // Use the selected room here
+                        virtual_environment: selectedRoom, // Use the selected room here
+                        goals: ["I want to be more brave"]
+
                     })
                 });
                 if (!response.ok) {
@@ -284,7 +286,7 @@
                 // Ensure API_BASE_URL port is consistent if you changed it
                 const wsProtocol = API_BASE_URL.startsWith("https") ? "wss" : "ws";
                 // Include room_name as a query parameter
-                const wsUrl = `${wsProtocol}://${API_BASE_URL.split('://')[1]}/ws/socket_server6/?session_id=${sessionId}&room_name=${selectedRoom}`;
+                const wsUrl = `${wsProtocol}://${API_BASE_URL.split('://')[1]}/ws/socket_server/?session_id=${sessionId}&room_name=${selectedRoom}`;
                 console.log("Connecting to WebSocket:", wsUrl);
                 socket = new WebSocket(wsUrl);
                 socket.binaryType = "arraybuffer"; // Or 'blob' depending on how your server handles it
