@@ -136,6 +136,13 @@ class PracticeSession(models.Model):
         help_text="Optional sequence this session belongs to",
     )
 
+    compiled_video_url = models.URLField(
+        max_length=400,
+        blank=True,
+        null=True,
+        help_text="URL of the final compiled video for the session.",
+    )
+
     # New fields and renamed fields for sentiment analysis response (aggregated for the session)
     volume = models.IntegerField(default=0, help_text="Average volume of the session")
     pitch_variability = models.IntegerField(
