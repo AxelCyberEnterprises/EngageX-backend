@@ -770,6 +770,9 @@ class SessionReportView(APIView):
         
         goals = PracticeSession.objects.filter(id=session_id).values_list("goals", flat=True).first()
 
+        name = PracticeSession.objects.get(id=session_id).user.first_name
+        print(f"Firstname: {name}")
+
 
         # Retrieve all general feedback summaries for the session's chunks
         general_feedback_summaries = ChunkSentimentAnalysis.objects.filter(
@@ -792,6 +795,7 @@ class SessionReportView(APIView):
         
 # My name is .
         prompt = f"""
+            My name is {name}, refer to me in first person.
             You are my personal expert communication coach specializing in public speaking, storytelling, pitching, and presentations.
 
             My goal with this presentation is {goals}. Using my provided presentation evaluation data and transcript, generate a structured JSON response with the following three components:
