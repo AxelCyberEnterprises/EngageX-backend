@@ -5,6 +5,7 @@ import os
 import json
 import traceback
 import boto3
+import requests
 
 from rest_framework import viewsets, status
 from rest_framework.permissions import IsAuthenticated
@@ -24,6 +25,8 @@ from django.utils.timezone import now
 from django.shortcuts import get_object_or_404
 from django.contrib.auth import get_user_model
 from django.db.models.functions import Cast, TruncMonth, TruncDay
+from django.views.decorators.csrf import csrf_exempt
+from django.http import JsonResponse
 
 from requests import session
 from datetime import timedelta
@@ -110,6 +113,34 @@ User = get_user_model()
 #         }
 #     return parsed_summary
 
+@csrf_exempt
+def get_openai_realtime_token(request):
+    headers = {
+        "Authorization": f"Bearer {settings.OPENAI_API_KEY}",
+        "Content-Type": "application/json"
+    }
+
+    payload = {
+        "model": "gpt-4o-realtime-preview",
+        "modalities": ["text"],  # Only return text, not audio
+        "instructions": """You are an advanced presentation evaluation system. Using the speaker's transcript.
+
+Select one of these emotions that the audience is feeling most strongly ONLY choose from this list(thinking, sorrow, excitement, laughter, surprise, interested).
+
+Take into account what came before each entry but prioritize the most recent entry. Respond only with the emotion.""",
+        "turn_detection": {
+            "type": "server_vad",                   # Use Server VAD
+            "silence_duration_ms": 100         # 100ms silence threshold
+        }
+    }
+
+    response = requests.post(
+        "https://api.openai.com/v1/realtime/sessions",
+        headers=headers,
+        json=payload
+    )
+
+    return JsonResponse(response.json(), status=response.status_code)
 
 def generate_slide_summary(pdf_path):
     client = OpenAI(api_key=settings.OPENAI_API_KEY)
@@ -762,7 +793,7 @@ class SessionReportView(APIView):
 
                 1. Strengths: Identify my most impactful strengths. Focus on *concrete content choices*, tone, delivery techniques, and audience engagement strategies.  Format the output as a Python string representing a list, also make sure not to use commas in your points as that may conflict with the list , with each of strength as points separated by a comma with the quotes outside the list brackets (e.g., "[Strength 1, Strength 2, Strength 3]").
 
-                2. Areas for Improvement: Provide *clear, actionable, and specific feedback* on areas where I can improve. Emphasize delivery habits (e.g., filler word usage), missed emotional beats, and structural weaknesses. Format the output as a Python string representing a list, with each of the area of improvement points separated by a comma with the quotes outside the list brackets (e.g., "[Area of Improvement 1, Area of Improvement 2, Area of Improvement 3, Area of Improvement 4]").
+                2. Areas for Improvement: Provide *clear, actionable, and specific feedback* on areas where I can improve. Emphasize delivery habits, missed emotional beats, and structural weaknesses. Format the output as a Python string representing a list, with each of the area of improvement points separated by a comma with the quotes outside the list brackets (e.g., "[Area of Improvement 1, Area of Improvement 2, Area of Improvement 3, Area of Improvement 4]").
 
                 3. General Feedback Summary: Craft a detailed, content-specific analysis of my presentation. Your response *must be grounded in specific parts of my transcript*. Include the following:
                 - Identify any impactful opening or closing (Was it emotionally charged? Memorable?).
@@ -783,7 +814,7 @@ class SessionReportView(APIView):
         try:
             print("Calling OpenAI for summary generation...")
             completion = client.chat.completions.create(
-                model="gpt-4o-mini",
+                model="gpt-4o",
                 messages=[{"role": "user", "content": prompt}],
                 response_format={
                     "type": "json_schema",

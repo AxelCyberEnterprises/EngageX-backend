@@ -27,6 +27,8 @@ router.register(
     ChunkSentimentAnalysisViewSet,
     basename="chunk-sentiment-analysis",
 )
+from django.urls import path
+from .views import get_openai_realtime_token
 
 urlpatterns = [
     path("", include(router.urls)),
@@ -66,7 +68,8 @@ urlpatterns = [
     ),
     path("improve-existing-sequence/",ImproveExistingSequence.as_view(),name="improve-existing-sequence"),
 
-path("improve-new-sequence/<str:session_id>/",ImproveNewSequence.as_view(),name="improve-new-sequence"),
-path("improve-new-sequence/",ImproveNewSequence.as_view(),name="sessionlistwithoutsequence"),
+    path("improve-new-sequence/<str:session_id>/",ImproveNewSequence.as_view(),name="improve-new-sequence"),
+    path("improve-new-sequence/",ImproveNewSequence.as_view(),name="sessionlistwithoutsequence"),
+    path("api/openai/realtime-token/", get_openai_realtime_token),
 
 ]

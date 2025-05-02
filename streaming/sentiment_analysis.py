@@ -52,6 +52,28 @@ results_data = {
 
 lock = threading.Lock()
 
+def ai_audience_question(transcript):
+    prompt =f"""
+        You are an intelligent and curious audience member at a talk or presentation. Based on the following speaker transcript, generate an insightful question
+        you might ask the speaker to deepen the conversation or clarify a point. ONLY return the question
+        Transcript:\n{transcript}\n"""
+
+    try:
+        response =client.chat.completions.create(
+            model="gpt-4o",  # You can change to gpt-3.5-turbo or another if preferred
+            messages=[
+                {"role": "system", "content": "You are a helpful assistant that asks insightful questions."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.7,
+            max_tokens=100,
+        )
+        question = response.choices[0].message.content.strip()
+        return question
+    except Exception as e:
+        print(f"Error generating audience question: {e}")
+        return None
+    
 
 # ---------------------- SCORING FUNCTIONS ----------------------
 def scale_to_score(value, min_val, max_val):
