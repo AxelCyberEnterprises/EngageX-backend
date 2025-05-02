@@ -179,7 +179,7 @@ def get_auth_client():
     return AuthClient(
         client_id=settings.INTUIT_CLIENT_ID,
         client_secret=settings.INTUIT_CLIENT_SECRET,
-        redirect_uri=settings.NEW_INTUIT_REDIRECT_URI,
+        redirect_uri=settings.INTUIT_REDIRECT_URI,
         environment=settings.INTUIT_ENVIRONMENT
     )
 

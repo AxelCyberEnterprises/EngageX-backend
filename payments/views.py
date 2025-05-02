@@ -29,6 +29,8 @@ from .utils import (
     process_payment_create,
     process_payment_update
 )
+from .utils import is_token_expired
+
 
 from django.conf import settings
 from intuitlib.client import AuthClient
@@ -397,12 +399,15 @@ class QuickbooksStatusAPIView(APIView):
         token = get_quickbooks_token_obj()
 
         # Determine connection status
-        is_connected = token is not None and token.access_token is not None and token.realm_id is not None
+        # is_connected = token is not None and token.access_token is not None and token.realm_id is not None
+        is_expired = is_token_expired(token) if token else True
+        is_connected = token and token.access_token and token.realm_id and not is_expired
         expires_at = token.expires_at if token else None
 
         # Prepare status data as a dictionary
         status_data = {
             'is_connected': is_connected,
+            "token_expired": is_expired,
             'realm_id': token.realm_id if token else None,
             'expires_at': expires_at.isoformat() if expires_at else None,
             'auth_initiate_url': request.build_absolute_uri(reverse('payments:intuit_auth')),
@@ -473,4 +478,5 @@ class PaymentTransactionViewSet(viewsets.ModelViewSet):
     """
     queryset = PaymentTransaction.objects.all()
     serializer_class = PaymentTransactionSerializer
-    permission_classes = [IsAuthenticated, IsAdminUser]
+    # permission_classes = [IsAuthenticated, IsAdminUser]
+    permission_classes = [AllowAny]

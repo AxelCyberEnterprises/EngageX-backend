@@ -4,6 +4,8 @@
 
 # Cleanest working version 6-8 secs sentiment analysis
 # Fixed the order of the first three chunks
+# S3 video concatenation
+
 
 import asyncio
 import platform

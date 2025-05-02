@@ -152,7 +152,9 @@
                     body: JSON.stringify({
                         session_name: "Live Practice Session",
                         session_type: "public",
-                        virtual_environment: selectedRoom // Use the selected room here
+                        virtual_environment: selectedRoom, // Use the selected room here
+                        goals: ["I want to be more brave"]
+
                     })
                 });
                 if (!response.ok) {
