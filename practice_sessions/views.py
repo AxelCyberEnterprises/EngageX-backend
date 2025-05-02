@@ -125,7 +125,7 @@ def get_openai_realtime_token(request):
         "modalities": ["text"],  # Only return text, not audio
         "instructions": """You are an advanced presentation evaluation system. Using the speaker's transcript.
 
-Select one of these emotions that the audience is feeling most strongly ONLY choose from this list(thinking, sorrow, excitement, laughter, surprise, interested).
+Select one of these emotions that the audience is feeling most strongly ONLY choose from this list(thinking, empathy, excitement, laughter, surprise, interested).
 
 Take into account what came before each entry but prioritize the most recent entry. Respond only with the emotion.""",
         "turn_detection": {
@@ -787,28 +787,35 @@ class SessionReportView(APIView):
                 "General Feedback Summary": "No feedback was generated for the chunks in this session.",
             }
         
-
+        if goals =='':
+            goals = 'to have an impact'
+        
+# My name is .
         prompt = f"""
-                You are my speaking coach, using my provided presentation evaluation data and transcript, generate a structured JSON response with the following three components:
+            You are my personal expert communication coach specializing in public speaking, storytelling, pitching, and presentations.
 
-                1. Strengths: Identify my most impactful strengths. Focus on *concrete content choices*, tone, delivery techniques, and audience engagement strategies.  Format the output as a Python string representing a list, also make sure not to use commas in your points as that may conflict with the list , with each of strength as points separated by a comma with the quotes outside the list brackets (e.g., "[Strength 1, Strength 2, Strength 3]").
+            My goal with this presentation is {goals}. Using my provided presentation evaluation data and transcript, generate a structured JSON response with the following three components:
 
-                2. Areas for Improvement: Provide *clear, actionable, and specific feedback* on areas where I can improve. Emphasize delivery habits, missed emotional beats, and structural weaknesses. Format the output as a Python string representing a list, with each of the area of improvement points separated by a comma with the quotes outside the list brackets (e.g., "[Area of Improvement 1, Area of Improvement 2, Area of Improvement 3, Area of Improvement 4]").
+            1. Strengths: Identify my most impactful strengths. Focus on *concrete content choices*, tone, delivery techniques, and audience engagement strategies. Format the output as a Python string representing a list, also make sure not to use commas in your points as that may conflict with the list , with each strength as points separated by a comma with the quotes outside the list brackets (e.g., "[Strength 1, Strength 2, Strength 3]").
 
-                3. General Feedback Summary: Craft a detailed, content-specific analysis of my presentation. Your response *must be grounded in specific parts of my transcript*. Include the following:
-                - Identify any impactful opening or closing (Was it emotionally charged? Memorable?).
-                - Highlight specific trigger words or emotionally resonant phrases that effectively drove engagement and how they influenced the audience.
-                - List filler words that were overused.
-                - Assess my motivational tone: Is it strong or weak? Do I inspire action or provoke thought?
-                - Analyze whether my style or story made them memorable.
-                - Clearly state whether my talk was effective — and if so, *effective at what specifically* (e.g., persuading the audience, building trust, sparking interest).
+            2. Areas for Improvement: Provide *clear, actionable, and specific feedback* on where I can improve. Emphasize my delivery habits, missed emotional beats, and structural weaknesses. Format the output as a Python string representing a list, with each point separated by a comma and the quotes outside the list brackets (e.g., "[Area of Improvement 1, Area of Improvement 2, Area of Improvement 3]").
 
-                Evaluation data: {metrics_string}
-                Transcript:
-                {combined_feedback}
+            3. General Feedback Summary: Craft a detailed, content-specific analysis of my presentation. Your response *must be grounded in specific parts of my transcript*. Include the following:
+            - Evaluate the effectiveness of my opening: Was it attention-grabbing, relevant, or emotionally engaging? Did I clearly set the tone or premise for the rest of the talk?
+            - Highlight specific trigger words or emotionally resonant phrases I used that effectively drove engagement, and explain how they influenced the audience.
+            - List any filler words I overused (e.g., "um", "like", "you know").
+            - Comment on how I used powerful or evocative language—did I evoke empathy, joy, urgency, or excitement? Did I show vulnerability or emotional relatability?
+            - Analyze my tone of voice: Was it confident, warm, authoritative, enthusiastic, or inconsistent? Note any tone shifts and how they impacted audience engagement.
+            - Reflect on whether my style or personal story helped make the talk more memorable.
+            - Assess how persuasive I was: Did I inspire action, challenge assumptions, or shift perspectives? Highlight specific techniques like storytelling, analogies, or rhetorical questions.
+            - Evaluate the structure and flow of my talk. Were transitions smooth? Did I build toward a clear message or emotional climax?
+            - Clearly state whether my talk was effective — and if so, *effective at what specifically* (e.g., persuading the audience, building trust, sparking interest).
+            - Provide an overall evaluation of how well I demonstrated mastery in storytelling, public speaking, or pitching. Include tailored suggestions for improvement based on the context and audience.
 
-                If I had goals with this presentation reference them: {goals}.
-                """
+            Evaluation data: {metrics_string}
+            Transcript:
+            {combined_feedback}
+            """
 
 
         try:
@@ -832,7 +839,7 @@ class SessionReportView(APIView):
                     }
                 },
                 temperature=0.7,  # Adjust temperature as needed
-                max_tokens=2000  # Limit tokens to control response length
+                max_tokens=2400  # Limit tokens to control response length
             )
             print(f"prompt: {prompt}")
 
