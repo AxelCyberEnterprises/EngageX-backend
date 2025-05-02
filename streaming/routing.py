@@ -1,4 +1,5 @@
-from . import consumers, consumers1, consumers2, consumers3, consumers4, consumers5, consumers6, consumers7
+from . import (consumers, consumers1, consumers2, consumers3, consumers4, consumers5, 
+               consumers6, consumers7, consumers8)
 from django.urls import re_path
 
 
@@ -11,4 +12,5 @@ websocket_urlpatterns = [
     re_path(r"ws/socket_server5/$", consumers5.LiveSessionConsumer.as_asgi()),
     re_path(r"ws/socket_server6/$", consumers6.LiveSessionConsumer.as_asgi()),
     re_path(r"ws/socket_server7/$", consumers7.LiveSessionConsumer.as_asgi()),
+    re_path(r"ws/socket_server8/$", consumers8.LiveSessionConsumer.as_asgi()),
 ]
