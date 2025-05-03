@@ -239,20 +239,40 @@ def format_timedelta_12h(td):
 
 import tempfile
 import subprocess
+import platform
 import time
 
+def get_soffice_path():
+    system = platform.system()
+
+    if system == "Darwin":  # macOS
+        return "/Applications/LibreOffice.app/Contents/MacOS/soffice"
+    elif system == "Windows":
+        # Common install location on Windows
+        possible_paths = [
+            r"C:\Program Files\LibreOffice\program\soffice.exe",
+            r"C:\Program Files (x86)\LibreOffice\program\soffice.exe"
+        ]
+        for path in possible_paths:
+            if os.path.exists(path):
+                return path
+        raise FileNotFoundError("LibreOffice not found in expected Windows locations.")
+    else:  # Assume Linux/Docker
+        return "soffice"  # Must be in PATH
 
 def convert_pptx_to_pdf(pptx_file):
+    soffice_path = get_soffice_path()
+
     with tempfile.NamedTemporaryFile(suffix='.pptx', delete=False) as temp_pptx:
         for chunk in pptx_file.chunks():
             temp_pptx.write(chunk)
         temp_pptx_path = temp_pptx.name
+
     output_dir = tempfile.gettempdir()
-    print(output_dir)
 
     subprocess.run(
         [
-            "/Applications/LibreOffice.app/Contents/MacOS/soffice",
+            soffice_path,
             "--headless",
             "--convert-to", "pdf",
             "--outdir", output_dir,
@@ -260,7 +280,6 @@ def convert_pptx_to_pdf(pptx_file):
         ],
         check=True
     )
-
     # time.sleep(0.5)
 
     pdf_path = os.path.join(output_dir, os.path.basename(temp_pptx_path).replace(".pptx", ".pdf"))
@@ -841,7 +860,7 @@ class SessionReportView(APIView):
         # My name is .
         prompt = f"""
             My name is {name}, refer to me in first person.
-            You are my personal expert communication coach specializing in public speaking, storytelling, pitching, and presentations.
+            You are my personal expert communication mentor/coach specializing in public speaking, storytelling, pitching, and presentations.
 
             My goal with this presentation is {goals}. Using my provided presentation evaluation data and transcript, generate a structured JSON response with the following three components:
 
@@ -860,6 +879,8 @@ class SessionReportView(APIView):
             - Evaluate the structure and flow of my talk. Were transitions smooth? Did I build toward a clear message or emotional climax?
             - Clearly state whether my talk was effective — and if so, *effective at what specifically* (e.g., persuading the audience, building trust, sparking interest).
             - Provide an overall evaluation of how well I demonstrated mastery in storytelling, public speaking, or pitching. Include tailored suggestions for improvement based on the context and audience.
+
+            Tone: btw speak to me personally like a mentor coach, this is not a report its guidance.
 
             Evaluation data: {metrics_string}
             Transcript:
