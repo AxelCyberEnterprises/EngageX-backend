@@ -71,6 +71,8 @@
             <option value="board_room_1">Board Room 1</option>
             <option value="board_room_2">Board Room 2</option>
         </select>
+        <label for="aiQuestionToggle">Enable AI Audience Questions:</label>
+        <input type="checkbox" id="aiQuestionToggle" checked>
         <button id="startBtn">Start Recording</button>
         <button id="stopBtn" disabled>Stop Recording</button>
     </div>
@@ -133,11 +135,19 @@
         let chunkTimer = null;
         let startTime;
         let selectedRoom = document.getElementById('roomSelect').value; // Get initial selected room
+        let aiQuestionsEnabled = document.getElementById('aiQuestionToggle').checked; // Get initial toggle state
+
 
         // Update selectedRoom when the dropdown changes
         document.getElementById('roomSelect').addEventListener('change', (event) => {
             selectedRoom = event.target.value;
             console.log("Room selected:", selectedRoom);
+        });
+
+         // Update aiQuestionsEnabled when the toggle changes
+        document.getElementById('aiQuestionToggle').addEventListener('change', (event) => {
+            aiQuestionsEnabled = event.target.checked;
+            console.log("AI Questions Enabled:", aiQuestionsEnabled);
         });
 
 
@@ -285,14 +295,14 @@
 
                 // Ensure API_BASE_URL port is consistent if you changed it
                 const wsProtocol = API_BASE_URL.startsWith("https") ? "wss" : "ws";
-                // Include room_name as a query parameter
-                const wsUrl = `${wsProtocol}://${API_BASE_URL.split('://')[1]}/ws/socket_server7/?session_id=${sessionId}&room_name=${selectedRoom}`;
+                // Include room_name and aiQuestionsEnabled as query parameters
+                const wsUrl = `${wsProtocol}://${API_BASE_URL.split('://')[1]}/ws/socket_server/?session_id=${sessionId}&room_name=${selectedRoom}&ai_questions_enabled=${aiQuestionsEnabled}`;
                 console.log("Connecting to WebSocket:", wsUrl);
                 socket = new WebSocket(wsUrl);
                 socket.binaryType = "arraybuffer"; // Or 'blob' depending on how your server handles it
 
                 socket.onopen = () => {
-                    console.log("WebSocket Connected with Session ID:", sessionId, "Room:", selectedRoom);
+                    console.log("WebSocket Connected with Session ID:", sessionId, "Room:", selectedRoom, "AI Questions Enabled:", aiQuestionsEnabled);
                     document.getElementById("status").textContent = "Status: Recording...";
                     document.getElementById("startBtn").disabled = true;
                     document.getElementById("stopBtn").disabled = false;
@@ -324,7 +334,11 @@
                              //     // to load and play the video from data.emotion_s3_url
                              // }
 
-                           } else {
+                           } else if (data.type === "audience_question") {
+                                console.log("Received AI Audience Question:", data.question);
+                                alert("AI Audience Question: " + data.question); // Display the question to the user (you might want a more sophisticated UI)
+                           }
+                           else {
                              console.log("Server message:", e.data);
                            }
                     } catch (error) {
