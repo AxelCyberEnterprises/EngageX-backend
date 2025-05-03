@@ -5,7 +5,7 @@
 # Cleanest working version 6-8 secs sentiment analysis
 # Fixed the order of the first three chunks
 # S3 video concatenation
-
+# Added AI Audience Question functionality triggered at intervals and controlled by a toggle
 
 import asyncio
 import platform
@@ -38,7 +38,8 @@ from channels.db import database_sync_to_async
 # Assuming these are in a local file sentiment_analysis.py
 # transcribe_audio now needs to handle a single audio file (used in process_media_chunk)
 # analyze_results now receives a concatenated transcript and the combined audio path (like the original)
-from .sentiment_analysis import analyze_results, transcribe_audio
+# Import the ai_audience_question function
+from .sentiment_analysis import analyze_results, transcribe_audio, ai_audience_question
 
 from practice_sessions.models import PracticeSession, SessionChunk, ChunkSentimentAnalysis
 from practice_sessions.serializers import SessionChunkSerializer, ChunkSentimentAnalysisSerializer # PracticeSessionSerializer might not be directly needed here
@@ -69,6 +70,9 @@ NUMBER_OF_VARIATIONS = 5
 # Define the window size for analysis (number of chunks)
 ANALYSIS_WINDOW_SIZE = 3 # Keeping the reduced window size from the previous test
 
+# Define the interval for generating AI questions (in terms of number of analysis windows)
+QUESTION_INTERVAL_WINDOWS = 3
+
 # Helper function to convert numpy types to native Python types for JSON serialization
 def convert_numpy_types(obj):
     """Recursively converts numpy types within a dict or list to native Python types."""
@@ -98,8 +102,9 @@ class LiveSessionConsumer(AsyncWebsocketConsumer):
         # Dictionary to store background tasks for chunk saving, keyed by media_path
         self.background_chunk_save_tasks = {}
         self._running_tasks = []
-
-
+        # Counter for analysis windows to trigger questions
+        self.analysis_window_counter = 0
+        self.ai_questions_enabled = True # Default to True, will be updated in connect
 
     async def connect(self):
         query_string = self.scope['query_string'].decode()
@@ -114,10 +119,12 @@ class LiveSessionConsumer(AsyncWebsocketConsumer):
 
         self.session_id = query_params.get('session_id', None)
         self.room_name = query_params.get('room_name', None) # Get room_name from query params
+        # Get AI questions enabled status, default to True if not provided
+        self.ai_questions_enabled = query_params.get('ai_questions_enabled', 'true').lower() == 'true'
 
         # Validate session_id and room_name
         if self.session_id and self.room_name in POSSIBLE_ROOMS:
-            print(f"WS: Client connected for Session ID: {self.session_id}, Room: {self.room_name}")
+            print(f"WS: Client connected for Session ID: {self.session_id}, Room: {self.room_name}, AI Questions Enabled: {self.ai_questions_enabled}")
             await self.accept()
             await self.send(json.dumps({
                 "type": "connection_established",
@@ -297,8 +304,10 @@ class LiveSessionConsumer(AsyncWebsocketConsumer):
                 self.audio_buffer[media_path] = audio_path # Store the mapping
 
                 # --- Transcription of the single chunk (Blocking network I/O) ---
-                # Use asyncio.to_thread for the blocking transcription call
-                # This part is awaited to ensure transcript is in buffer for concatenation
+                # Only transcribe if AI questions are enabled or analysis requires it
+                # Assuming transcription is always needed for analysis regardless of questions
+                # If transcription was *only* for questions, we would gate it here.
+                # For now, keep transcription as it's needed for general analysis too.
                 if client: # Check if OpenAI client was initialized
                     print(f"WS: Attempting transcription for single chunk audio: {audio_path}")
                     transcription_start_time = time.time()
@@ -392,6 +401,7 @@ class LiveSessionConsumer(AsyncWebsocketConsumer):
         """
         Handles concatenation (audio and transcript), analysis, and saving sentiment data for a window.
         Awaits the background chunk save for the last chunk in the window before saving analysis.
+        Also triggers AI audience question generation at specified intervals if enabled.
         """
         start_time = time.time()
         last_media_path = window_paths[-1]
@@ -445,6 +455,9 @@ class LiveSessionConsumer(AsyncWebsocketConsumer):
             valid_audio_paths = [path for path in required_audio_paths if path is not None and os.path.exists(path)]
 
             # We only need ANALYSIS_WINDOW_SIZE valid audio paths for concatenation
+            # Only concatenate audio if we have valid paths AND if AI questions are enabled
+            # or if any other analysis requires the combined audio.
+            # Assuming combined audio is needed for analyze_results regardless of questions:
             if len(valid_audio_paths) == ANALYSIS_WINDOW_SIZE:
                  print(f"WS: Valid audio paths for concatenation: {valid_audio_paths}")
 
@@ -478,6 +491,7 @@ class LiveSessionConsumer(AsyncWebsocketConsumer):
             # Proceed with analysis if there is a non-empty concatenated transcript and the client is initialized
             # AND combined_audio_path is available (mimicking old working behavior)
             # We will get the analysis result if possible, regardless of whether the chunk save is complete yet.
+            # Analysis should still run even if AI questions are disabled, as it provides other feedback.
             if combined_transcript_text.strip() and client and combined_audio_path and os.path.exists(combined_audio_path):
                 print(f"WS: Running analyze_results for combined transcript and audio.")
                 analysis_start_time = time.time()
@@ -562,9 +576,28 @@ class LiveSessionConsumer(AsyncWebsocketConsumer):
                     "analysis": serializable_analysis_result
                 }))
 
+                # --- Trigger AI Audience Question Generation ---
+                # Increment the analysis window counter
+                self.analysis_window_counter += 1
+                print(f"WS: Analysis window count: {self.analysis_window_counter}")
+
+                # Check if it's time to generate a question based on the interval
+                # AND if AI questions are enabled for this session
+                if self.ai_questions_enabled and self.analysis_window_counter % QUESTION_INTERVAL_WINDOWS == 0:
+                    print(f"WS: AI questions are ENABLED. Generating AI Audience Question for window ending with chunk {window_chunk_number}")
+                    # Use asyncio.create_task to run the question generation in the background
+                    # Pass the concatenated transcript to the function
+                    asyncio.create_task(self.generate_and_send_question(combined_transcript_text))
+                    # Reset the counter after generating a question if you want intervals based on *since last question*
+                    # self.analysis_window_counter = 0 # Uncomment this if you want intervals based on *since last question*
+                elif not self.ai_questions_enabled:
+                     print(f"WS: AI questions are DISABLED. Skipping AI Audience Question generation for window ending with chunk {window_chunk_number}")
+                else:
+                     print(f"WS: AI questions are ENABLED but not time for a question yet (window {self.analysis_window_counter}). Skipping AI Audience Question generation.")
+
+
                 # --- Wait for the background chunk save task for the LAST chunk in the window ---
                 # before attempting to save the window analysis results to the database.
-                # Add a loop to wait for the task to appear in the dictionary, with a timeout
                 last_chunk_save_task = None
                 wait_start_time = time.time()
                 wait_timeout = 30.0 # Increased timeout to wait for the task to appear/complete
@@ -602,14 +635,17 @@ class LiveSessionConsumer(AsyncWebsocketConsumer):
                     print(f"WS: Current keys in self.background_chunk_save_tasks: {list(self.background_chunk_save_tasks.keys())}")
                     print(f"WS: Current keys in self.media_path_to_chunk: {list(self.media_path_to_chunk.keys())}")
 
+
+                # If the loop finished without finding/waiting for the task, check if the chunk ID is in the map and try to save analysis
                 if not last_chunk_save_task:
                     if last_media_path in self.media_path_to_chunk:
-                        print(f"WS: ⚠️ Background save task missing, but chunk ID found for {last_media_path}. Proceeding to save window analysis.")
-                        asyncio.create_task(self._save_window_analysis(last_media_path, analysis_result, combined_transcript_text, window_chunk_number))
+                         print(f"WS: ⚠️ Background save task missing, but chunk ID found for {last_media_path}. Proceeding to save window analysis.")
+                         asyncio.create_task(self._save_window_analysis(last_media_path, analysis_result, combined_transcript_text, window_chunk_number))
                     else:
                         print(f"WS: ❌ Background save task for the last chunk ({last_media_path}) in the window was not found within timeout AND no chunk ID. Cannot save window analysis.")
                         print(f"WS: DEBUG: Current background_chunk_save_tasks keys: {list(self.background_chunk_save_tasks.keys())}")
                         print(f"WS: DEBUG: Current media_path_to_chunk keys: {list(self.media_path_to_chunk.keys())}")
+
 
             else:
                 print(f"WS: No analysis result obtained for window ending with chunk {window_chunk_number}. Skipping analysis save and sending updates.")
@@ -649,7 +685,7 @@ class LiveSessionConsumer(AsyncWebsocketConsumer):
                      if save_task:
                          print(f"WS: Waiting for background save task for oldest chunk ({oldest_media_path}) to complete before cleaning up...")
                          try:
-                             # Wait for the specific task to finish (with a timeout)
+                             # Wait for the specific task to finish (with a reasonable timeout)
                              await asyncio.wait_for(save_task, timeout=90.0) # Use a reasonable timeout
                              print(f"WS: Background save task for oldest chunk ({oldest_media_path}) completed. Proceeding with cleanup.")
 
@@ -727,6 +763,39 @@ class LiveSessionConsumer(AsyncWebsocketConsumer):
 
 
         print(f"WS: analyze_windowed_media finished (instance) for window ending with chunk {window_chunk_number} after {time.time() - start_time:.2f} seconds")
+
+
+    # NEW METHOD: Generates and sends an AI audience question
+    async def generate_and_send_question(self, transcript):
+        """Generates an AI audience question based on the transcript and sends it to the frontend."""
+        # Added check for self.ai_questions_enabled
+        if not self.ai_questions_enabled or not transcript or not client:
+            print("WS: Skipping AI audience question generation: Feature disabled, transcript is empty, or OpenAI client not initialized.")
+            return
+
+        print("WS: Calling ai_audience_question...")
+        try:
+            # Call the synchronous ai_audience_question function in a thread
+            question = await asyncio.to_thread(ai_audience_question, transcript)
+
+            if question:
+                print(f"WS: Generated AI audience question: {question}")
+                # Send the question to the frontend via WebSocket
+                # Wrap in try/except in case the connection is closed
+                try:
+                    await self.send(json.dumps({
+                        "type": "audience_question",
+                        "question": question
+                    }))
+                    print("WS: Sent AI audience question to frontend.")
+                except Exception as send_error:
+                    print(f"WS: Error sending AI audience question to frontend: {send_error}")
+            else:
+                print("WS: AI audience question function returned None.")
+
+        except Exception as e:
+            print(f"WS: Error generating or sending AI audience question: {e}")
+            traceback.print_exc()
 
 
     def extract_audio(self, media_path):
@@ -1085,7 +1154,7 @@ class LiveSessionConsumer(AsyncWebsocketConsumer):
             # 5. Upload compiled video to S3
             print(f"WS: Uploading compiled video to S3 for session {session_id}.")
             # Construct the S3 key for the compiled video
-            compiled_s3_key = f"{BASE_FOLDER}{session_id}/{compiled_video_filename}"
+            compiled_s3_key = f"{BASE_FOLDER}{self.session_id}/{compiled_video_filename}" # Use self.session_id
             # Upload the compiled video
             # Use asyncio.to_thread for blocking upload
             await asyncio.to_thread(s3.upload_file, compiled_video_path, BUCKET_NAME, compiled_s3_key)
@@ -1116,4 +1185,3 @@ class LiveSessionConsumer(AsyncWebsocketConsumer):
                         print(f"WS: Removed temporary file: {file_path}")
                     except Exception as e:
                         print(f"WS: Error removing temporary file {file_path} during cleanup: {e}")
-
