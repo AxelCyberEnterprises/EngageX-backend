@@ -1,8 +1,13 @@
 import base64
 import concurrent.futures
-
 import openai
-from requests import session
+import os
+import json
+import traceback
+import boto3
+import requests
+from django.core.files import File
+
 from rest_framework import viewsets, status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.decorators import action
@@ -10,33 +15,21 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework.exceptions import PermissionDenied
-from django.core.files.uploadedfile import UploadedFile
 
+from django.core.files.uploadedfile import UploadedFile
 from django.db.models.functions import Round
 from django.conf import settings
-from django.db.models import (
-    Count,
-    Avg,
-    Case,
-    When,
-    Value,
-    CharField,
-    Sum,
-    IntegerField,
-    Q,
-    ExpressionWrapper,
-    FloatField,
-)
+from django.db.models import (Count, Avg, Case, When, Value, CharField, Sum, IntegerField, Q,
+                              ExpressionWrapper, FloatField,
+                              )
 from django.utils.timezone import now
 from django.shortcuts import get_object_or_404
 from django.contrib.auth import get_user_model
 from django.db.models.functions import Cast, TruncMonth, TruncDay
+from django.views.decorators.csrf import csrf_exempt
+from django.http import JsonResponse
 
-import os
-import json
-import traceback
-import boto3
-
+from requests import session
 from datetime import timedelta
 from datetime import datetime, timedelta
 from collections import Counter
@@ -44,6 +37,7 @@ from openai import OpenAI
 from drf_yasg.utils import swagger_auto_schema
 from collections import defaultdict
 from botocore.exceptions import NoCredentialsError, PartialCredentialsError, ClientError
+from itertools import chain
 
 from .models import (
     PracticeSession,
@@ -63,61 +57,90 @@ from .serializers import (
 User = get_user_model()
 
 
-def generate_full_summary(self, session_id):
-    """Creates a cohesive summary for Strengths, Improvements, and Feedback."""
-    client = OpenAI(api_key=settings.OPENAI_API_KEY)
+# def generate_full_summary(self, session_id):
+#     """Creates a cohesive summary for Strengths, Improvements, and Feedback."""
+#     client = OpenAI(api_key=settings.OPENAI_API_KEY)
 
-    general_feedback_summary = ChunkSentimentAnalysis.objects.filter(
-        chunk__session__id=session_id
-    ).values_list("general_feedback_summary", flat=True)
+#     general_feedback_summary = ChunkSentimentAnalysis.objects.filter(
+#         chunk__session__id=session_id
+#     ).values_list("general_feedback_summary", flat=True)
 
-    combined_feedback = " ".join([g for g in general_feedback_summary if g])
+#     combined_feedback = " ".join([g for g in general_feedback_summary if g])
 
-    # get strenghts and areas of improvements
-    # grade content_organisation (0-100), from transcript
+#     # get strenghts and areas of improvements
+#     # grade content_organisation (0-100), from transcript
 
-    prompt = f"""
-        Using the following presentation evaluation data, provide a structured JSON response containing three key elements:
+#     prompt = f"""
+#         Using the following presentation evaluation data, provide a structured JSON response containing three key elements:
 
-        1. **Strength**: Identify the speaker’s most notable strengths based on their delivery, clarity, and engagement.
-        2. **Area of Improvement**: Provide actionable and specific recommendations for improving the speaker’s performance.
-        3. **General Feedback Summary**: Summarize the presentation’s overall effectiveness, balancing positive feedback with constructive advice.
+#         1. **Strength**: Identify the speaker’s most notable strengths based on their delivery, clarity, and engagement.
+#         2. **Area of Improvement**: Provide actionable and specific recommendations for improving the speaker’s performance.
+#         3. **General Feedback Summary**: Summarize the presentation’s overall effectiveness, balancing positive feedback with constructive advice.
 
-        Data to analyze:
-        {combined_feedback}
-        """
+#         Data to analyze:
+#         {combined_feedback}
+#         """
 
-    try:
-        completion = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[{"role": "user", "content": prompt}],
-            response_format={
-                "type": "json_schema",
-                "json_schema": {
-                    "name": "Feedback",
-                    "schema": {
-                        "type": "object",
-                        "properties": {
-                            "Strength": {"type": "string"},
-                            "Area of Improvement": {"type": "string"},
-                            "General Feedback Summary": {"type": "string"},
-                        },
-                    },
-                },
-            },
-        )
+#     try:
+#         completion = client.chat.completions.create(
+#             model="gpt-4o-mini",
+#             messages=[{"role": "user", "content": prompt}],
+#             response_format={
+#                 "type": "json_schema",
+#                 "json_schema": {
+#                     "name": "Feedback",
+#                     "schema": {
+#                         "type": "object",
+#                         "properties": {
+#                             "Strength": {"type": "string"},
+#                             "Area of Improvement": {"type": "string"},
+#                             "General Feedback Summary": {"type": "string"},
+#                         },
+#                     },
+#                 },
+#             },
+#         )
 
-        refined_summary = completion.choices[0].message.content
-        parsed_summary = json.loads(refined_summary)
+#         refined_summary = completion.choices[0].message.content
+#         parsed_summary = json.loads(refined_summary)
 
-    except Exception as e:
-        print(f"Error generating summary: {e}")
-        parsed_data = {
-            "Strength": "N/A",
-            "Area of Improvement": "N/A",
-            "General Feedback Summary": combined_feedback,
+#     except Exception as e:
+#         print(f"Error generating summary: {e}")
+#         parsed_data = {
+#             "Strength": "N/A",
+#             "Area of Improvement": "N/A",
+#             "General Feedback Summary": combined_feedback,
+#         }
+#     return parsed_summary
+
+@csrf_exempt
+def get_openai_realtime_token(request):
+    headers = {
+        "Authorization": f"Bearer {settings.OPENAI_API_KEY}",
+        "Content-Type": "application/json"
+    }
+
+    payload = {
+        "model": "gpt-4o-realtime-preview",
+        "modalities": ["text"],  # Only return text, not audio
+        "instructions": """You are an advanced presentation evaluation system. Using the speaker's transcript.
+
+Select one of these emotions that the audience is feeling most strongly ONLY choose from this list(thinking, empathy, excitement, laughter, surprise, interested).
+
+Take into account what came before each entry but prioritize the most recent entry. Respond only with the emotion.""",
+        "turn_detection": {
+            "type": "server_vad",  # Use Server VAD
+            "silence_duration_ms": 100  # 100ms silence threshold
         }
-    return parsed_summary
+    }
+
+    response = requests.post(
+        "https://api.openai.com/v1/realtime/sessions",
+        headers=headers,
+        json=payload
+    )
+
+    return JsonResponse(response.json(), status=response.status_code)
 
 
 def generate_slide_summary(pdf_path):
@@ -195,6 +218,7 @@ def generate_slide_summary(pdf_path):
 
     return result
 
+
 def format_timedelta_12h(td):
     # Get the total seconds from the timedelta
     total_seconds = int(td.total_seconds())
@@ -211,6 +235,38 @@ def format_timedelta_12h(td):
 
     # If the hours are less than 12, we leave the format as is (00:xx:xx)
     return f"{hours:02}:{minutes:02}:{seconds:02}"
+
+
+import tempfile
+import subprocess
+import time
+
+
+def convert_pptx_to_pdf(pptx_file):
+    with tempfile.NamedTemporaryFile(suffix='.pptx', delete=False) as temp_pptx:
+        for chunk in pptx_file.chunks():
+            temp_pptx.write(chunk)
+        temp_pptx_path = temp_pptx.name
+    output_dir = tempfile.gettempdir()
+    print(output_dir)
+
+    subprocess.run(
+        [
+            "/Applications/LibreOffice.app/Contents/MacOS/soffice",
+            "--headless",
+            "--convert-to", "pdf",
+            "--outdir", output_dir,
+            temp_pptx_path
+        ],
+        check=True
+    )
+
+    # time.sleep(0.5)
+
+    pdf_path = os.path.join(output_dir, os.path.basename(temp_pptx_path).replace(".pptx", ".pdf"))
+    return pdf_path
+
+
 class PracticeSequenceViewSet(viewsets.ModelViewSet):
     """
     ViewSet for handling practice session sequences.
@@ -260,16 +316,6 @@ class PracticeSessionViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
-
-    # @action(detail=True, methods=["get"])
-    # def report(self, request, pk=None):
-    #     """
-    #     Retrieve the full session report for the given session.
-    #     Admins can view any session; regular users can view only their own.
-    #     """
-    #     session = self.get_object()
-    #     serializer = PracticeSessionSerializer(session)
-    #     return Response(serializer.data)
 
 
 class SessionDashboardView(APIView):
@@ -498,54 +544,6 @@ class SessionDashboardView(APIView):
         return round(((current_value - previous_value) / previous_value) * 100, 2)
 
 
-# class UploadSessionSlidesView(APIView):
-#     """
-#     Endpoint to upload slides to a specific practice session.
-#     """
-
-#     permission_classes = [IsAuthenticated]
-#     parser_classes = [MultiPartParser, FormParser]  # To handle file uploads
-
-#     def put(self, request, pk=None):
-#         """
-#         Upload slides for a practice session.
-#         """
-#         practice_session = get_object_or_404(PracticeSession, pk=pk)
-
-#         # Ensure the user making the request is the owner of the session
-#         if practice_session.user != request.user:
-#             return Response(
-#                 {
-#                     "message": "You do not have permission to upload slides for this session."
-#                 },
-#                 status=status.HTTP_403_FORBIDDEN,
-#             )
-
-#         serializer = PracticeSessionSlidesSerializer(
-#             practice_session, data=request.data, partial=True
-#         )  # partial=True for updates
-
-#         if serializer.is_valid():
-#             serializer.save()
-#             return Response(
-#                 {
-#                     "status": "success",
-#                     "message": "Slides uploaded successfully.",
-#                     "data": serializer.data,
-#                 },
-#                 status=status.HTTP_200_OK,
-#             )
-#         else:
-#             return Response(
-#                 {
-#                     "status": "fail",
-#                     "message": "Slide upload failed.",
-#                     "errors": serializer.errors,
-#                 },
-#                 status=status.HTTP_400_BAD_REQUEST,
-#             )
-
-
 class UploadSessionSlidesView(APIView):
     """
     Endpoint to upload slides to a specific practice session, and retrieve the slide URL.
@@ -595,9 +593,6 @@ class UploadSessionSlidesView(APIView):
                     )
 
                 try:
-                    # The S3 key is the path stored in the FileField's .name attribute
-                    # Based on your S3 location, this *should* be 'slides/Nourish_Final_pitch_deck.pdf'.
-                    # The S3 error shows it's currently 'slides/Nourish_Final_pitch_deck.pdf'.
                     s3_key = practice_session.slides_file.name  # This is the value from the database field
 
                     print(f"Attempting to generate pre-signed URL for S3 key: {s3_key}")  # Log the key from .name
@@ -698,29 +693,37 @@ class UploadSessionSlidesView(APIView):
 
             if serializer.is_valid():
                 uploaded_pdf = serializer.validated_data.get("slides_file")
+                print(uploaded_pdf)
 
-                if uploaded_pdf:
+                if uploaded_pdf.name.endswith('pptx'):
+                    pdf_path = convert_pptx_to_pdf(uploaded_pdf)
+                    print(pdf_path)
+
+                    with open(pdf_path, 'rb') as pdf_file:
+                        practice_session.slides_file.save(
+                            f"{practice_session.id}_slides.pdf",
+                            File(pdf_file),
+                            save=False
+                        )
+
                     print('---processing pdf----')
                     with concurrent.futures.ThreadPoolExecutor() as executor:
-                        future = executor.submit(generate_slide_summary, uploaded_pdf)
+                        future = executor.submit(generate_slide_summary, pdf_path)
                         result = future.result()
-                        practice_session.slide_efficiency = result['SlideEfficiency']
-                        practice_session.text_economy = result['TextEconomy']
-                        practice_session.visual_communication = result['VisualCommunication']
 
-                    print(practice_session.slide_efficiency)
-                    print(practice_session)
+                    practice_session.slide_efficiency = result['SlideEfficiency']
+                    practice_session.text_economy = result['TextEconomy']
+                    practice_session.visual_communication = result['VisualCommunication']
 
-                print('---saving db----')
-                with  concurrent.futures.ThreadPoolExecutor() as db_executor:
-                    db_executor.submit(serializer.save)
-                    print(f"Slides uploaded successfully for session {pk}.")
+                    practice_session.save()
 
-                # Save the uploaded file. This should use the storage backend and upload_to.
-
-                # serializer.save()
-                # result = future.result()
-                # print(result)
+                    if os.path.exists(pdf_path):
+                        os.remove(pdf_path)
+                else:
+                    return Response({
+                        "status": "failed",
+                        "message": "Invalid File"
+                    })
 
                 # *** CHECK THIS LOG AFTER A PUT REQUEST ***
                 if practice_session.slides_file:
@@ -759,7 +762,6 @@ class UploadSessionSlidesView(APIView):
                 {"error": "An internal error occurred during slide upload.", "details": str(e)},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
-
 
 
 class SessionChunkViewSet(viewsets.ModelViewSet):
@@ -805,13 +807,17 @@ class ChunkSentimentAnalysisViewSet(viewsets.ModelViewSet):
         serializer.save()
 
 
-
 class SessionReportView(APIView):
     permission_classes = [IsAuthenticated]
 
-    def generate_full_summary(self, session_id):
+    def generate_full_summary(self, session_id, metrics_string):
         """Creates a cohesive summary for Strengths, Improvements, and Feedback using OpenAI."""
         client = OpenAI(api_key=settings.OPENAI_API_KEY)
+
+        goals = PracticeSession.objects.filter(id=session_id).values_list("goals", flat=True).first()
+
+        name = PracticeSession.objects.get(id=session_id).user.first_name
+        print(f"Firstname: {name}")
 
         # Retrieve all general feedback summaries for the session's chunks
         general_feedback_summaries = ChunkSentimentAnalysis.objects.filter(
@@ -829,21 +835,41 @@ class SessionReportView(APIView):
                 "General Feedback Summary": "No feedback was generated for the chunks in this session.",
             }
 
+        if goals == '':
+            goals = 'to have an impact'
+
+        # My name is .
         prompt = f"""
-        Using the presentation evaluation data provided, generate a structured JSON response with the following three components:
-        Strengths: List the speaker’s top strengths based on their delivery, clarity, and audience engagement. Format the output as a Python string representing a list, with each of the 3 strengths as points separated by a comma with the quotes outside the list brackets (e.g., "[Strength 1. Strength 2. Strength 3]").
-        Areas for Improvement: Provide 3 specific, actionable suggestions to help the speaker enhance their performance. Format the output as a Python string representing a list, with each of the 3 area of improvement points separated by a comma with the quotes outside the list brackets (e.g., "[Area of Improvement 1. Area of Improvement 2. Area of Improvement 3]").
+            My name is {name}, refer to me in first person.
+            You are my personal expert communication coach specializing in public speaking, storytelling, pitching, and presentations.
 
-        General Feedback Summary: Write a concise paragraph summarizing the overall effectiveness of the presentation, balancing both positive observations and constructive feedback.
+            My goal with this presentation is {goals}. Using my provided presentation evaluation data and transcript, generate a structured JSON response with the following three components:
 
-        Data to analyze:
-        {combined_feedback}
-        """
+            1. Strengths: Identify my most impactful strengths. Focus on *concrete content choices*, tone, delivery techniques, and audience engagement strategies. Format the output as a Python string representing a list, also make sure not to use commas in your points as that may conflict with the list , with each strength as points separated by a comma with the quotes outside the list brackets (e.g., "[Strength 1, Strength 2, Strength 3]").
+
+            2. Areas for Improvement: Provide *clear, actionable, and specific feedback* on where I can improve. Emphasize my delivery habits, missed emotional beats, and structural weaknesses. Format the output as a Python string representing a list, with each point separated by a comma and the quotes outside the list brackets (e.g., "[Area of Improvement 1, Area of Improvement 2, Area of Improvement 3]").
+
+            3. General Feedback Summary: Craft a detailed, content-specific analysis of my presentation. Your response *must be grounded in specific parts of my transcript*. Include the following:
+            - Evaluate the effectiveness of my opening: Was it attention-grabbing, relevant, or emotionally engaging? Did I clearly set the tone or premise for the rest of the talk?
+            - Highlight specific trigger words or emotionally resonant phrases I used that effectively drove engagement, and explain how they influenced the audience.
+            - List any filler words I overused (e.g., "um", "like", "you know").
+            - Comment on how I used powerful or evocative language—did I evoke empathy, joy, urgency, or excitement? Did I show vulnerability or emotional relatability?
+            - Analyze my tone of voice: Was it confident, warm, authoritative, enthusiastic, or inconsistent? Note any tone shifts and how they impacted audience engagement.
+            - Reflect on whether my style or personal story helped make the talk more memorable.
+            - Assess how persuasive I was: Did I inspire action, challenge assumptions, or shift perspectives? Highlight specific techniques like storytelling, analogies, or rhetorical questions.
+            - Evaluate the structure and flow of my talk. Were transitions smooth? Did I build toward a clear message or emotional climax?
+            - Clearly state whether my talk was effective — and if so, *effective at what specifically* (e.g., persuading the audience, building trust, sparking interest).
+            - Provide an overall evaluation of how well I demonstrated mastery in storytelling, public speaking, or pitching. Include tailored suggestions for improvement based on the context and audience.
+
+            Evaluation data: {metrics_string}
+            Transcript:
+            {combined_feedback}
+            """
 
         try:
             print("Calling OpenAI for summary generation...")
             completion = client.chat.completions.create(
-                model="gpt-4o-mini",
+                model="gpt-4o",
                 messages=[{"role": "user", "content": prompt}],
                 response_format={
                     "type": "json_schema",
@@ -861,8 +887,9 @@ class SessionReportView(APIView):
                     }
                 },
                 temperature=0.7,  # Adjust temperature as needed
-                max_tokens=500  # Limit tokens to control response length
+                max_tokens=2400  # Limit tokens to control response length
             )
+            print(f"prompt: {prompt}")
 
             refined_summary = completion.choices[0].message.content
             print(f"OpenAI raw response: {refined_summary}")
@@ -930,7 +957,7 @@ class SessionReportView(APIView):
     def post(self, request, session_id):
         print(f"Starting report generation and summary for session ID: {session_id}")
         duration_seconds = request.data.get("duration")
-        slide_specific_seconds=request.data.get("slide_specific_timing")
+        slide_specific_seconds = request.data.get("slide_specific_timing")
         try:
             session = get_object_or_404(PracticeSession, id=session_id, user=request.user)
             print(f"Session found: {session.session_name}")
@@ -962,11 +989,6 @@ class SessionReportView(APIView):
                 session.save()
                 print(f"Session Slide updated to: {session.slide_specific_timing}")
 
-
-
-
-
-
             # --- Aggregate Chunk Sentiment Analysis Data ---
             print("Aggregating chunk sentiment analysis data...")
             # Get chunks with sentiment analysis data
@@ -978,10 +1000,6 @@ class SessionReportView(APIView):
             # If no chunks with sentiment analysis, return a basic report
             if not chunks_with_sentiment.exists():
                 print("No chunks with sentiment analysis found. Returning basic report.")
-                # You might want to populate session with default N/A or 0 values here
-                # session.volume = 0 # etc.
-                # session.strength = "No analysis data available." # etc.
-                # session.save() # Save defaults if needed
 
                 return Response({
                     "session_id": session.id,
@@ -1028,34 +1046,7 @@ class SessionReportView(APIView):
                 avg_grammar=Round(Avg("sentiment_analysis__grammar"), output_field=IntegerField()),
                 avg_posture=Round(Avg("sentiment_analysis__posture"), output_field=IntegerField()),
                 avg_motion=Round(Avg("sentiment_analysis__motion"), output_field=IntegerField()),
-                # avg_volume=Avg("sentiment_analysis__volume"),
-                # avg_pitch_variability=Avg("sentiment_analysis__pitch_variability"),
-                # avg_pace=Avg("sentiment_analysis__pace"),
-                # avg_pauses=Ceil(Avg("sentiment_analysis__pauses")), # Use Avg for aggregated pauses
-                # avg_conviction=Avg("sentiment_analysis__conviction"),
-                # avg_clarity=Avg("sentiment_analysis__clarity"),
-                # avg_impact=Avg("sentiment_analysis__impact"),
-                # avg_brevity=Avg("sentiment_analysis__brevity"),
-                # avg_trigger_response=Avg("sentiment_analysis__trigger_response"),
-                # avg_filler_words=Avg("sentiment_analysis__filler_words"),
-                # avg_grammar=Avg("sentiment_analysis__grammar"),
-                # avg_posture=Avg("sentiment_analysis__posture"),
-                # avg_motion=Avg("sentiment_analysis__motion"),
-                # avg_volume=Avg("sentiment_analysis__volume"),
-                # savg_pitch_variability=Avg("sentiment_analysis__pitch_variability"),
-                # avg_pace=Avg("sentiment_analysis__pace"),
                 avg_pauses=Round(Avg("sentiment_analysis__pauses"), output_field=IntegerField()),
-                # Use Avg for aggregated pauses
-                # avg_conviction=Avg("sentiment_analysis__conviction"),
-                # avg_clarity=Avg("sentiment_analysis__clarity"),
-                # avg_impact=Avg("sentiment_analysis__impact"),
-                # avg_brevity=Avg("sentiment_analysis__brevity"),
-                # avg_trigger_response=Avg("sentiment_analysis__trigger_response"),
-                # avg_filler_words=Avg("sentiment_analysis__filler_words"),
-                # avg_grammar=Avg("sentiment_analysis__grammar"),
-                # avg_posture=Avg("sentiment_analysis__posture"),
-                # avg_motion=Avg("sentiment_analysis__motion"),
-                # To sum boolean gestures, explicitly cast to IntegerField before summing
                 total_true_gestures=Round(Sum(Cast('sentiment_analysis__gestures', output_field=IntegerField()))),
                 # Count the number of chunks considered for aggregation
                 total_chunks_for_aggregation=Count('sentiment_analysis__conviction'),
@@ -1115,13 +1106,6 @@ class SessionReportView(APIView):
             language_and_word_choice = safe_division((brevity + filler_words + grammar),
                                                      3.0)  # Use 3.0 for float division
 
-            # --- Generate Full Summary using OpenAI ---
-            print("Generating full summary...")
-            full_summary_data = self.generate_full_summary(session_id)
-            strength_summary = full_summary_data.get("Strength", "N/A")
-            improvement_summary = full_summary_data.get("Area of Improvement", "N/A")
-            general_feedback = full_summary_data.get("General Feedback Summary", "N/A")
-
             # --- Save Calculated Data and Summary to PracticeSession ---
             print("Saving aggregated and summary data to PracticeSession...")
             session.volume = round(volume if volume is not None else 0)  # Ensure not saving None
@@ -1157,12 +1141,23 @@ class SessionReportView(APIView):
             # Save boolean gestures field (True if any positive gestures were recorded)
             session.gestures = total_true_gestures > 0  # True if sum > 0
 
+            metrics_string = f"Final Scores: volume score: {session.volume}, pitch variability score: {session.pitch_variability}, pace score: {session.pace}, pauses score: {session.pauses}, conviction score: {session.conviction}, clarity score: {session.clarity}, impact score: {session.impact}, brevity score: {session.brevity}, trigger response score: {session.trigger_response}, filler words score: {session.filler_words}, grammar score: {session.grammar}, posture score: {session.posture}, motion score: {session.motion}, transformative potential score: {session.transformative_potential}, gestures score: {session.gestures_score_for_body_language}"
+
+            # --- Generate Full Summary using OpenAI ---
+            print("Generating full summary...")
+            full_summary_data = self.generate_full_summary(session_id, metrics_string)
+            strength_summary = full_summary_data.get("Strength", "N/A")
+            improvement_summary = full_summary_data.get("Area of Improvement", "N/A")
+            general_feedback = full_summary_data.get("General Feedback Summary", "N/A")
+
             # Save the text summaries
             session.strength = strength_summary
             session.area_of_improvement = improvement_summary
             session.general_feedback_summary = general_feedback
 
             session.save()
+            print(f"session.strength: {session.strength}")
+            print(f"session.area_of_improvement: {session.area_of_improvement}")
             print(f"PracticeSession {session_id} updated with report data and summary.")
 
             # --- Prepare Response ---
@@ -1171,7 +1166,7 @@ class SessionReportView(APIView):
                 "session_id": session.id,
                 "session_name": session.session_name,
                 "duration": str(session.duration) if session.duration else None,
-                "slide_specific_timing":session.slide_specific_timing if session.slide_specific_timing else {},
+                "slide_specific_timing": session.slide_specific_timing if session.slide_specific_timing else {},
                 "aggregated_scores": {
                     "volume": round(session.volume or 0),
                     "pitch_variability": round(session.pitch_variability or 0),
@@ -1320,9 +1315,7 @@ class SessionList(APIView):
 class PerformanceMetricsComparison(APIView):
     permission_classes = [IsAuthenticated]
 
-
     def get(self, request, sequence_id):
-
         session_metrics = (
             PracticeSession.objects
             .filter(sequence=sequence_id)
@@ -1366,51 +1359,7 @@ class CompareSessionsView(APIView):
             "session1": session1_serialized,
             "session2": session2_serialized,
         }
-
-        # def get_session_data(session):
-        #     return {}
-
-        # data = {
-        #     "session1": get_session_data(session1),
-        #     "session2": get_session_data(session2),
-        # }
-
         return Response(data)
-        # def get_avg_metrics(session_id):
-        #     analyses = ChunkSentimentAnalysis.objects.filter(
-        #         chunk__session__id=session_id,
-        #     )
-        #     count = analyses.count()
-        #     print(analyses)
-        #     print(count)
-        #     if count == 0:
-        #         return {}
-
-        #     return {
-        #         "brevity": sum(a.brevity for a in analyses) / count,
-        #         "impact": sum(a.impact for a in analyses) / count,
-        #         "conviction": sum(a.conviction for a in analyses) / count,
-        #         "clarity": sum(a.clarity for a in analyses) / count,
-        #         "transformative_potential": sum(
-        #             a.transformative_potential for a in analyses
-        #         )
-        #         / count,
-        #     }
-
-        # session1_metrics = get_avg_metrics(session1_id)
-        # session2_metrics = get_avg_metrics(session2_id)
-        # return Response(
-        #     {
-        #         "session1": {
-        #             "id": session1_id,
-        #             "metrics": session1_metrics,
-        #         },
-        #         "session2": {
-        #             "id": session2_id,
-        #             "metrics": session2_metrics,
-        #         },
-        #     }
-        # )
 
 
 class GoalAchievementView(APIView):
@@ -1442,9 +1391,9 @@ class GoalAchievementView(APIView):
 
         return Response(dict(goals))
 
+
 class ImproveNewSequence(APIView):
     permission_classes = [IsAuthenticated]
-
 
     @swagger_auto_schema(
         operation_description="",
@@ -1459,7 +1408,7 @@ class ImproveNewSequence(APIView):
             try:
                 session = PracticeSession.objects.get(id=session_id)
                 if session.sequence:
-                    return  Response(data={"error":"Session already in a seqeunce"},status=404)
+                    return Response(data={"error": "Session already in a seqeunce"}, status=404)
             except PracticeSession.DoesNotExist:
                 return Response({"error": "Session not found"}, status=404)
 
@@ -1474,8 +1423,6 @@ class ImproveNewSequence(APIView):
             }, status=status.HTTP_201_CREATED)
 
         return Response(sequence_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-
 
     def get(self, request):
         # Retrieve all sessions for the current user that don't have an associated sequence
@@ -1534,7 +1481,7 @@ class ImproveExistingSequence(APIView):
                         {
                             "name": session.session_name,  # assuming your PracticeSession has a 'name' field
                             "date": session.created_at,
-                            "duration": self.format_timedelta(session.duration ) # assuming you store session duration
+                            "duration": self.format_timedelta(session.duration)  # assuming you store session duration
                         }
                         for session in sequence.sessions.all()
                     ]
