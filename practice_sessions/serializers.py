@@ -1,6 +1,6 @@
 from django.db.models import CharField
 from rest_framework import serializers
-from rest_framework.exceptions import  ValidationError
+from rest_framework.exceptions import ValidationError
 from django.db import transaction
 
 from datetime import timedelta
@@ -67,8 +67,8 @@ class PracticeSessionSerializer(serializers.ModelSerializer):
         return obj.impact
 
     def create(self, validated_data):
-        user  =  validated_data.get('user')
-        slide_preview_id = validated_data.pop('slide_preview_id',None)
+        user = validated_data.get('user')
+        slide_preview_id = validated_data.pop('slide_preview_id', None)
 
         if slide_preview_id:
             try:
@@ -78,7 +78,6 @@ class PracticeSessionSerializer(serializers.ModelSerializer):
                 raise ValidationError({"slide_preview_id": "Invalid or unauthorized slide preview."})
         else:
             slide_preview = None
-
 
         with transaction.atomic():
             # Lock the profile row for this user to prevent race conditions
@@ -141,8 +140,8 @@ class SessionChunkSerializer(serializers.ModelSerializer):
     class Meta:
         model = SessionChunk
         fields = [
-            "id", 
-            "session", 
+            "id",
+            "session",
             "video_file",
             "chunk_number",
             "transcript",
@@ -183,13 +182,14 @@ class ChunkSentimentAnalysisSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ["id"]
 
+
 class SessionReportSerializer(serializers.Serializer):
     duration = serializers.CharField(allow_null=True, allow_blank=True)
-    slide_specific_timing = DictField( allow_empty=True)
+    slide_specific_timing = DictField(allow_empty=True)
 
 
 class SlidePreviewSerializer(serializers.ModelSerializer):
     class Meta:
         model = SlidePreview
         fields = '__all__'
-        read_only_fields = ["user","is_linked","created_at"]
+        read_only_fields = ["user", "is_linked", "created_at"]

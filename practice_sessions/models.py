@@ -75,6 +75,7 @@ class SlidePreview(models.Model):
     def __str__(self):
         return f"slide for {self.user.email}"
 
+
 class PracticeSequence(models.Model):
     """Represents a sequence of practice sessions for improvement."""
 
@@ -136,7 +137,7 @@ class PracticeSession(models.Model):
         ("conference_room", "Conference Room"),
         ("board_room_1", "Board Room 1"),
         ("board_room_2", "Board Room 2"),
-        ("pitch_studio","pitch_studio"),
+        ("pitch_studio", "pitch_studio"),
     ]
     virtual_environment = models.CharField(
         max_length=50,
@@ -415,8 +416,4 @@ class ChunkSentimentAnalysis(models.Model):
     def __str__(self):
         return f"Sentiment Analysis for Chunk {self.chunk.start_time}-{self.chunk.end_time} of {self.chunk.session.session_name}"
 
-
-
-
 # Remember to run makemigrations and migrate after changing the model.
-

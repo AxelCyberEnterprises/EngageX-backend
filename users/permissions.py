@@ -10,7 +10,7 @@ class IsAdmin(BasePermission):
         if not hasattr(request.user, 'userprofile'):
             return False
         return request.user.userprofile.role == 'admin'
-    
+
 
 # class IsPresenter(BasePermission):
 #     """Presenters can only access their own data."""
@@ -23,6 +23,7 @@ class IsAdmin(BasePermission):
 
 class IsCoach(BasePermission):
     """Coaches can access users assigned to them."""
+
     def has_permission(self, request, view):
         return request.user.is_authenticated and request.user.userprofile.role == 'coach'
 

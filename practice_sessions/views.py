@@ -245,6 +245,7 @@ import subprocess
 import platform
 import time
 
+
 def get_soffice_path():
     system = platform.system()
 
@@ -262,6 +263,7 @@ def get_soffice_path():
         raise FileNotFoundError("LibreOffice not found in expected Windows locations.")
     else:  # Assume Linux/Docker
         return "soffice"  # Must be in PATH
+
 
 def convert_pptx_to_pdf(pptx_file):
     soffice_path = get_soffice_path()
@@ -754,7 +756,7 @@ class UploadSessionSlidesView(APIView):
                 {
                     "status": "success",
                     "message": "Slides uploaded and summary generated successfully.",
-                    "data":session_data
+                    "data": session_data
                 },
                 status=status.HTTP_200_OK,
             )

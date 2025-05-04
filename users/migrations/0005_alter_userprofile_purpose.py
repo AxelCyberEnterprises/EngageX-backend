@@ -4,7 +4,6 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ('users', '0004_userprofile_purpose'),
     ]
@@ -13,6 +12,8 @@ class Migration(migrations.Migration):
         migrations.AlterField(
             model_name='userprofile',
             name='purpose',
-            field=models.CharField(choices=[('public_speaking', 'Public_speaking'), ('pitch', 'Pitch'), ('presenting', 'Presenting')], default='public_speaking', max_length=20),
+            field=models.CharField(
+                choices=[('public_speaking', 'Public_speaking'), ('pitch', 'Pitch'), ('presenting', 'Presenting')],
+                default='public_speaking', max_length=20),
         ),
     ]

@@ -8,11 +8,12 @@ import random
 
 User = get_user_model()
 
+
 class BaseUserTests(APITestCase):
     def setUp(self):
         # Clear cache in case OTPs persist from previous tests
         cache.clear()
-        
+
         # Create a verified user for login and password tests.
         self.verified_user = User.objects.create_user(
             email="verified@example.com", password="testpass123",
@@ -21,7 +22,7 @@ class BaseUserTests(APITestCase):
         self.verified_user.is_active = True
         self.verified_user.is_verified = True
         self.verified_user.save()
-        
+
         # Create a user profile is assumed to be created via signals.
         # Create an admin user for testing set_password if needed.
         self.admin_user = User.objects.create_user(
@@ -31,7 +32,7 @@ class BaseUserTests(APITestCase):
         # Set admin role on profile:
         self.admin_user.userprofile.role = "admin"
         self.admin_user.userprofile.save()
-    
+
     def test_registration_success(self):
         """
         Test that a new user can register successfully and receives a verification code.
@@ -50,7 +51,7 @@ class BaseUserTests(APITestCase):
         user = User.objects.get(email="newuser@example.com")
         self.assertFalse(user.is_active)
         self.assertTrue(user.verification_code)
-    
+
     def test_registration_duplicate(self):
         """
         Test that registering a duplicate user returns an error.
@@ -68,7 +69,7 @@ class BaseUserTests(APITestCase):
         response = self.client.post(url, payload, format="json")
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertEqual(response.data.get("status"), "fail")
-    
+
     def test_verify_email_success(self):
         """
         Test successful email verification.
@@ -83,10 +84,10 @@ class BaseUserTests(APITestCase):
         }
         reg_response = self.client.post(url, payload, format="json")
         self.assertEqual(reg_response.status_code, status.HTTP_201_CREATED)
-        
+
         user = User.objects.get(email="verifyme@example.com")
         code = user.verification_code
-        
+
         verify_url = reverse("verify-email")
         verify_payload = {
             "email": "verifyme@example.com",
@@ -99,7 +100,7 @@ class BaseUserTests(APITestCase):
         self.assertTrue(user.is_active)
         self.assertTrue(user.is_verified)
         self.assertEqual(user.verification_code, "")
-    
+
     def test_verify_email_missing_fields(self):
         """
         Test that missing email or verification code returns an error.
@@ -108,7 +109,7 @@ class BaseUserTests(APITestCase):
         payload = {"email": "verifyme@example.com"}  # missing code
         response = self.client.post(url, payload, format="json")
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-    
+
     def test_verify_email_wrong_code(self):
         """
         Test that an incorrect verification code returns an error.
@@ -128,7 +129,7 @@ class BaseUserTests(APITestCase):
         }
         response = self.client.post(verify_url, verify_payload, format="json")
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-    
+
     def test_login_success(self):
         """
         Test that a verified user can log in and receive a token.
@@ -142,7 +143,7 @@ class BaseUserTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data.get("status"), "success")
         self.assertIn("token", response.data.get("data", {}))
-    
+
     def test_login_missing_fields(self):
         """
         Test that login returns an error if email or password is missing.
@@ -151,7 +152,7 @@ class BaseUserTests(APITestCase):
         payload = {"email": "verified@example.com"}  # Missing password
         response = self.client.post(login_url, payload, format="json")
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-    
+
     def test_password_reset_request_success(self):
         """
         Test that a password reset request is successful when the user exists.
@@ -161,7 +162,7 @@ class BaseUserTests(APITestCase):
         response = self.client.post(url, payload, format="json")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data.get("status"), "success")
-    
+
     def test_password_reset_confirm_success(self):
         """
         Test that a valid OTP and new password reset the user's password.
@@ -176,13 +177,13 @@ class BaseUserTests(APITestCase):
         }
         self.client.post(url, payload, format="json")
         user = User.objects.get(email="resetme@example.com")
-        
+
         # Request password reset (which sets an OTP in cache)
         reset_request_url = reverse("password-reset-request")
         self.client.post(reset_request_url, {"email": "resetme@example.com"}, format="json")
         otp = cache.get(f"password_reset_otp_{user.id}")
         self.assertIsNotNone(otp)
-        
+
         reset_confirm_url = reverse("password-reset-confirm")
         confirm_payload = {
             "email": "resetme@example.com",
@@ -192,13 +193,13 @@ class BaseUserTests(APITestCase):
         response = self.client.post(reset_confirm_url, confirm_payload, format="json")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data.get("status"), "success")
-        
+
         # Verify login with new password
         login_url = reverse("login")
         login_payload = {"email": "resetme@example.com", "password": "newpass123"}
         login_response = self.client.post(login_url, login_payload, format="json")
         self.assertEqual(login_response.status_code, status.HTTP_200_OK)
-    
+
     def test_set_password(self):
         """
         Test that an authenticated user can set their password.
@@ -213,7 +214,7 @@ class BaseUserTests(APITestCase):
         response = self.client.post(url, payload, format="json")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data.get("status"), "success")
-    
+
     def test_update_profile(self):
         """
         Test that an authenticated user can update their profile.
@@ -233,7 +234,7 @@ class BaseUserTests(APITestCase):
         self.assertEqual(self.verified_user.first_name, "UpdatedFirst")
         self.assertEqual(self.verified_user.last_name, "UpdatedLast")
         self.assertEqual(self.verified_user.userprofile.country, "USA")
-    
+
     def test_change_password(self):
         """
         Test that an authenticated user can change their password.
@@ -253,7 +254,7 @@ class BaseUserTests(APITestCase):
         login_payload = {"email": "verified@example.com", "password": "changedpass123"}
         login_response = self.client.post(login_url, login_payload, format="json")
         self.assertEqual(login_response.status_code, status.HTTP_200_OK)
-    
+
     def test_non_authenticated_access(self):
         """
         Test that endpoints requiring authentication reject unauthenticated requests.

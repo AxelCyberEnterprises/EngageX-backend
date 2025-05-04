@@ -3,6 +3,7 @@ from .permissions import IsCoach
 from .models import CustomUser, UserProfile
 from django.test import TestCase
 
+
 class IsCoachPermissionTest(TestCase):
     def setUp(self):
         self.factory = APIRequestFactory()
@@ -13,4 +14,4 @@ class IsCoachPermissionTest(TestCase):
         request = self.factory.get('/some-url/')
         request.user = self.user
         permission = IsCoach()
-        self.assertTrue(permission.has_permission(request, None)) 
+        self.assertTrue(permission.has_permission(request, None))

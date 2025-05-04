@@ -8,7 +8,6 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ('practice_sessions', '0001_initial'),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
@@ -19,15 +18,22 @@ class Migration(migrations.Migration):
             name='SlidePreview',
             fields=[
                 ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('slides_file', models.FileField(blank=True, help_text='Upload presentation slides (e.g., PDF, PPT, image files).', null=True, storage=users.storages_backends.SlidesStorage(), upload_to='slides/', validators=[django.core.validators.FileExtensionValidator(allowed_extensions=['pdf', 'ppt', 'pptx', 'odp', 'key', 'jpg', 'jpeg', 'png', 'gif'])])),
+                ('slides_file',
+                 models.FileField(blank=True, help_text='Upload presentation slides (e.g., PDF, PPT, image files).',
+                                  null=True, storage=users.storages_backends.SlidesStorage(), upload_to='slides/',
+                                  validators=[django.core.validators.FileExtensionValidator(
+                                      allowed_extensions=['pdf', 'ppt', 'pptx', 'odp', 'key', 'jpg', 'jpeg', 'png',
+                                                          'gif'])])),
                 ('is_linked', models.BooleanField(default=False)),
                 ('created_at', models.DateField(auto_now_add=True)),
-                ('user', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='slide_preview', to=settings.AUTH_USER_MODEL)),
+                ('user', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='slide_preview',
+                                           to=settings.AUTH_USER_MODEL)),
             ],
         ),
         migrations.AddField(
             model_name='practicesession',
             name='slide_preview',
-            field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, to='practice_sessions.slidepreview'),
+            field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL,
+                                    to='practice_sessions.slidepreview'),
         ),
     ]

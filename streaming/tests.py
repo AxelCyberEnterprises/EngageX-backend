@@ -3,10 +3,10 @@ import stat
 from django.test import TestCase
 from django.conf import settings
 from sentiment_analysis import (
-    extract_audio, 
-    process_audio, 
-    transcribe_audio, 
-    analyze_sentiment, 
+    extract_audio,
+    process_audio,
+    transcribe_audio,
+    analyze_sentiment,
     analyze_results
 )
 
@@ -105,7 +105,7 @@ class AudioAnalysisTestCase(TestCase):
             "Engagement", "Confidence", "Volume", "Pitch Variability", "Speech Rate",
             "Pauses", "Tone", "Curiosity", "Empathy", "Convictions", "Clarity",
             "Emotional Impact", "Audience Engagement", "Transformative Potential",
-            "Posture Fluidity", "Body Posture", "Strengths", 
+            "Posture Fluidity", "Body Posture", "Strengths",
             "Areas of Improvements", "General Feedback Summary"
         ]
 
@@ -132,10 +132,10 @@ class AudioAnalysisTestCase(TestCase):
             "Engagement", "Confidence", "Volume", "Pitch Variability", "Speece",
             "Pauses", "Tone", "Curiosity", "Empathy", "Convictions", "Clarity",
             "Emotional Impact", "Audience Engagement", "Transformative Potential",
-            "Posture Fluidity", "Body Posture", "Strengths", 
+            "Posture Fluidity", "Body Posture", "Strengths",
             "Areas of Improvements", "General Feedback Summary"
         ]
-        
+
         for key in expected_keys:
             self.assertIn(key, results)
 

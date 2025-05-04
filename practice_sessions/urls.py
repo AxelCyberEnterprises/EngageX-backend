@@ -51,7 +51,7 @@ urlpatterns = [
         name="performance-analytics",
     ),
     path("sequences/", SequenceListView.as_view(), name="sequence-list"),
-    path("compare-sequences/<str:sequence_id>/",PerformanceMetricsComparison.as_view(),name="compare-sequences"),
+    path("compare-sequences/<str:sequence_id>/", PerformanceMetricsComparison.as_view(), name="compare-sequences"),
 
     path(
         "sessions-list/",
@@ -68,10 +68,10 @@ urlpatterns = [
         GoalAchievementView.as_view(),
         name="goals-and-achievements",
     ),
-    path("improve-existing-sequence/",ImproveExistingSequence.as_view(),name="improve-existing-sequence"),
+    path("improve-existing-sequence/", ImproveExistingSequence.as_view(), name="improve-existing-sequence"),
 
-    path("improve-new-sequence/<str:session_id>/",ImproveNewSequence.as_view(),name="improve-new-sequence"),
-    path("improve-new-sequence/",ImproveNewSequence.as_view(),name="sessionlistwithoutsequence"),
+    path("improve-new-sequence/<str:session_id>/", ImproveNewSequence.as_view(), name="improve-new-sequence"),
+    path("improve-new-sequence/", ImproveNewSequence.as_view(), name="sessionlistwithoutsequence"),
     path("api/openai/realtime-token/", get_openai_realtime_token),
     path("slide_preview_upload/", SlidePreviewView.as_view(), name="slide_preview")
 

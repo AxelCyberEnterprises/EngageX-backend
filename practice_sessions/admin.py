@@ -4,7 +4,7 @@ from .models import (
     ChunkSentimentAnalysis,
     SessionChunk,
     PracticeSequence,
-SlidePreview,
+    SlidePreview,
 )
 
 
@@ -56,5 +56,6 @@ class SessionChunkAdmin(admin.ModelAdmin):
     list_display = ("session",)
     list_filter = ("session",)
     search_fields = ("session__session_name",)
+
 
 admin.site.register(SlidePreview)
