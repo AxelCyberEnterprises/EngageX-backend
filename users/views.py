@@ -8,7 +8,6 @@ from django.contrib.auth import get_user_model, authenticate
 from django.utils import timezone
 from django.db import transaction, IntegrityError
 
-
 from rest_framework.authtoken.models import Token
 from rest_framework import viewsets, status, permissions
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -211,7 +210,7 @@ class UserCreateViewSet(viewsets.ModelViewSet):
             )
 
 
-class  VerifyEmailView(APIView):
+class VerifyEmailView(APIView):
     """
     Verifies user email by checking the provided verification code.
     """
@@ -265,8 +264,8 @@ class  VerifyEmailView(APIView):
 
             token, created = Token.objects.get_or_create(user=user)
             print(token)
-            data= {
-                "token": token,
+            data = {
+                "token": token.key,
                 "user_id": user.id,
                 "email": email,
                 "first_name": user.first_name,
@@ -275,7 +274,7 @@ class  VerifyEmailView(APIView):
 
             },
             response_data = {
-                "data":data,
+                "data": data,
                 "status": "success",
                 "message": "Email verified successfully! You can now log in.",
             }
@@ -605,7 +604,7 @@ class UserProfileViewSet(viewsets.ModelViewSet):
             )  # Return empty queryset for schema generation or anonymous users
 
         if hasattr(
-            user, "user_profile"
+                user, "user_profile"
         ):  # Check if userprofile exists before accessing it
             if user.user_profile.is_admin():
                 # Admins can see everything
@@ -791,7 +790,7 @@ class GoogleLoginView(APIView):
             # Save user profile
             user_profile.gender = gender or user_profile.gender
             user_profile.language_preference = (
-                language or user_profile.language_preference
+                    language or user_profile.language_preference
             )
             user_profile.save()
 
