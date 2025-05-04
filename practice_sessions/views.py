@@ -859,7 +859,7 @@ class SessionReportView(APIView):
 
         # My name is .
         prompt = f"""
-            My name is {name}, refer to me in first person.
+           
             You are my personal expert communication mentor/coach specializing in public speaking, storytelling, pitching, and presentations.
 
             My goal with this presentation is {goals}. Using my provided presentation evaluation data and transcript, generate a structured JSON response with the following three components:
@@ -880,7 +880,7 @@ class SessionReportView(APIView):
             - Clearly state whether my talk was effective — and if so, *effective at what specifically* (e.g., persuading the audience, building trust, sparking interest).
             - Provide an overall evaluation of how well I demonstrated mastery in storytelling, public speaking, or pitching. Include tailored suggestions for improvement based on the context and audience.
 
-            Tone: btw speak to me personally like a mentor coach, this is not a report its guidance.
+            Tone: btw speak to me personally like a mentor coach, this is not a report its guidance. Use line breaks between paragraphs and also start with an encouraging remark relevant to my presentation with my name:  My name is {name}, refer to me in first person.
 
             Evaluation data: {metrics_string}
             Transcript:
