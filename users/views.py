@@ -211,7 +211,7 @@ class UserCreateViewSet(viewsets.ModelViewSet):
             )
 
 
-class VerifyEmailView(APIView):
+class  VerifyEmailView(APIView):
     """
     Verifies user email by checking the provided verification code.
     """
@@ -251,6 +251,7 @@ class VerifyEmailView(APIView):
             # Check if the user is already verified
             if user.is_active:
                 response_data = {
+
                     "status": "fail",
                     "message": "This email address has already been verified. Please log in.",
                 }
@@ -262,7 +263,19 @@ class VerifyEmailView(APIView):
             user.verification_code = ""
             user.save()
 
+            token, created = Token.objects.get_or_create(user=user)
+            print(token)
+            data= {
+                "token": token,
+                "user_id": user.id,
+                "email": email,
+                "first_name": user.first_name,
+                "last_name": user.last_name,
+                "is_admin": user.is_superuser,
+
+            },
             response_data = {
+                "data":data,
                 "status": "success",
                 "message": "Email verified successfully! You can now log in.",
             }

@@ -56,6 +56,24 @@ else:
 
 # --- End manual loading of custom storage backend ---
 
+class SlidePreview(models.Model):
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="slide_preview")
+    slides_file = models.FileField(
+        # Pass the *instance* of the storage class obtained above
+        storage=SlidesStorageInstance,  # <-- Use the obtained storage instance here (either custom or default)
+        upload_to='slides/',  # <-- Specify the subdirectory within that storage
+        blank=True,
+        null=True,
+        # Add validators if you want to restrict file types (e.g., PDF, PPT, images)
+        validators=[FileExtensionValidator(
+            allowed_extensions=['pdf', 'ppt', 'pptx', 'odp', 'key', 'jpg', 'jpeg', 'png', 'gif'])],
+        help_text="Upload presentation slides (e.g., PDF, PPT, image files).",
+    )
+    is_linked = models.BooleanField(default=False)
+    created_at = models.DateField(auto_now_add=True)
+
+    def __str__(self):
+        return f"slide for {self.user.email}"
 
 class PracticeSequence(models.Model):
     """Represents a sequence of practice sessions for improvement."""
@@ -255,6 +273,7 @@ class PracticeSession(models.Model):
     visual_communication = models.FloatField(
         default=0, help_text=""
     )
+    slide_preview = models.ForeignKey(SlidePreview, null=True, blank=True, on_delete=models.SET_NULL)
     created_at = models.DateField(auto_now_add=True)
     updated_at = models.DateField(auto_now=True)
 
@@ -396,4 +415,8 @@ class ChunkSentimentAnalysis(models.Model):
     def __str__(self):
         return f"Sentiment Analysis for Chunk {self.chunk.start_time}-{self.chunk.end_time} of {self.chunk.session.session_name}"
 
+
+
+
 # Remember to run makemigrations and migrate after changing the model.
+
