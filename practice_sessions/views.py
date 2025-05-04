@@ -275,7 +275,7 @@ def convert_pptx_to_pdf(pptx_file):
 
     output_dir = tempfile.gettempdir()
 
-    subprocess.run(
+    result = subprocess.run(
         [
             soffice_path,
             "--headless",
@@ -283,11 +283,25 @@ def convert_pptx_to_pdf(pptx_file):
             "--outdir", output_dir,
             temp_pptx_path
         ],
-        check=True
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True
     )
-    # time.sleep(0.5)
+
+    # Debug output
+    print("LibreOffice stdout:\n", result.stdout)
+    print("LibreOffice stderr:\n", result.stderr)
+
+    if result.returncode != 0:
+        raise RuntimeError(f"LibreOffice failed with exit code {result.returncode}")
+
+    # Wait to ensure file is written before returning
+    time.sleep(0.5)
 
     pdf_path = os.path.join(output_dir, os.path.basename(temp_pptx_path).replace(".pptx", ".pdf"))
+    if not os.path.exists(pdf_path):
+        raise FileNotFoundError(f"Expected output PDF not found at: {pdf_path}")
+
     return pdf_path
 
 
