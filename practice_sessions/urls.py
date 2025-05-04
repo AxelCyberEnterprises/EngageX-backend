@@ -13,7 +13,9 @@ from .views import (
     CompareSessionsView,
     GoalAchievementView,
     PerformanceMetricsComparison,
-    ImproveExistingSequence, ImproveNewSequence,
+    ImproveExistingSequence,
+    ImproveNewSequence,
+    SlidePreviewView,
 )
 
 router = DefaultRouter()
@@ -71,5 +73,6 @@ urlpatterns = [
     path("improve-new-sequence/<str:session_id>/",ImproveNewSequence.as_view(),name="improve-new-sequence"),
     path("improve-new-sequence/",ImproveNewSequence.as_view(),name="sessionlistwithoutsequence"),
     path("api/openai/realtime-token/", get_openai_realtime_token),
+    path("slide_preview_upload/", SlidePreviewView.as_view(), name="slide_preview")
 
 ]

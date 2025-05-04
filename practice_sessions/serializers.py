@@ -12,6 +12,7 @@ from .models import (
     PracticeSequence,
     ChunkSentimentAnalysis,
     SessionChunk,
+    SlidePreview
 )
 
 
@@ -29,6 +30,8 @@ class PracticeSessionSerializer(serializers.ModelSerializer):
     full_name = serializers.SerializerMethodField()
     session_type_display = serializers.SerializerMethodField()
     latest_score = serializers.SerializerMethodField()
+    slide_preview_id = serializers.CharField(allow_null=True, allow_blank=True, required=False)
+
     sequence = serializers.PrimaryKeyRelatedField(
         queryset=PracticeSequence.objects.all(), allow_null=True, required=False
     )
@@ -48,6 +51,8 @@ class PracticeSessionSerializer(serializers.ModelSerializer):
             "tone",
             "emotional_impact",
             "audience_engagement",
+            "slide_preview_id",
+            "slide_preview",
         ]  # These are populated by the backend
 
     def get_full_name(self, obj):
@@ -63,6 +68,17 @@ class PracticeSessionSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         user  =  validated_data.get('user')
+        slide_preview_id = validated_data.pop('slide_preview_id',None)
+
+        if slide_preview_id:
+            try:
+                slide_preview = SlidePreview.objects.get(id=slide_preview_id, user=user)
+
+            except SlidePreview.DoesNotExist:
+                raise ValidationError({"slide_preview_id": "Invalid or unauthorized slide preview."})
+        else:
+            slide_preview = None
+
 
         with transaction.atomic():
             # Lock the profile row for this user to prevent race conditions
@@ -72,7 +88,20 @@ class PracticeSessionSerializer(serializers.ModelSerializer):
             if profile.available_credits > 0:
                 profile.available_credits -= 1
                 profile.save()
-                return PracticeSession.objects.create(**validated_data)
+
+                session = PracticeSession.objects.create(
+                    slide_preview=slide_preview,
+                    **validated_data
+                )
+
+                if slide_preview:
+                    print(slide_preview.slides_file)
+                    session.slides_file = slide_preview.slides_file
+                    slide_preview.is_linked = True
+                    slide_preview.save()
+                session.save()
+
+                return session
             else:
                 raise ValidationError({"credit": "Insufficient credit"})
 
@@ -157,3 +186,10 @@ class ChunkSentimentAnalysisSerializer(serializers.ModelSerializer):
 class SessionReportSerializer(serializers.Serializer):
     duration = serializers.CharField(allow_null=True, allow_blank=True)
     slide_specific_timing = DictField( allow_empty=True)
+
+
+class SlidePreviewSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = SlidePreview
+        fields = '__all__'
+        read_only_fields = ["user","is_linked","created_at"]

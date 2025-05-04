@@ -44,6 +44,7 @@ from .models import (
     PracticeSequence,
     ChunkSentimentAnalysis,
     SessionChunk,
+    SlidePreview
 )
 from .serializers import (
     PracticeSessionSerializer,
@@ -52,6 +53,7 @@ from .serializers import (
     ChunkSentimentAnalysisSerializer,
     SessionChunkSerializer,
     SessionReportSerializer,
+    SlidePreviewSerializer
 )
 
 User = get_user_model()
@@ -145,6 +147,7 @@ Take into account what came before each entry but prioritize the most recent ent
 
 def generate_slide_summary(pdf_path):
     client = OpenAI(api_key=settings.OPENAI_API_KEY)
+    base64_pdf = None
     # STEP 2: Read and encode the PDF as Base64
     if isinstance(pdf_path, (str, bytes, os.PathLike)):
         with open(pdf_path, 'rb') as file:
@@ -580,6 +583,8 @@ class UploadSessionSlidesView(APIView):
         try:
             # Get the practice session object by its primary key
             practice_session = get_object_or_404(PracticeSession, pk=pk)
+            print(practice_session.slide_preview)
+            print(practice_session.slide_preview.slides_file)
 
             if practice_session.user != request.user:
                 return Response(
@@ -692,11 +697,11 @@ class UploadSessionSlidesView(APIView):
 
     def put(self, request, pk=None):
         """
-        Upload or update slides for a specific practice session.
-        Requires multipart/form-data.
+        Generate and save slide summary for a specific practice session.
         """
         try:
             practice_session = get_object_or_404(PracticeSession, pk=pk)
+            print(practice_session.slide_preview)
 
             if practice_session.user != request.user:
                 return Response(
@@ -706,79 +711,68 @@ class UploadSessionSlidesView(APIView):
                     status=status.HTTP_403_FORBIDDEN,
                 )
 
-            serializer = PracticeSessionSlidesSerializer(
-                practice_session, data=request.data, partial=True
-            )
-
-            if serializer.is_valid():
-                uploaded_pdf = serializer.validated_data.get("slides_file")
-                print(uploaded_pdf)
-
-                if uploaded_pdf.name.endswith('pptx'):
-                    pdf_path = convert_pptx_to_pdf(uploaded_pdf)
-                    print(pdf_path)
-
-                    with open(pdf_path, 'rb') as pdf_file:
-                        practice_session.slides_file.save(
-                            f"{practice_session.id}_slides.pdf",
-                            File(pdf_file),
-                            save=False
-                        )
-
-                    print('---processing pdf----')
-                    with concurrent.futures.ThreadPoolExecutor() as executor:
-                        future = executor.submit(generate_slide_summary, pdf_path)
-                        result = future.result()
-
-                    practice_session.slide_efficiency = result['SlideEfficiency']
-                    practice_session.text_economy = result['TextEconomy']
-                    practice_session.visual_communication = result['VisualCommunication']
-
-                    practice_session.save()
-
-                    if os.path.exists(pdf_path):
-                        os.remove(pdf_path)
-                else:
-                    return Response({
-                        "status": "failed",
-                        "message": "Invalid File"
-                    })
-
-                # *** CHECK THIS LOG AFTER A PUT REQUEST ***
-                if practice_session.slides_file:
-                    print(
-                        f"WS: After save in PUT, practice_session.slides_file.name is: {practice_session.slides_file.name}")
-                else:
-                    print("WS: After save in PUT, practice_session.slides_file is None.")
-                # *** WHAT IS THE EXACT OUTPUT OF THIS LINE? ***
-
+            # Check if there is a slides file
+            if not practice_session.slides_file:
                 return Response(
-                    {
-                        "status": "success",
-                        "message": "Slides uploaded successfully.",
-                        "data": serializer.data,
-                    },
-                    status=status.HTTP_200_OK,
-                )
-            else:
-                print(f"Slide upload failed validation for session {pk}: {serializer.errors}")
-                return Response(
-                    {
-                        "status": "fail",
-                        "message": "Slide upload failed.",
-                        "errors": serializer.errors,
-                    },
+                    {"message": "No slides file found for this session."},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
+
+            # Get the path to the slides file
+            slides_path = practice_session.slides_file
+            if not slides_path.name.endswith('pdf'):
+                return Response(
+                    {"message": "Slides file is not a PDF."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            print('---processing pdf----')
+
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                future = executor.submit(generate_slide_summary, slides_path)
+                result = future.result()
+
+            practice_session.slide_efficiency = result['SlideEfficiency']
+            practice_session.text_economy = result['TextEconomy']
+            practice_session.visual_communication = result['VisualCommunication']
+            practice_session.save()
+
+            # Serialize updated session
+            from .serializers import PracticeSessionSerializer
+            session_data = PracticeSessionSerializer(practice_session).data
+
+            # *** CHECK THIS LOG AFTER A PUT REQUEST ***
+            if practice_session.slides_file:
+                print(
+                    f"WS: After save in PUT, practice_session.slides_file.name is: {practice_session.slides_file.name}"
+                )
+            else:
+                print("WS: After save in PUT, practice_session.slides_file is None.")
+            # *** WHAT IS THE EXACT OUTPUT OF THIS LINE? ***
+
+            return Response(
+                {
+                    "status": "success",
+                    "message": "Slides uploaded and summary generated successfully.",
+                    "data":session_data
+                },
+                status=status.HTTP_200_OK,
+            )
+
         except PracticeSession.DoesNotExist:
             return Response(
-                {"error": "PracticeSession not found."}, status=status.HTTP_404_NOT_FOUND
+                {"error": "PracticeSession not found."},
+                status=status.HTTP_404_NOT_FOUND,
             )
+
         except Exception as e:
             print(f"An unexpected error occurred during slide upload for session {pk}: {e}")
             traceback.print_exc()
             return Response(
-                {"error": "An internal error occurred during slide upload.", "details": str(e)},
+                {
+                    "error": "An internal error occurred during slide upload.",
+                    "details": str(e),
+                },
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
@@ -1511,3 +1505,42 @@ class ImproveExistingSequence(APIView):
             response_data = None
 
         return Response(response_data)
+
+
+class SlidePreviewView(APIView):
+    permission_classes = [IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser]
+
+    def post(self, request):
+        user = request.user
+        serializer = SlidePreviewSerializer(data=request.data)
+        if serializer.is_valid():
+            slide_preview = SlidePreview.objects.create(
+                user=user
+            )
+
+            uploaded = serializer.validated_data.get("slides_file")
+            print(uploaded)
+
+            if uploaded.name.endswith('pptx'):
+                pdf_path = convert_pptx_to_pdf(uploaded)
+                print(pdf_path)
+
+                with open(pdf_path, 'rb') as pdf_file:
+                    slide_preview.slides_file.save(
+                        f"{user.id}_slides.pdf",
+                        File(pdf_file),
+                        save=False
+                    )
+                slide_preview.save()
+                # Serialize the saved instance, not the incoming data
+            data = SlidePreviewSerializer(slide_preview).data
+            return Response(
+                {
+                    "status": "success",
+                    "message": "Slides uploaded successfully.",
+                    "data": data,
+                },
+                status=status.HTTP_200_OK,
+            )
+        return Response()
