@@ -1,6 +1,7 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from .views import PaymentTransactionViewSet, intuit_auth, oauth_callback, intuit_index, clear_data_route, handle_payment_webhook, QuickbooksStatusAPIView
+from .views import PaymentTransactionViewSet, intuit_auth, oauth_callback, intuit_index, clear_data_route, \
+    handle_payment_webhook, QuickbooksStatusAPIView
 
 router = DefaultRouter()
 router.register(r'transactions', PaymentTransactionViewSet, basename='payment-transaction')

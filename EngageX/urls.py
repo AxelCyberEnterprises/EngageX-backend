@@ -23,8 +23,10 @@ schema_view = get_schema_view(
     permission_classes=[permissions.AllowAny],
 )
 
+
 def home(request):
     return JsonResponse({"message": "Welcome to EngageX API V2 (Update from github v5 triggred by yusuf....)"})
+
 
 def send_plain_email(request):
     ses_client = boto3.client(
@@ -55,7 +57,6 @@ def send_plain_email(request):
     return JsonResponse({"message": "Email sent successfully!", "response": response})
 
 
-
 urlpatterns = [
 
     # URL config for Swagger
@@ -72,5 +73,5 @@ urlpatterns = [
 
 ]
 
-if settings.DEBUG: # IMPORTANT: Only do this in development!
+if settings.DEBUG:  # IMPORTANT: Only do this in development!
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

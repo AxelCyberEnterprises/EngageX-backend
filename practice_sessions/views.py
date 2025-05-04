@@ -6,6 +6,7 @@ import json
 import traceback
 import boto3
 import requests
+from django.core.files import File
 
 from rest_framework import viewsets, status
 from rest_framework.permissions import IsAuthenticated
@@ -20,7 +21,7 @@ from django.db.models.functions import Round
 from django.conf import settings
 from django.db.models import (Count, Avg, Case, When, Value, CharField, Sum, IntegerField, Q,
                               ExpressionWrapper, FloatField,
-)
+                              )
 from django.utils.timezone import now
 from django.shortcuts import get_object_or_404
 from django.contrib.auth import get_user_model
@@ -38,12 +39,12 @@ from collections import defaultdict
 from botocore.exceptions import NoCredentialsError, PartialCredentialsError, ClientError
 from itertools import chain
 
-
 from .models import (
     PracticeSession,
     PracticeSequence,
     ChunkSentimentAnalysis,
     SessionChunk,
+    SlidePreview
 )
 from .serializers import (
     PracticeSessionSerializer,
@@ -52,6 +53,7 @@ from .serializers import (
     ChunkSentimentAnalysisSerializer,
     SessionChunkSerializer,
     SessionReportSerializer,
+    SlidePreviewSerializer
 )
 
 User = get_user_model()
@@ -129,8 +131,8 @@ Select one of these emotions that the audience is feeling most strongly ONLY cho
 
 Take into account what came before each entry but prioritize the most recent entry. Respond only with the emotion.""",
         "turn_detection": {
-            "type": "server_vad",                   # Use Server VAD
-            "silence_duration_ms": 100         # 100ms silence threshold
+            "type": "server_vad",  # Use Server VAD
+            "silence_duration_ms": 100  # 100ms silence threshold
         }
     }
 
@@ -142,8 +144,10 @@ Take into account what came before each entry but prioritize the most recent ent
 
     return JsonResponse(response.json(), status=response.status_code)
 
+
 def generate_slide_summary(pdf_path):
     client = OpenAI(api_key=settings.OPENAI_API_KEY)
+    base64_pdf = None
     # STEP 2: Read and encode the PDF as Base64
     if isinstance(pdf_path, (str, bytes, os.PathLike)):
         with open(pdf_path, 'rb') as file:
@@ -217,6 +221,7 @@ def generate_slide_summary(pdf_path):
 
     return result
 
+
 def format_timedelta_12h(td):
     # Get the total seconds from the timedelta
     total_seconds = int(td.total_seconds())
@@ -233,6 +238,57 @@ def format_timedelta_12h(td):
 
     # If the hours are less than 12, we leave the format as is (00:xx:xx)
     return f"{hours:02}:{minutes:02}:{seconds:02}"
+
+
+import tempfile
+import subprocess
+import platform
+import time
+
+
+def get_soffice_path():
+    system = platform.system()
+
+    if system == "Darwin":  # macOS
+        return "/Applications/LibreOffice.app/Contents/MacOS/soffice"
+    elif system == "Windows":
+        # Common install location on Windows
+        possible_paths = [
+            r"C:\Program Files\LibreOffice\program\soffice.exe",
+            r"C:\Program Files (x86)\LibreOffice\program\soffice.exe"
+        ]
+        for path in possible_paths:
+            if os.path.exists(path):
+                return path
+        raise FileNotFoundError("LibreOffice not found in expected Windows locations.")
+    else:  # Assume Linux/Docker
+        return "soffice"  # Must be in PATH
+
+
+def convert_pptx_to_pdf(pptx_file):
+    soffice_path = get_soffice_path()
+
+    with tempfile.NamedTemporaryFile(suffix='.pptx', delete=False) as temp_pptx:
+        for chunk in pptx_file.chunks():
+            temp_pptx.write(chunk)
+        temp_pptx_path = temp_pptx.name
+
+    output_dir = tempfile.gettempdir()
+
+    subprocess.run(
+        [
+            soffice_path,
+            "--headless",
+            "--convert-to", "pdf",
+            "--outdir", output_dir,
+            temp_pptx_path
+        ],
+        check=True
+    )
+    # time.sleep(0.5)
+
+    pdf_path = os.path.join(output_dir, os.path.basename(temp_pptx_path).replace(".pptx", ".pdf"))
+    return pdf_path
 
 
 class PracticeSequenceViewSet(viewsets.ModelViewSet):
@@ -529,6 +585,8 @@ class UploadSessionSlidesView(APIView):
         try:
             # Get the practice session object by its primary key
             practice_session = get_object_or_404(PracticeSession, pk=pk)
+            print(practice_session.slide_preview)
+            print(practice_session.slide_preview.slides_file)
 
             if practice_session.user != request.user:
                 return Response(
@@ -641,11 +699,11 @@ class UploadSessionSlidesView(APIView):
 
     def put(self, request, pk=None):
         """
-        Upload or update slides for a specific practice session.
-        Requires multipart/form-data.
+        Generate and save slide summary for a specific practice session.
         """
         try:
             practice_session = get_object_or_404(PracticeSession, pk=pk)
+            print(practice_session.slide_preview)
 
             if practice_session.user != request.user:
                 return Response(
@@ -655,65 +713,68 @@ class UploadSessionSlidesView(APIView):
                     status=status.HTTP_403_FORBIDDEN,
                 )
 
-            serializer = PracticeSessionSlidesSerializer(
-                practice_session, data=request.data, partial=True
-            )
-
-            if serializer.is_valid():
-                uploaded_pdf = serializer.validated_data.get("slides_file")
-
-                if uploaded_pdf:
-                    print('---processing pdf----')
-                    with concurrent.futures.ThreadPoolExecutor() as executor:
-                        future = executor.submit(generate_slide_summary, uploaded_pdf)
-                        result = future.result()
-                        practice_session.slide_efficiency = result['SlideEfficiency']
-                        practice_session.text_economy = result['TextEconomy']
-                        practice_session.visual_communication = result['VisualCommunication']
-
-                    print(practice_session.slide_efficiency)
-                    print(practice_session)
-
-                print('---saving db----')
-                with  concurrent.futures.ThreadPoolExecutor() as db_executor:
-                    db_executor.submit(serializer.save)
-                    print(f"Slides uploaded successfully for session {pk}.")
-
-                # *** CHECK THIS LOG AFTER A PUT REQUEST ***
-                if practice_session.slides_file:
-                    print(
-                        f"WS: After save in PUT, practice_session.slides_file.name is: {practice_session.slides_file.name}")
-                else:
-                    print("WS: After save in PUT, practice_session.slides_file is None.")
-                # *** WHAT IS THE EXACT OUTPUT OF THIS LINE? ***
-
+            # Check if there is a slides file
+            if not practice_session.slides_file:
                 return Response(
-                    {
-                        "status": "success",
-                        "message": "Slides uploaded successfully.",
-                        "data": serializer.data,
-                    },
-                    status=status.HTTP_200_OK,
-                )
-            else:
-                print(f"Slide upload failed validation for session {pk}: {serializer.errors}")
-                return Response(
-                    {
-                        "status": "fail",
-                        "message": "Slide upload failed.",
-                        "errors": serializer.errors,
-                    },
+                    {"message": "No slides file found for this session."},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
+
+            # Get the path to the slides file
+            slides_path = practice_session.slides_file
+            if not slides_path.name.endswith('pdf'):
+                return Response(
+                    {"message": "Slides file is not a PDF."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            print('---processing pdf----')
+
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                future = executor.submit(generate_slide_summary, slides_path)
+                result = future.result()
+
+            practice_session.slide_efficiency = result['SlideEfficiency']
+            practice_session.text_economy = result['TextEconomy']
+            practice_session.visual_communication = result['VisualCommunication']
+            practice_session.save()
+
+            # Serialize updated session
+            from .serializers import PracticeSessionSerializer
+            session_data = PracticeSessionSerializer(practice_session).data
+
+            # *** CHECK THIS LOG AFTER A PUT REQUEST ***
+            if practice_session.slides_file:
+                print(
+                    f"WS: After save in PUT, practice_session.slides_file.name is: {practice_session.slides_file.name}"
+                )
+            else:
+                print("WS: After save in PUT, practice_session.slides_file is None.")
+            # *** WHAT IS THE EXACT OUTPUT OF THIS LINE? ***
+
+            return Response(
+                {
+                    "status": "success",
+                    "message": "Slides uploaded and summary generated successfully.",
+                    "data": session_data
+                },
+                status=status.HTTP_200_OK,
+            )
+
         except PracticeSession.DoesNotExist:
             return Response(
-                {"error": "PracticeSession not found."}, status=status.HTTP_404_NOT_FOUND
+                {"error": "PracticeSession not found."},
+                status=status.HTTP_404_NOT_FOUND,
             )
+
         except Exception as e:
             print(f"An unexpected error occurred during slide upload for session {pk}: {e}")
             traceback.print_exc()
             return Response(
-                {"error": "An internal error occurred during slide upload.", "details": str(e)},
+                {
+                    "error": "An internal error occurred during slide upload.",
+                    "details": str(e),
+                },
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
@@ -767,12 +828,11 @@ class SessionReportView(APIView):
     def generate_full_summary(self, session_id, metrics_string):
         """Creates a cohesive summary for Strengths, Improvements, and Feedback using OpenAI."""
         client = OpenAI(api_key=settings.OPENAI_API_KEY)
-        
+
         goals = PracticeSession.objects.filter(id=session_id).values_list("goals", flat=True).first()
 
         name = PracticeSession.objects.get(id=session_id).user.first_name
         print(f"Firstname: {name}")
-
 
         # Retrieve all general feedback summaries for the session's chunks
         general_feedback_summaries = ChunkSentimentAnalysis.objects.filter(
@@ -789,14 +849,14 @@ class SessionReportView(APIView):
                 "Area of Improvement": "N/A - No feedback available.",
                 "General Feedback Summary": "No feedback was generated for the chunks in this session.",
             }
-        
-        if goals =='':
+
+        if goals == '':
             goals = 'to have an impact'
-        
-# My name is .
+
+        # My name is .
         prompt = f"""
             My name is {name}, refer to me in first person.
-            You are my personal expert communication coach specializing in public speaking, storytelling, pitching, and presentations.
+            You are my personal expert communication mentor/coach specializing in public speaking, storytelling, pitching, and presentations.
 
             My goal with this presentation is {goals}. Using my provided presentation evaluation data and transcript, generate a structured JSON response with the following three components:
 
@@ -816,11 +876,12 @@ class SessionReportView(APIView):
             - Clearly state whether my talk was effective — and if so, *effective at what specifically* (e.g., persuading the audience, building trust, sparking interest).
             - Provide an overall evaluation of how well I demonstrated mastery in storytelling, public speaking, or pitching. Include tailored suggestions for improvement based on the context and audience.
 
+            Tone: btw speak to me personally like a mentor coach, this is not a report its guidance.
+
             Evaluation data: {metrics_string}
             Transcript:
             {combined_feedback}
             """
-
 
         try:
             print("Calling OpenAI for summary generation...")
@@ -846,7 +907,6 @@ class SessionReportView(APIView):
                 max_tokens=2400  # Limit tokens to control response length
             )
             print(f"prompt: {prompt}")
-
 
             refined_summary = completion.choices[0].message.content
             print(f"OpenAI raw response: {refined_summary}")
@@ -914,7 +974,7 @@ class SessionReportView(APIView):
     def post(self, request, session_id):
         print(f"Starting report generation and summary for session ID: {session_id}")
         duration_seconds = request.data.get("duration")
-        slide_specific_seconds=request.data.get("slide_specific_timing")
+        slide_specific_seconds = request.data.get("slide_specific_timing")
         try:
             session = get_object_or_404(PracticeSession, id=session_id, user=request.user)
             print(f"Session found: {session.session_name}")
@@ -1063,8 +1123,6 @@ class SessionReportView(APIView):
             language_and_word_choice = safe_division((brevity + filler_words + grammar),
                                                      3.0)  # Use 3.0 for float division
 
-            
-
             # --- Save Calculated Data and Summary to PracticeSession ---
             print("Saving aggregated and summary data to PracticeSession...")
             session.volume = round(volume if volume is not None else 0)  # Ensure not saving None
@@ -1102,7 +1160,6 @@ class SessionReportView(APIView):
 
             metrics_string = f"Final Scores: volume score: {session.volume}, pitch variability score: {session.pitch_variability}, pace score: {session.pace}, pauses score: {session.pauses}, conviction score: {session.conviction}, clarity score: {session.clarity}, impact score: {session.impact}, brevity score: {session.brevity}, trigger response score: {session.trigger_response}, filler words score: {session.filler_words}, grammar score: {session.grammar}, posture score: {session.posture}, motion score: {session.motion}, transformative potential score: {session.transformative_potential}, gestures score: {session.gestures_score_for_body_language}"
 
-
             # --- Generate Full Summary using OpenAI ---
             print("Generating full summary...")
             full_summary_data = self.generate_full_summary(session_id, metrics_string)
@@ -1126,7 +1183,7 @@ class SessionReportView(APIView):
                 "session_id": session.id,
                 "session_name": session.session_name,
                 "duration": str(session.duration) if session.duration else None,
-                "slide_specific_timing":session.slide_specific_timing if session.slide_specific_timing else {},
+                "slide_specific_timing": session.slide_specific_timing if session.slide_specific_timing else {},
                 "aggregated_scores": {
                     "volume": round(session.volume or 0),
                     "pitch_variability": round(session.pitch_variability or 0),
@@ -1275,9 +1332,7 @@ class SessionList(APIView):
 class PerformanceMetricsComparison(APIView):
     permission_classes = [IsAuthenticated]
 
-
     def get(self, request, sequence_id):
-
         session_metrics = (
             PracticeSession.objects
             .filter(sequence=sequence_id)
@@ -1323,6 +1378,7 @@ class CompareSessionsView(APIView):
         }
         return Response(data)
 
+
 class GoalAchievementView(APIView):
 
     def get(self, request):
@@ -1352,9 +1408,9 @@ class GoalAchievementView(APIView):
 
         return Response(dict(goals))
 
+
 class ImproveNewSequence(APIView):
     permission_classes = [IsAuthenticated]
-
 
     @swagger_auto_schema(
         operation_description="",
@@ -1369,7 +1425,7 @@ class ImproveNewSequence(APIView):
             try:
                 session = PracticeSession.objects.get(id=session_id)
                 if session.sequence:
-                    return  Response(data={"error":"Session already in a seqeunce"},status=404)
+                    return Response(data={"error": "Session already in a seqeunce"}, status=404)
             except PracticeSession.DoesNotExist:
                 return Response({"error": "Session not found"}, status=404)
 
@@ -1384,8 +1440,6 @@ class ImproveNewSequence(APIView):
             }, status=status.HTTP_201_CREATED)
 
         return Response(sequence_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-
 
     def get(self, request):
         # Retrieve all sessions for the current user that don't have an associated sequence
@@ -1444,7 +1498,7 @@ class ImproveExistingSequence(APIView):
                         {
                             "name": session.session_name,  # assuming your PracticeSession has a 'name' field
                             "date": session.created_at,
-                            "duration": self.format_timedelta(session.duration ) # assuming you store session duration
+                            "duration": self.format_timedelta(session.duration)  # assuming you store session duration
                         }
                         for session in sequence.sessions.all()
                     ]
@@ -1453,3 +1507,42 @@ class ImproveExistingSequence(APIView):
             response_data = None
 
         return Response(response_data)
+
+
+class SlidePreviewView(APIView):
+    permission_classes = [IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser]
+
+    def post(self, request):
+        user = request.user
+        serializer = SlidePreviewSerializer(data=request.data)
+        if serializer.is_valid():
+            slide_preview = SlidePreview.objects.create(
+                user=user
+            )
+
+            uploaded = serializer.validated_data.get("slides_file")
+            print(uploaded)
+
+            if uploaded.name.endswith('pptx'):
+                pdf_path = convert_pptx_to_pdf(uploaded)
+                print(pdf_path)
+
+                with open(pdf_path, 'rb') as pdf_file:
+                    slide_preview.slides_file.save(
+                        f"{user.id}_slides.pdf",
+                        File(pdf_file),
+                        save=False
+                    )
+                slide_preview.save()
+                # Serialize the saved instance, not the incoming data
+            data = SlidePreviewSerializer(slide_preview).data
+            return Response(
+                {
+                    "status": "success",
+                    "message": "Slides uploaded successfully.",
+                    "data": data,
+                },
+                status=status.HTTP_200_OK,
+            )
+        return Response()

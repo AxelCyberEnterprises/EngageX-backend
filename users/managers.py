@@ -1,5 +1,6 @@
 from django.contrib.auth.models import BaseUserManager
 
+
 class CustomUserManager(BaseUserManager):
     def create_user(self, email, password=None, username=None, **extra_fields):
         if not email:
@@ -25,10 +26,8 @@ class CustomUserManager(BaseUserManager):
         user.save(using=self._db)  # Save changes explicitly
 
         # Update the related UserProfile role to 'admin'
-        if hasattr(user, 'userprofile'):  
+        if hasattr(user, 'userprofile'):
             user.userprofile.role = 'admin'
             user.userprofile.save()
 
         return user
-
-

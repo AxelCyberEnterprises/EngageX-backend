@@ -12,12 +12,15 @@
 from django.contrib import admin
 from .models import QuickBooksToken, PaymentTransaction
 
+
 class QuickBooksTokenAdmin(admin.ModelAdmin):
     list_display = ('realm_id', 'expires_at', 'created_at', 'updated_at')
 
     search_fields = ('realm_id',)
 
+
 admin.site.register(QuickBooksToken, QuickBooksTokenAdmin)
+
 
 class PaymentTransactionAdmin(admin.ModelAdmin):
     list_display = ('transaction_id', 'realm_id', 'user', 'amount', 'credits', 'transaction_date', 'created_at')

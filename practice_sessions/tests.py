@@ -8,6 +8,7 @@ from django.utils.timezone import now
 
 User = get_user_model()
 
+
 class PracticeSessionTests(APITestCase):
     def setUp(self):
         # Create an admin user

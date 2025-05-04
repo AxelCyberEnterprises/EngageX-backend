@@ -2,6 +2,7 @@ import boto3
 from botocore.exceptions import ClientError
 from django.conf import settings
 
+
 def send_email_via_ses(subject, body, to_emails, from_email=None):
     from_email = from_email or settings.DEFAULT_FROM_EMAIL
     if isinstance(to_emails, str):

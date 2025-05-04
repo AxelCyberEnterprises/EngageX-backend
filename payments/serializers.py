@@ -20,6 +20,7 @@ from django.contrib.auth import get_user_model
 
 User = get_user_model()
 
+
 class QuickBooksTokenSerializer(serializers.ModelSerializer):
     class Meta:
         model = QuickBooksToken
@@ -31,9 +32,11 @@ class QuickBooksTokenSerializer(serializers.ModelSerializer):
             'created_at',
             'updated_at',
         ]
-        read_only_fields = fields 
+        read_only_fields = fields
 
-# --- Serializer for PaymentTransaction ---
+    # --- Serializer for PaymentTransaction ---
+
+
 class PaymentTransactionSerializer(serializers.ModelSerializer):
     user_email = serializers.EmailField(source="user.email", read_only=True)
 

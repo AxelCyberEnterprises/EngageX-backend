@@ -4,7 +4,6 @@ from django.db import migrations
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ('payments', '0004_paymenttransaction_status'),
         ('payments', '0004_paymenttransaction_status_delete_usercredit'),

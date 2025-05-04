@@ -4,7 +4,6 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ('users', '0003_alter_userprofile_role'),
     ]
@@ -13,6 +12,7 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='userprofile',
             name='purpose',
-            field=models.CharField(choices=[('admin', 'Admin'), ('user', 'User'), ('coach', 'Coach')], default='user', max_length=20),
+            field=models.CharField(choices=[('admin', 'Admin'), ('user', 'User'), ('coach', 'Coach')], default='user',
+                                   max_length=20),
         ),
     ]
