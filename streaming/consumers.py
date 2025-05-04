@@ -6,6 +6,10 @@
 # Fixed the order of the first three chunks
 # S3 video concatenation
 # Added AI Audience Question functionality triggered at intervals and controlled by a toggle
+# Updated S3 bucket structure to include user ID
+# Fixed SynchronousOnlyOperation error in connect by accessing user within sync_to_async
+# Fixed S3 key extraction for compilation with new URL format
+# Handled CancelledError in background task
 
 import asyncio
 import platform
@@ -25,8 +29,9 @@ import openai
 import django
 import time
 import traceback
-import random  # Import random for selecting variations
-import numpy as np  # Import numpy to handle potential numpy types
+import random # Import random for selecting variations
+import numpy as np # Import numpy to handle potential numpy types
+from urllib.parse import urlparse # Import urlparse for S3 URL parsing
 
 from base64 import b64decode
 from datetime import timedelta
@@ -42,8 +47,10 @@ from channels.db import database_sync_to_async
 from .sentiment_analysis import analyze_results, transcribe_audio, ai_audience_question
 
 from practice_sessions.models import PracticeSession, SessionChunk, ChunkSentimentAnalysis
-from practice_sessions.serializers import SessionChunkSerializer, \
-    ChunkSentimentAnalysisSerializer  # PracticeSessionSerializer might not be directly needed here
+from practice_sessions.serializers import SessionChunkSerializer, ChunkSentimentAnalysisSerializer # PracticeSessionSerializer might not be directly needed here
+from django.contrib.auth import get_user_model # Import to get the User model
+
+User = get_user_model() # Get the active user model
 
 # Ensure Django settings are configured
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "EngageX.settings")
@@ -57,9 +64,9 @@ client = openai.OpenAI() if openai.api_key else None  # Initialize client only i
 # Initialize S3 client
 # Ensure AWS_REGION is set in your environment or settings
 s3 = boto3.client("s3", region_name=os.environ.get('AWS_REGION'))
-BUCKET_NAME = "engagex-user-content-1234"  # Replace with your actual S3 bucket name
-BASE_FOLDER = "user-videos/"
-TEMP_MEDIA_ROOT = tempfile.gettempdir()  # Use system's temporary directory
+BUCKET_NAME = "engagex-user-content-1234" # Replace with your actual S3 bucket name
+BASE_FOLDER = "user-videos/" # Base folder in S3 bucket
+TEMP_MEDIA_ROOT = tempfile.gettempdir() # Use system's temporary directory
 EMOTION_STATIC_FOLDER = "static-videos"  # Top-level folder for static emotion videos
 
 # Define the rooms the user can choose from. Used for validation.
@@ -96,7 +103,8 @@ class LiveSessionConsumer(AsyncWebsocketConsumer):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.session_id = None
-        self.room_name = None  # Store the chosen room name
+        self.user_id = None # Store the user ID
+        self.room_name = None # Store the chosen room name
         self.chunk_counter = 0
         self.media_buffer = []  # Stores temporary media file paths (full video+audio chunk)
         self.audio_buffer = {}  # Dictionary to map media_path to temporary audio_path (extracted audio)
@@ -109,6 +117,7 @@ class LiveSessionConsumer(AsyncWebsocketConsumer):
         self.analysis_window_counter = 0
         self.ai_questions_enabled = True  # Default to True, will be updated in connect
 
+    # Make connect asynchronous to allow DB query
     async def connect(self):
         query_string = self.scope['query_string'].decode()
         query_params = {}
@@ -127,21 +136,38 @@ class LiveSessionConsumer(AsyncWebsocketConsumer):
 
         # Validate session_id and room_name
         if self.session_id and self.room_name in POSSIBLE_ROOMS:
-            print(
-                f"WS: Client connected for Session ID: {self.session_id}, Room: {self.room_name}, AI Questions Enabled: {self.ai_questions_enabled}")
-            await self.accept()
-            await self.send(json.dumps({
-                "type": "connection_established",
-                "message": f"Connected to session {self.session_id} in room {self.room_name}"
-            }))
-        else:
-            if not self.session_id:
-                print("WS: Connection rejected: Missing session_id.")
-            elif self.room_name is None:
-                print("WS: Connection rejected: Missing room_name.")
-            else:  # room_name is provided but not in POSSIBLE_ROOMS
-                print(f"WS: Connection rejected: Invalid room_name '{self.room_name}'.")
+            # Retrieve the user ID from the PracticeSession (requires async DB call)
+            try:
+                # Retrieve the user ID directly within the sync context
+                # This ensures the access to session.user.id happens in a thread
+                # Also handle the case where the session might not have a user linked
+                user_id_or_none = await database_sync_to_async(lambda: PracticeSession.objects.filter(id=self.session_id).values_list('user__id', flat=True).first())()
 
+                if user_id_or_none is not None:
+                     self.user_id = str(user_id_or_none) # Store user ID as string
+                     print(f"WS: Client connected for Session ID: {self.session_id}, User ID: {self.user_id}, Room: {self.room_name}, AI Questions Enabled: {self.ai_questions_enabled}")
+                     await self.accept()
+                     await self.send(json.dumps({
+                         "type": "connection_established",
+                         "message": f"Connected to session {self.session_id} for user {self.user_id} in room {self.room_name}"
+                     }))
+                     print("WS: Connect method successfully completed logic.") # Added diagnostic print
+
+                else:
+                     # This covers cases where the session_id is invalid or the session has no user
+                     print(f"WS: Connection rejected for Session ID {self.session_id}: PracticeSession not found or has no associated user.")
+                     await self.close()
+
+            # We might still catch PracticeSession.DoesNotExist if the initial filter didn't exclude it,
+            # but the values_list approach with first() should handle the no-session case gracefully with None.
+            # Keeping this catch block for robustness against other potential DB errors.
+            except Exception as e:
+                 print(f"WS: Error retrieving PracticeSession or User ID during connect: {e}")
+                 traceback.print_exc()
+                 await self.close()
+
+        else:
+            print(f"WS: Connection rejected: Missing session_id or invalid room_name ({self.room_name}).") # Added more detailed message
             await self.close()
 
     async def disconnect(self, close_code):
@@ -231,9 +257,15 @@ class LiveSessionConsumer(AsyncWebsocketConsumer):
         print(f"WS: Session {self.session_id} cleanup complete.")
 
     async def receive(self, text_data=None, bytes_data=None):
+        print("WS: Received message or data.") # Added diagnostic print
         if not self.session_id:
             print("WS: Error: Session ID not available, cannot process data.")
             return
+        # Ensure user_id is available before processing data
+        if not self.user_id:
+            print("WS: Error: User ID not available, cannot process data.")
+            return
+
 
         try:
             if text_data:
@@ -388,6 +420,9 @@ class LiveSessionConsumer(AsyncWebsocketConsumer):
 
             else:
                 print(f"WS: S3 upload failed for {media_path}. Cannot save SessionChunk data in background.")
+        except asyncio.CancelledError:
+            # Handle task cancellation gracefully during disconnect
+            print(f"WS: Background chunk save task for {media_path} was cancelled.")
         except Exception as e:
             print(f"WS: Error in background chunk save for {media_path}: {e}")
             traceback.print_exc()
@@ -613,6 +648,7 @@ class LiveSessionConsumer(AsyncWebsocketConsumer):
                     asyncio.create_task(self.generate_and_send_question(combined_transcript_text))
                     # Reset the counter after generating a question if you want intervals based on *since last question*
                     # self.analysis_window_counter = 0 # Uncomment this if you want intervals based on *since last question*
+
                 elif not self.ai_questions_enabled:
                     print(
                         f"WS: AI questions are DISABLED. Skipping AI Audience Question generation for window ending with chunk {window_chunk_number}")
@@ -889,12 +925,18 @@ class LiveSessionConsumer(AsyncWebsocketConsumer):
     def upload_to_s3(self, file_path):
         """Uploads a local file to S3. This is a synchronous operation."""
         if s3 is None:
-            print(f"WS: S3 client is not initialized. Cannot upload file: {file_path}.")
+             print(f"WS: S3 client is not initialized. Cannot upload file: {file_path}.")
+             return None
+        # Ensure user_id is available before attempting upload
+        if not self.user_id:
+            print(f"WS: Error: User ID not available. Cannot upload file {file_path} to S3 with user structure.")
             return None
+
 
         start_time = time.time()
         file_name = os.path.basename(file_path)
-        folder_path = f"{BASE_FOLDER}{self.session_id}/"
+        # Updated folder structure: BASE_FOLDER/user_id/session_id/file_name
+        folder_path = f"{BASE_FOLDER}{self.user_id}/{self.session_id}/"
         s3_key = f"{folder_path}{file_name}"
         try:
             # s3.upload_file is a blocking call
@@ -964,6 +1006,7 @@ class LiveSessionConsumer(AsyncWebsocketConsumer):
                     traceback.print_exc()
                     return None  # Return None on save error
             else:
+                # Corrected variable name from session_serializer.errors to session_chunk_serializer.errors
                 print("WS: Error saving SessionChunk:", session_chunk_serializer.errors)
                 return None  # Return None if serializer is not valid
 
@@ -1147,25 +1190,46 @@ class LiveSessionConsumer(AsyncWebsocketConsumer):
             print(f"WS: Downloading {len(chunk_urls)} chunks for session {session_id}.")
             downloaded_chunk_paths = []
             for i, url in enumerate(chunk_urls):
-                # Extract the S3 key from the URL
-                # This assumes the URL format is like .../bucket-name/path/to/file.webm
-                # If your URL format is different, you might need to adjust how you extract the key.
-                s3_key = "/".join(url.split('/')[3:])
-                if not s3_key:
-                    print(f"WS: Could not extract S3 key from URL: {url}. Skipping download for this chunk.")
-                    continue
+                # Extract the S3 key from the URL more robustly
+                s3_key = None
+                try:
+                    parsed_url = urlparse(url)
+                    # For regional endpoints like bucket-name.s3.region.amazonaws.com
+                    # the bucket name is the first part of the hostname
+                    # the key is the path part without the leading slash
+                    hostname_parts = parsed_url.hostname.split('.')
+                    extracted_bucket_name = hostname_parts[0] if hostname_parts else None
+                    key_path = parsed_url.path.lstrip('/') if parsed_url.path else None # Get path without leading slash
 
-                temp_file_path = os.path.join(TEMP_MEDIA_ROOT,
-                                              f"{session_id}_chunk_{i}_{os.path.basename(s3_key)}")  # Include key in temp filename
-                temp_file_paths.append(temp_file_path)  # Add to cleanup list
+                    if extracted_bucket_name == BUCKET_NAME and key_path:
+                         s3_key = key_path # This is the correct S3 key relative to the bucket root
+                         print(f"WS: Extracted S3 key from URL {url}: {s3_key}")
+                    else:
+                         print(f"WS: Could not extract S3 key or bucket name from URL: {url}. Extracted bucket: {extracted_bucket_name}, Expected: {BUCKET_NAME}, Extracted key path: {key_path}. Skipping download for this chunk.")
+                         continue # Skip this chunk if extraction fails
+
+
+                except Exception as url_parse_error:
+                     print(f"WS: Error parsing URL {url}: {url_parse_error}. Skipping download for this chunk.")
+                     continue
+
+
+                if not s3_key:
+                     # This case should be caught by the try/except above, but as a safeguard
+                     print(f"WS: S3 key is None after extraction attempt for URL: {url}. Skipping download for this chunk.")
+                     continue
+
+
+                temp_file_path = os.path.join(TEMP_MEDIA_ROOT, f"{session_id}_chunk_{i}_{os.path.basename(s3_key)}") # Include key filename in temp filename
+                temp_file_paths.append(temp_file_path) # Add to cleanup list
                 try:
                     # Use asyncio.to_thread for blocking download
                     # The s3.download_file method takes bucket name, S3 key, and local file path
                     await asyncio.to_thread(s3.download_file, BUCKET_NAME, s3_key, temp_file_path)
                     downloaded_chunk_paths.append(temp_file_path)
-                    print(f"WS: Downloaded chunk {i + 1}/{len(chunk_urls)} from {url} to {temp_file_path}")
+                    print(f"WS: Downloaded chunk {i+1}/{len(chunk_urls)} from {s3_key} to {temp_file_path}") # Log using the key
                 except Exception as e:
-                    print(f"WS: Error downloading chunk {i + 1} from {url}: {e}")
+                    print(f"WS: Error downloading chunk {i+1} from {s3_key}: {e}") # Log using the key
                     # Decide how to handle download errors - skip the chunk or fail compilation?
                     # For now, we'll try to compile with downloaded chunks.
                     continue
@@ -1214,7 +1278,13 @@ class LiveSessionConsumer(AsyncWebsocketConsumer):
             # 5. Upload compiled video to S3
             print(f"WS: Uploading compiled video to S3 for session {session_id}.")
             # Construct the S3 key for the compiled video
-            compiled_s3_key = f"{BASE_FOLDER}{self.session_id}/{compiled_video_filename}"  # Use self.session_id
+            # Updated compiled S3 key structure: BASE_FOLDER/user_id/session_id/compiled_video_filename
+            # Ensure user_id is available
+            if not self.user_id:
+                 print(f"WS: Error: User ID not available. Cannot upload compiled video for session {session_id}.")
+                 return # Exit if user ID is missing
+
+            compiled_s3_key = f"{BASE_FOLDER}{self.user_id}/{self.session_id}/{compiled_video_filename}" # Use self.user_id and self.session_id
             # Upload the compiled video
             # Use asyncio.to_thread for blocking upload
             await asyncio.to_thread(s3.upload_file, compiled_video_path, BUCKET_NAME, compiled_s3_key)

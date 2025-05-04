@@ -160,19 +160,19 @@
     });
 
 
-    async function createPracticeSession() {
-        try {
-            const response = await fetch(`${API_BASE_URL}/sessions/sessions/`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Token fb6748ce351fb7c7a1821d24c3c4874c8dfdaac0`
-                },
-                body: JSON.stringify({
-                    session_name: "Live Practice Session",
-                    session_type: "public",
-                    virtual_environment: selectedRoom, // Use the selected room here
-                    goals: ["I want to be more brave"]
+        async function createPracticeSession() {
+            try {
+                const response = await fetch(`${API_BASE_URL}/sessions/sessions/`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Token cbb104b86b94b2116b6b542e496454dea3940039`
+                    },
+                    body: JSON.stringify({
+                        session_name: "Live Practice Session",
+                        session_type: "public",
+                        virtual_environment: selectedRoom, // Use the selected room here
+                        goals: ["I want to be more brave"]
 
                 })
             });
@@ -457,18 +457,18 @@
         const durationInSeconds = startTime ? Math.round((endTime - startTime) / 1000) : 0;
         console.log("Calculated Session Duration (seconds):", durationInSeconds);
 
-        // Call the session report endpoint
-        try {
-            const response = await fetch(`${API_BASE_URL}/sessions/sessions-report/${sessionId}/`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Token fb6748ce351fb7c7a1821d24c3c4874c8dfdaac0`
-                },
-                body: JSON.stringify({
-                    duration: durationInSeconds
-                })
-            });
+               // Call the session report endpoint
+               try {
+                   const response = await fetch(`${API_BASE_URL}/sessions/sessions-report/${sessionId}/`, {
+                        method: 'POST',
+                        headers: {
+                             'Content-Type': 'application/json',
+                             'Authorization': `Token cbb104b86b94b2116b6b542e496454dea3940039`
+                        },
+                        body: JSON.stringify({
+                             duration: durationInSeconds
+                        })
+                   });
 
             if (!response.ok) {
                 const errorText = await response.text();
