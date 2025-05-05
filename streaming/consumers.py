@@ -70,7 +70,7 @@ TEMP_MEDIA_ROOT = tempfile.gettempdir() # Use system's temporary directory
 EMOTION_STATIC_FOLDER = "static-videos"  # Top-level folder for static emotion videos
 
 # Define the rooms the user can choose from. Used for validation.
-POSSIBLE_ROOMS = ['conference_room', 'board_room_1', 'board_room_2']
+POSSIBLE_ROOMS = ['conference_room', 'board_room_1', 'board_room_2', 'pitch_studio']
 
 # Assume a fixed number of variations for each emotion video (1.mp4 to 5.mp4)
 NUMBER_OF_VARIATIONS = 5
