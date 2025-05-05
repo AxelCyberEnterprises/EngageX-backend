@@ -292,14 +292,17 @@ def convert_pptx_to_pdf(pptx_file):
     print("LibreOffice stdout:\n", result.stdout)
     print("LibreOffice stderr:\n", result.stderr)
 
-    if result.returncode != 0:
-        raise RuntimeError(f"LibreOffice failed with exit code {result.returncode}")
+    # if result.returncode != 0:
+    
+    #     print(f"LibreOffice failed with exit code {result.returncode}")
+    #     raise RuntimeError(f"LibreOffice failed with exit code {result.returncode}")
 
     # Wait to ensure file is written before returning
     time.sleep(0.5)
 
     pdf_path = os.path.join(output_dir, os.path.basename(temp_pptx_path).replace(".pptx", ".pdf"))
     if not os.path.exists(pdf_path):
+        print(f"Expected output PDF not found at: {pdf_path}")
         raise FileNotFoundError(f"Expected output PDF not found at: {pdf_path}")
 
     return pdf_path
@@ -890,7 +893,7 @@ class SessionReportView(APIView):
             - Clearly state whether my talk was effective — and if so, *effective at what specifically* (e.g., persuading the audience, building trust, sparking interest).
             - Provide an overall evaluation of how well I demonstrated mastery in storytelling, public speaking, or pitching. Include tailored suggestions for improvement based on the context and audience.
 
-            Tone: btw speak to me personally like a mentor coach, this is not a report its guidance.
+            Tone: btw speak to me personally like a mentor coach, this is not a report its guidance. Use \n for line breaks between paragraphs and also start with an encouraging remark relevant to my presentation with my name:  My name is {name}, refer to me in first person.
 
             Evaluation data: {metrics_string}
             Transcript:
