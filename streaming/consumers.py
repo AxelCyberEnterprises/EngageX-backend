@@ -70,7 +70,7 @@ TEMP_MEDIA_ROOT = tempfile.gettempdir() # Use system's temporary directory
 EMOTION_STATIC_FOLDER = "static-videos"  # Top-level folder for static emotion videos
 
 # Define the rooms the user can choose from. Used for validation.
-POSSIBLE_ROOMS = ['conference_room', 'board_room_1', 'board_room_2']
+POSSIBLE_ROOMS = ['conference_room', 'board_room_1', 'board_room_2', 'pitch_studio']
 
 # Assume a fixed number of variations for each emotion video (1.mp4 to 5.mp4)
 NUMBER_OF_VARIATIONS = 5
@@ -79,7 +79,7 @@ NUMBER_OF_VARIATIONS = 5
 ANALYSIS_WINDOW_SIZE = 3  # Keeping the reduced window size from the previous test
 
 # Define the interval for generating AI questions (in terms of number of analysis windows)
-QUESTION_INTERVAL_WINDOWS = 3
+QUESTION_INTERVAL_WINDOWS = 6
 
 
 # Helper function to convert numpy types to native Python types for JSON serialization

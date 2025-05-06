@@ -15,14 +15,14 @@ from channels.auth import AuthMiddlewareStack
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "EngageX.settings")
 django.setup()
 
-# import streaming.routing  # After setup
+import streaming.routing  # After setup
 
 application = ProtocolTypeRouter(
     {
         "http": get_asgi_application(),
-        # "websocket": AuthMiddlewareStack(
-        #     URLRouter(streaming.routing.websocket_urlpatterns)
-        # ),
+        "websocket": AuthMiddlewareStack(
+            URLRouter(streaming.routing.websocket_urlpatterns)
+        ),
     }
 )
 # from streaming.consumers import sio as socketio_app
