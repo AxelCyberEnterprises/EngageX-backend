@@ -256,13 +256,14 @@ class VerifyEmailView(APIView):
                 return Response(response_data, status=status.HTTP_400_BAD_REQUEST)
 
             # Check if this is the first time the user is being verified
-            first_time_verification = not user.is_verified
-
+            first_time_verification = not user.has_logged_in
+            
             # Proceed to verify the user's email
             user.is_verified = True
             user.is_active = True
             user.verification_code = ""
-            user.save()
+            user.has_logged_in = True
+            user.save(update_fields=["is_verified", "is_active", "verification_code", "has_logged_in"])
 
             token, created = Token.objects.get_or_create(user=user)
             print(token)
