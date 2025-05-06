@@ -250,11 +250,13 @@ class VerifyEmailView(APIView):
             # Check if the user is already verified
             if user.is_active:
                 response_data = {
-
                     "status": "fail",
                     "message": "This email address has already been verified. Please log in.",
                 }
                 return Response(response_data, status=status.HTTP_400_BAD_REQUEST)
+
+            # Check if this is the first time the user is being verified
+            first_time_verification = not user.is_verified
 
             # Proceed to verify the user's email
             user.is_verified = True
@@ -271,8 +273,8 @@ class VerifyEmailView(APIView):
                 "first_name": user.first_name,
                 "last_name": user.last_name,
                 "is_admin": user.is_superuser,
-
-            },
+                "first_time_verification": first_time_verification,
+            }
             response_data = {
                 "data": data,
                 "status": "success",
