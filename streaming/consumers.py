@@ -79,7 +79,7 @@ NUMBER_OF_VARIATIONS = 5
 ANALYSIS_WINDOW_SIZE = 3  # Keeping the reduced window size from the previous test
 
 # Define the interval for generating AI questions (in terms of number of analysis windows)
-QUESTION_INTERVAL_WINDOWS = 3
+QUESTION_INTERVAL_WINDOWS = 6
 
 
 # Helper function to convert numpy types to native Python types for JSON serialization

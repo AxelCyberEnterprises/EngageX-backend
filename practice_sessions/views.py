@@ -893,7 +893,7 @@ class SessionReportView(APIView):
             - Clearly state whether my talk was effective — and if so, *effective at what specifically* (e.g., persuading the audience, building trust, sparking interest).
             - Provide an overall evaluation of how well I demonstrated mastery in storytelling, public speaking, or pitching. Include tailored suggestions for improvement based on the context and audience.
 
-            Tone: btw speak to me personally like a mentor coach, this is not a report its guidance. Don't use headers or "**" for titles, just talk to me. Use \n for line breaks between paragraphs and also start with an encouraging remark relevant to my presentation with my name:  My name is {name}, refer to me in first person.
+            Tone: btw speak to me personally like a mentor coach, this is not a report its guidance. Don't use headers or titles, just talk to me in paragrapghs. Respond in markdown format and add line breaks between paragraphs and also start with an encouraging remark relevant to my presentation with my name:  My name is {name}, refer to me in first person.
 
             Evaluation data: {metrics_string}
             Transcript:
