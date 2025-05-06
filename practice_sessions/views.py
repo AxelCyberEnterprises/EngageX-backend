@@ -951,6 +951,7 @@ class SessionReportView(APIView):
 
     def get(self, request, session_id):
         try:
+            user = request.user
             session = PracticeSession.objects.get(id=session_id, user=request.user)
             session_serializer = PracticeSessionSerializer(session)
 
@@ -960,6 +961,8 @@ class SessionReportView(APIView):
             )
 
             performance_analytics_over_time = []
+            company = user.user_profile.company
+            print(company)
 
             for chunk in latest_session_chunk:
                 performance_analytics_over_time.append({
@@ -973,6 +976,7 @@ class SessionReportView(APIView):
 
             # Combine both sets of data in the response
             response_data = session_serializer.data
+            response_data['company'] = company
             response_data["performance_analytics"] = performance_analytics_over_time
 
             return Response(response_data, status=status.HTTP_200_OK)
@@ -992,6 +996,9 @@ class SessionReportView(APIView):
         print(f"Starting report generation and summary for session ID: {session_id}")
         duration_seconds = request.data.get("duration")
         slide_specific_seconds = request.data.get("slide_specific_timing")
+        user = request.user
+        company = user.user_profile.company
+        print(company)
         try:
             session = get_object_or_404(PracticeSession, id=session_id, user=request.user)
             print(f"Session found: {session.session_name}")
@@ -1038,6 +1045,7 @@ class SessionReportView(APIView):
                 return Response({
                     "session_id": session.id,
                     "session_name": session.session_name,
+                    "company":company,
                     "duration": str(session.duration) if session.duration else None,
                     "aggregated_scores": {},  # Empty or default values
                     "derived_scores": {},  # Empty or default values
@@ -1199,6 +1207,7 @@ class SessionReportView(APIView):
             report_response_data = {
                 "session_id": session.id,
                 "session_name": session.session_name,
+                "company": company,
                 "duration": str(session.duration) if session.duration else None,
                 "slide_specific_timing": session.slide_specific_timing if session.slide_specific_timing else {},
                 "aggregated_scores": {
