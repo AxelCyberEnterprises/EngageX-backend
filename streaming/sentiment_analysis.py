@@ -54,7 +54,7 @@ lock = threading.Lock()
 
 def ai_audience_question(transcript):
     prompt = f"""
-        You are a curious audience member at a talk or presentation. Based on the following speaker transcript, ask a simple short question
+        You are a curious audience member at a talk or presentation. Based on the following speaker transcript, ask a thoughtful and insightful question
         ONLY return the question
         Transcript:\n{transcript}\n"""
 
