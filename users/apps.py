@@ -7,4 +7,3 @@ class UsersConfig(AppConfig):
 
     def ready(self):
         import users.signals  # Ensure signals are loaded when the app is ready
-

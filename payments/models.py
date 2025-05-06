@@ -2,9 +2,10 @@ from django.db import models
 from django.conf import settings
 from django.utils import timezone
 
+
 class SingletonModel(models.Model):
     class Meta:
-        abstract = True # no db table
+        abstract = True  # no db table
 
     def save(self, *args, **kwargs):
         # ensure there's only one instance by forcing the pk to 1
@@ -16,14 +17,13 @@ class SingletonModel(models.Model):
         # Prevent deletion of the single instance
         pass
 
-
     @classmethod
     def load(cls):
         defaults = {
             'access_token': '',
             'refresh_token': '',
-            'expires_at': timezone.now(),    # future placeholder
-            'realm_id': '',                  # must be non‐null
+            'expires_at': timezone.now(),  # future placeholder
+            'realm_id': '',  # must be non‐null
         }
         """
         Load the single model instance.
@@ -32,6 +32,7 @@ class SingletonModel(models.Model):
         # Use get_or_create with pk=1 to always retrieve or create the single instance
         obj, created = cls.objects.get_or_create(pk=1, defaults=defaults)
         return obj, created
+
 
 class QuickBooksToken(SingletonModel):
     access_token = models.CharField()
@@ -45,9 +46,10 @@ class QuickBooksToken(SingletonModel):
         if self.expires_at is None:
             return True
         return self.expires_at <= timezone.now() - timezone.timedelta(minutes=5)
-    
+
     def __str__(self):
         return f"QuickBooks Token for  Realm ID: {self.realm_id}"
+
 
 class PaymentTransaction(models.Model):
     STATUS_PENDING = 'pending'
@@ -60,7 +62,7 @@ class PaymentTransaction(models.Model):
     ]
 
     user = models.ForeignKey(
-        settings.AUTH_USER_MODEL, 
+        settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
         related_name='payment_transactions'
     )
@@ -87,6 +89,6 @@ class PaymentTransaction(models.Model):
     class Meta:
         ordering = ['-created_at']
         unique_together = ('transaction_id', 'realm_id')
-    
+
     def __str__(self):
         return f"Transaction {self.transaction_id or 'N/A'} for {self.user.email}"

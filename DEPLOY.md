@@ -2,7 +2,10 @@
 
 ## 1. Introduction
 
-This document outlines the deployment process for a Python (EngageX App) API to AWS Elastic Beanstalk, including Continuous Integration/Continuous Deployment (CI/CD) via GitHub Actions, secure resource access to Amazon Simple Email Service (SES) and Amazon Simple Storage Service (S3), integration with an Amazon Relational Database Service (RDS) instance, budget alerts, and future production improvements.
+This document outlines the deployment process for a Python (EngageX App) API to AWS Elastic Beanstalk, including
+Continuous Integration/Continuous Deployment (CI/CD) via GitHub Actions, secure resource access to Amazon Simple Email
+Service (SES) and Amazon Simple Storage Service (S3), integration with an Amazon Relational Database Service (RDS)
+instance, budget alerts, and future production improvements.
 
 ## 2. Architecture Overview
 
@@ -29,27 +32,29 @@ This document outlines the deployment process for a Python (EngageX App) API to 
 
 ### 4.1. RDS Configuration
 
-1.  **Create an RDS Instance:**
+1. **Create an RDS Instance:**
     * In the AWS Management Console, navigate to RDS.
     * Create a new database instance with the appropriate configuration (e.g., database engine, instance type, storage).
     * Ensure the RDS instance is in a VPC that allows access from the Elastic Beanstalk environment.
-2.  **Security Group Configuration:**
+2. **Security Group Configuration:**
     * Configure the RDS security group to allow inbound traffic from the Elastic Beanstalk instance's security group.
 
 ### 4.2. Elastic Beanstalk Setup
 
-1.  **Create an Elastic Beanstalk Environment:**
+1. **Create an Elastic Beanstalk Environment:**
     * In the AWS Management Console, navigate to Elastic Beanstalk.
     * Create a new environment (e.g., "Python API Environment").
     * Select the appropriate platform (e.g., Python).
     * Configure environment settings (e.g., instance type, environment variables).
-2.  **IAM Role Configuration:**
+2. **IAM Role Configuration:**
     * During environment creation, Elastic Beanstalk will create an instance profile (IAM role).
     * Modify the instance profile to grant the necessary permissions:
         * **SES Permissions:** Attach a policy allowing the Elastic Beanstalk instance to send emails via SES.
-        * **S3 Permissions:** Attach a policy allowing the Elastic Beanstalk instance to access the specific S3 bucket. Ensure the policy restricts access to the desired bucket and actions.
-        * **RDS Access:** Ensure that the security group of the RDS database allows the elastic beanstalk instances to access the database.
-3.  **Environment Variables:**
+        * **S3 Permissions:** Attach a policy allowing the Elastic Beanstalk instance to access the specific S3 bucket.
+          Ensure the policy restricts access to the desired bucket and actions.
+        * **RDS Access:** Ensure that the security group of the RDS database allows the elastic beanstalk instances to
+          access the database.
+3. **Environment Variables:**
     * In the Elastic Beanstalk environment configuration, set environment variables for:
         * RDS database connection details (host, port, database name, username, password).
         * SES credentials (if applicable).
@@ -58,10 +63,10 @@ This document outlines the deployment process for a Python (EngageX App) API to 
 
 ### 4.3. GitHub Actions CI/CD
 
-1.  **Create GitHub Actions Workflow:**
+1. **Create GitHub Actions Workflow:**
     * In your GitHub repository, create a `.github/workflows` directory.
     * Create a YAML file (e.g., `deploy.yml`) for your workflow.
-2.  **Workflow Configuration:**
+2. **Workflow Configuration:**
     * Configure the workflow to:
         * Trigger on pushes to the `deploy` branch.
         * Set up a Python environment.
@@ -70,22 +75,21 @@ This document outlines the deployment process for a Python (EngageX App) API to 
         * Deploy the source bundle to Elastic Beanstalk using the `aws-elastic-beanstalk-deploy` action or the AWS CLI.
     * **AWS Credentials:** Store your AWS credentials as GitHub secrets, and use them within the GitHub action.
 
-
 ### 4.4. SES, S3, and RDS Integration
 
-1.  **Python API Code:**
+1. **Python API Code:**
     * Implement code in your Python API to:
         * Connect to the RDS database using the environment variables.
         * Send emails using the `boto3` library and SES.
         * Store and retrieve data from the S3 bucket using `boto3`.
     * Ensure that the code utilizes the environment variables that are set in the Elastic Beanstalk environment.
-2.  **Security:**
+2. **Security:**
     * Avoid hardcoding AWS credentials in your code.
     * Use the IAM role associated with the Elastic Beanstalk instance for authentication.
 
 ### 4.5. AWS Budgets
 
-1.  **Create Budget Alerts:**
+1. **Create Budget Alerts:**
     * In the AWS Management Console, navigate to AWS Budgets.
     * Create a budget to monitor the cost of the deployed resources.
     * Set up budget alerts to notify you when costs exceed predefined thresholds.
@@ -109,11 +113,13 @@ This document outlines the deployment process for a Python (EngageX App) API to 
 
 ## 7. Future Production Improvements
 
-1.  **SES Production Access:**
-    * Submit a request to AWS to move your SES account out of the sandbox environment to enable sending emails to non-verified addresses.
-2.  **IAM Least Privilege:**
-    * Tighten IAM policies to grant only the necessary permissions to the Elastic Beanstalk instance, especially for S3 access.
-3.  **Production Elastic Beanstalk Environment:**
+1. **SES Production Access:**
+    * Submit a request to AWS to move your SES account out of the sandbox environment to enable sending emails to
+      non-verified addresses.
+2. **IAM Least Privilege:**
+    * Tighten IAM policies to grant only the necessary permissions to the Elastic Beanstalk instance, especially for S3
+      access.
+3. **Production Elastic Beanstalk Environment:**
     * Configure a production-ready Elastic Beanstalk environment with:
         * Multiple EC2 instances for high availability.
         * A load balancer to distribute traffic across instances.

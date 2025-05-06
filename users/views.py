@@ -8,7 +8,6 @@ from django.contrib.auth import get_user_model, authenticate
 from django.utils import timezone
 from django.db import transaction, IntegrityError
 
-
 from rest_framework.authtoken.models import Token
 from rest_framework import viewsets, status, permissions
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -256,13 +255,29 @@ class VerifyEmailView(APIView):
                 }
                 return Response(response_data, status=status.HTTP_400_BAD_REQUEST)
 
+            # Check if this is the first time the user is being verified
+            first_time_verification = not user.has_logged_in
+            
             # Proceed to verify the user's email
             user.is_verified = True
             user.is_active = True
             user.verification_code = ""
-            user.save()
+            user.has_logged_in = True
+            user.save(update_fields=["is_verified", "is_active", "verification_code", "has_logged_in"])
 
+            token, created = Token.objects.get_or_create(user=user)
+            print(token)
+            data = {
+                "token": token.key,
+                "user_id": user.id,
+                "email": email,
+                "first_name": user.first_name,
+                "last_name": user.last_name,
+                "is_admin": user.is_superuser,
+                "first_time_verification": first_time_verification,
+            }
             response_data = {
+                "data": data,
                 "status": "success",
                 "message": "Email verified successfully! You can now log in.",
             }
@@ -592,7 +607,7 @@ class UserProfileViewSet(viewsets.ModelViewSet):
             )  # Return empty queryset for schema generation or anonymous users
 
         if hasattr(
-            user, "user_profile"
+                user, "user_profile"
         ):  # Check if userprofile exists before accessing it
             if user.user_profile.is_admin():
                 # Admins can see everything
@@ -778,7 +793,7 @@ class GoogleLoginView(APIView):
             # Save user profile
             user_profile.gender = gender or user_profile.gender
             user_profile.language_preference = (
-                language or user_profile.language_preference
+                    language or user_profile.language_preference
             )
             user_profile.save()
 

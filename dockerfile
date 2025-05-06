@@ -4,7 +4,7 @@ FROM python:3.11-slim
 RUN pip install --upgrade pip
 
 # Install curl (needed for health check) and ffmpeg
-RUN apt-get update && apt-get install -y curl build-essential cmake ffmpeg && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y curl build-essential cmake ffmpeg libreoffice && rm -rf /var/lib/apt/lists/*
 
 # # Set a non-root user
 # ARG USER=myuser

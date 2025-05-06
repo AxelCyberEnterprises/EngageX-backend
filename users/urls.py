@@ -19,7 +19,6 @@ router.register(r"users", UserCreateViewSet, basename="user")
 router.register(r"userprofiles", UserProfileViewSet, basename="userprofile")
 router.register(r"assign", UserAssignmentViewSet, basename="user-assignment")
 
-
 urlpatterns = [
     path("", include(router.urls)),  # Include all router-generated URLs
     path("auth/", include("djoser.urls.authtoken")),  # Token-based auth

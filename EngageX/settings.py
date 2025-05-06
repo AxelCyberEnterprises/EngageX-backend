@@ -20,7 +20,6 @@ load_dotenv()
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/4.2/howto/deployment/checklist/
 
@@ -31,7 +30,6 @@ SECRET_KEY = "django-insecure-wfl*mho^tyaghxhwx4p^2u8)yl#gw+^ub&(=!m#=!x3rrqo1og
 DEBUG = False
 
 ALLOWED_HOSTS = [".elasticbeanstalk.com", "api.engagexai.io", "*"]
-
 
 # Application definition
 
@@ -68,7 +66,6 @@ MIDDLEWARE = [
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
 
-
 # REST Framework settings
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": (
@@ -99,9 +96,7 @@ DJOSER = {
     },
 }
 
-
 AUTH_USER_MODEL = "users.CustomUser"
-
 
 ROOT_URLCONF = "EngageX.urls"
 
@@ -153,7 +148,6 @@ DEFAULT_FROM_EMAIL = config("DEFAULT_FROM_EMAIL")
 AWS_ACCESS_KEY_ID = config("AWS_ACCESS_KEY_ID")
 AWS_SECRET_ACCESS_KEY = config("AWS_SECRET_ACCESS_KEY")
 AWS_SES_REGION = config("AWS_SES_REGION", "us-west-1")
-
 
 # Database
 # https://docs.djangoproject.com/en/4.2/ref/settings/#databases
@@ -234,7 +228,7 @@ else:
 
     OPENAI_API_KEY = config("OPENAI_API_KEY")
     DEEPGRAM_API_KEY = os.environ["DEEPGRAM_API_KEY"]
-    
+
     INTUIT_CLIENT_ID = os.environ['INTUIT_CLIENT_ID']
     INTUIT_CLIENT_SECRET = os.environ['INTUIT_CLIENT_SECRET']
     INTUIT_REDIRECT_URI = os.environ['NEW_INTUIT_REDIRECT_URI']
@@ -242,7 +236,6 @@ else:
     INTUIT_WEBHOOK_VERIFIER_TOKEN = os.environ['INTUIT_VERIFIER_TOKEN']
 
     INTUIT_API_BASE_URL = 'https://quickbooks.api.intuit.com' if INTUIT_ENVIRONMENT == 'production' else 'https://sandbox-quickbooks.api.intuit.com'
-
 
 # Password validation
 # https://docs.djangoproject.com/en/4.2/ref/settings/#auth-password-validators
@@ -266,7 +259,6 @@ AUTHENTICATION_BACKENDS = [
     "django.contrib.auth.backends.ModelBackend",  # Default authentication
 ]
 
-
 # Internationalization
 # https://docs.djangoproject.com/en/4.2/topics/i18n/
 
@@ -278,12 +270,10 @@ USE_I18N = True
 
 USE_TZ = True
 
-
 # Default primary key field type
 # https://docs.djangoproject.com/en/4.2/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
-
 
 AUTH_TOKEN_FOR_WEBSOCKET = os.environ["AUTH_TOKEN_FOR_WEBSOCKET"]
 
@@ -319,10 +309,10 @@ if USE_S3:
         "ProfilePicStorage": {
             "BACKEND": "users.storages_backends.ProfilePicStorage",
         },
-            "OPTIONS": {
-                "bucket_name": AWS_STORAGE_BUCKET_NAME,
-                "location": "profile-pic/",  # Stores static files in 'static/' folder in S3
-            },
+        "OPTIONS": {
+            "bucket_name": AWS_STORAGE_BUCKET_NAME,
+            "location": "profile-pic/",  # Stores static files in 'static/' folder in S3
+        },
         "SlidesStorage": {
             "BACKEND": "users.storages_backends.SlidesStorage",
             "OPTIONS": {
@@ -347,7 +337,6 @@ else:
     STATIC_ROOT = os.path.join(BASE_DIR, "staticfiles")
     MEDIA_URL = "/media/"
     MEDIA_ROOT = os.path.join(BASE_DIR, "media")
-
 
 # PUBLIC_MEDIA_LOCATION = "media"
 # MEDIA_URL = f"https://{AWS_S3_CUSTOM_DOMAIN}/{AWS_STORAGE_BUCKET_NAME}/"

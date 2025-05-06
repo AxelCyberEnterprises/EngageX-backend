@@ -6,7 +6,6 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     initial = True
 
     dependencies = [
@@ -35,7 +34,8 @@ class Migration(migrations.Migration):
                 ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
                 ('credits', models.DecimalField(decimal_places=2, default=0.0, max_digits=10)),
                 ('last_updated', models.DateTimeField(auto_now=True)),
-                ('user', models.OneToOneField(on_delete=django.db.models.deletion.CASCADE, related_name='user_credits', to=settings.AUTH_USER_MODEL)),
+                ('user', models.OneToOneField(on_delete=django.db.models.deletion.CASCADE, related_name='user_credits',
+                                              to=settings.AUTH_USER_MODEL)),
             ],
         ),
         migrations.CreateModel(
@@ -54,7 +54,9 @@ class Migration(migrations.Migration):
                 ('customer_gateway_response', models.JSONField(blank=True, null=True)),
                 ('created_at', models.DateTimeField(auto_now_add=True)),
                 ('updated_at', models.DateTimeField(auto_now=True)),
-                ('user', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='payment_transactions', to=settings.AUTH_USER_MODEL)),
+                ('user',
+                 models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='payment_transactions',
+                                   to=settings.AUTH_USER_MODEL)),
             ],
             options={
                 'ordering': ['-created_at'],

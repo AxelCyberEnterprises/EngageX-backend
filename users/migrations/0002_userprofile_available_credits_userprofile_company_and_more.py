@@ -4,7 +4,6 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ('users', '0001_initial'),
     ]
@@ -13,7 +12,8 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='userprofile',
             name='available_credits',
-            field=models.DecimalField(decimal_places=2, default=0.0, help_text='Available credits on the user dashboard.', max_digits=10),
+            field=models.DecimalField(decimal_places=2, default=0.0,
+                                      help_text='Available credits on the user dashboard.', max_digits=10),
         ),
         migrations.AddField(
             model_name='userprofile',
@@ -33,6 +33,11 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='userprofile',
             name='user_intent',
-            field=models.CharField(blank=True, choices=[('early', 'Early Career Professional'), ('mid', 'Mid Level Professional'), ('executive', 'Executive'), ('c_suite', 'C-Suite'), ('athlete', 'Athlete'), ('entrepreneur', 'Entrepreneur')], help_text='Select your career/intention level at sign up.', max_length=50, null=True),
+            field=models.CharField(blank=True,
+                                   choices=[('early', 'Early Career Professional'), ('mid', 'Mid Level Professional'),
+                                            ('executive', 'Executive'), ('c_suite', 'C-Suite'), ('athlete', 'Athlete'),
+                                            ('entrepreneur', 'Entrepreneur')],
+                                   help_text='Select your career/intention level at sign up.', max_length=50,
+                                   null=True),
         ),
     ]

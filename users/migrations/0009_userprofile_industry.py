@@ -4,7 +4,6 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ('users', '0008_userprofile_email_alert_and_more'),
     ]
@@ -13,6 +12,9 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='userprofile',
             name='industry',
-            field=models.CharField(blank=True, choices=[('Media & Presentation', 'Media & Presentation'), ('Technology', 'Technology'), ('Healthcare', 'Healthcare'), ('Finance', 'Finance'), ('Education', 'Education'), ('entrepreneur', 'Entrepreneur')], max_length=50, null=True),
+            field=models.CharField(blank=True, choices=[('Media & Presentation', 'Media & Presentation'),
+                                                        ('Technology', 'Technology'), ('Healthcare', 'Healthcare'),
+                                                        ('Finance', 'Finance'), ('Education', 'Education'),
+                                                        ('entrepreneur', 'Entrepreneur')], max_length=50, null=True),
         ),
     ]

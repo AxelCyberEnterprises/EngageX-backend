@@ -44,6 +44,7 @@ from .models import (
     PracticeSequence,
     ChunkSentimentAnalysis,
     SessionChunk,
+    SlidePreview
 )
 from .serializers import (
     PracticeSessionSerializer,
@@ -52,6 +53,7 @@ from .serializers import (
     ChunkSentimentAnalysisSerializer,
     SessionChunkSerializer,
     SessionReportSerializer,
+    SlidePreviewSerializer
 )
 
 User = get_user_model()
@@ -130,7 +132,7 @@ Select one of these emotions that the audience is feeling most strongly ONLY cho
 Take into account what came before each entry but prioritize the most recent entry. Respond only with the emotion.""",
         "turn_detection": {
             "type": "server_vad",  # Use Server VAD
-            "silence_duration_ms": 100  # 100ms silence threshold
+            "silence_duration_ms": 70  # 100ms silence threshold
         }
     }
 
@@ -145,6 +147,7 @@ Take into account what came before each entry but prioritize the most recent ent
 
 def generate_slide_summary(pdf_path):
     client = OpenAI(api_key=settings.OPENAI_API_KEY)
+    base64_pdf = None
     # STEP 2: Read and encode the PDF as Base64
     if isinstance(pdf_path, (str, bytes, os.PathLike)):
         with open(pdf_path, 'rb') as file:
@@ -239,31 +242,69 @@ def format_timedelta_12h(td):
 
 import tempfile
 import subprocess
+import platform
 import time
 
 
+def get_soffice_path():
+    system = platform.system()
+
+    if system == "Darwin":  # macOS
+        return "/Applications/LibreOffice.app/Contents/MacOS/soffice"
+    elif system == "Windows":
+        # Common install location on Windows
+        possible_paths = [
+            r"C:\Program Files\LibreOffice\program\soffice.exe",
+            r"C:\Program Files (x86)\LibreOffice\program\soffice.exe"
+        ]
+        for path in possible_paths:
+            if os.path.exists(path):
+                return path
+        raise FileNotFoundError("LibreOffice not found in expected Windows locations.")
+    else:  # Assume Linux/Docker
+        return "soffice"  # Must be in PATH
+
+
 def convert_pptx_to_pdf(pptx_file):
+    soffice_path = get_soffice_path()
+
     with tempfile.NamedTemporaryFile(suffix='.pptx', delete=False) as temp_pptx:
         for chunk in pptx_file.chunks():
             temp_pptx.write(chunk)
         temp_pptx_path = temp_pptx.name
-    output_dir = tempfile.gettempdir()
-    print(output_dir)
 
-    subprocess.run(
+    output_dir = tempfile.gettempdir()
+
+    result = subprocess.run(
         [
-            "/Applications/LibreOffice.app/Contents/MacOS/soffice",
+            soffice_path,
             "--headless",
             "--convert-to", "pdf",
             "--outdir", output_dir,
             temp_pptx_path
         ],
-        check=True
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True
     )
 
-    # time.sleep(0.5)
+    # Debug output
+    print("LibreOffice stdout:\n", result.stdout)
+    print("LibreOffice stderr:\n", result.stderr)
+
+    # if result.returncode != 0:
+    
+    #     print(f"LibreOffice failed with exit code {result.returncode}")
+    #     raise RuntimeError(f"LibreOffice failed with exit code {result.returncode}")
+
+    # Wait to ensure file is written before returning
+    time.sleep(0.5)
 
     pdf_path = os.path.join(output_dir, os.path.basename(temp_pptx_path).replace(".pptx", ".pdf"))
+    if not os.path.exists(pdf_path):
+        print(f"Expected output PDF not found at: {pdf_path}")
+        raise FileNotFoundError(f"Expected output PDF not found at: {pdf_path}")
+
     return pdf_path
 
 
@@ -561,6 +602,8 @@ class UploadSessionSlidesView(APIView):
         try:
             # Get the practice session object by its primary key
             practice_session = get_object_or_404(PracticeSession, pk=pk)
+            print(practice_session.slide_preview)
+            print(practice_session.slide_preview.slides_file)
 
             if practice_session.user != request.user:
                 return Response(
@@ -673,11 +716,11 @@ class UploadSessionSlidesView(APIView):
 
     def put(self, request, pk=None):
         """
-        Upload or update slides for a specific practice session.
-        Requires multipart/form-data.
+        Generate and save slide summary for a specific practice session.
         """
         try:
             practice_session = get_object_or_404(PracticeSession, pk=pk)
+            print(practice_session.slide_preview)
 
             if practice_session.user != request.user:
                 return Response(
@@ -687,79 +730,68 @@ class UploadSessionSlidesView(APIView):
                     status=status.HTTP_403_FORBIDDEN,
                 )
 
-            serializer = PracticeSessionSlidesSerializer(
-                practice_session, data=request.data, partial=True
-            )
-
-            if serializer.is_valid():
-                uploaded_pdf = serializer.validated_data.get("slides_file")
-                print(uploaded_pdf)
-
-                if uploaded_pdf.name.endswith('pptx'):
-                    pdf_path = convert_pptx_to_pdf(uploaded_pdf)
-                    print(pdf_path)
-
-                    with open(pdf_path, 'rb') as pdf_file:
-                        practice_session.slides_file.save(
-                            f"{practice_session.id}_slides.pdf",
-                            File(pdf_file),
-                            save=False
-                        )
-
-                    print('---processing pdf----')
-                    with concurrent.futures.ThreadPoolExecutor() as executor:
-                        future = executor.submit(generate_slide_summary, pdf_path)
-                        result = future.result()
-
-                    practice_session.slide_efficiency = result['SlideEfficiency']
-                    practice_session.text_economy = result['TextEconomy']
-                    practice_session.visual_communication = result['VisualCommunication']
-
-                    practice_session.save()
-
-                    if os.path.exists(pdf_path):
-                        os.remove(pdf_path)
-                else:
-                    return Response({
-                        "status": "failed",
-                        "message": "Invalid File"
-                    })
-
-                # *** CHECK THIS LOG AFTER A PUT REQUEST ***
-                if practice_session.slides_file:
-                    print(
-                        f"WS: After save in PUT, practice_session.slides_file.name is: {practice_session.slides_file.name}")
-                else:
-                    print("WS: After save in PUT, practice_session.slides_file is None.")
-                # *** WHAT IS THE EXACT OUTPUT OF THIS LINE? ***
-
+            # Check if there is a slides file
+            if not practice_session.slides_file:
                 return Response(
-                    {
-                        "status": "success",
-                        "message": "Slides uploaded successfully.",
-                        "data": serializer.data,
-                    },
-                    status=status.HTTP_200_OK,
-                )
-            else:
-                print(f"Slide upload failed validation for session {pk}: {serializer.errors}")
-                return Response(
-                    {
-                        "status": "fail",
-                        "message": "Slide upload failed.",
-                        "errors": serializer.errors,
-                    },
+                    {"message": "No slides file found for this session."},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
+
+            # Get the path to the slides file
+            slides_path = practice_session.slides_file
+            if not slides_path.name.endswith('pdf'):
+                return Response(
+                    {"message": "Slides file is not a PDF."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            print('---processing pdf----')
+
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                future = executor.submit(generate_slide_summary, slides_path)
+                result = future.result()
+
+            practice_session.slide_efficiency = result['SlideEfficiency']
+            practice_session.text_economy = result['TextEconomy']
+            practice_session.visual_communication = result['VisualCommunication']
+            practice_session.save()
+
+            # Serialize updated session
+            from .serializers import PracticeSessionSerializer
+            session_data = PracticeSessionSerializer(practice_session).data
+
+            # *** CHECK THIS LOG AFTER A PUT REQUEST ***
+            if practice_session.slides_file:
+                print(
+                    f"WS: After save in PUT, practice_session.slides_file.name is: {practice_session.slides_file.name}"
+                )
+            else:
+                print("WS: After save in PUT, practice_session.slides_file is None.")
+            # *** WHAT IS THE EXACT OUTPUT OF THIS LINE? ***
+
+            return Response(
+                {
+                    "status": "success",
+                    "message": "Slides uploaded and summary generated successfully.",
+                    "data": session_data
+                },
+                status=status.HTTP_200_OK,
+            )
+
         except PracticeSession.DoesNotExist:
             return Response(
-                {"error": "PracticeSession not found."}, status=status.HTTP_404_NOT_FOUND
+                {"error": "PracticeSession not found."},
+                status=status.HTTP_404_NOT_FOUND,
             )
+
         except Exception as e:
             print(f"An unexpected error occurred during slide upload for session {pk}: {e}")
             traceback.print_exc()
             return Response(
-                {"error": "An internal error occurred during slide upload.", "details": str(e)},
+                {
+                    "error": "An internal error occurred during slide upload.",
+                    "details": str(e),
+                },
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
@@ -841,25 +873,27 @@ class SessionReportView(APIView):
         # My name is .
         prompt = f"""
             My name is {name}, refer to me in first person.
-            You are my personal expert communication coach specializing in public speaking, storytelling, pitching, and presentations.
+            You are my personal expert communication mentor/coach specializing in public speaking, storytelling, pitching, and presentations. Your role is to guide me to becoming a more impactful professional speaker for my career development, dont be afraid to critique me for my growth.
 
             My goal with this presentation is {goals}. Using my provided presentation evaluation data and transcript, generate a structured JSON response with the following three components:
 
             1. Strengths: Identify my most impactful strengths. Focus on *concrete content choices*, tone, delivery techniques, and audience engagement strategies. Format the output as a Python string representing a list, also make sure not to use commas in your points as that may conflict with the list , with each strength as points separated by a comma with the quotes outside the list brackets (e.g., "[Strength 1, Strength 2, Strength 3]").
 
-            2. Areas for Improvement: Provide *clear, actionable, and specific feedback* on where I can improve. Emphasize my delivery habits, missed emotional beats, and structural weaknesses. Format the output as a Python string representing a list, with each point separated by a comma and the quotes outside the list brackets (e.g., "[Area of Improvement 1, Area of Improvement 2, Area of Improvement 3]").
+            2. Areas for Improvement: Provide *clear, actionable, and specific feedback* on where I can improve. Emphasize my delivery habits, missed emotional beats, and structural weaknesses. Format the output as a Python string representing a list, with each point separated by a comma and the quotes outside the list brackets (e.g., "[Area of Improvement 1, Area of Improvement 2, Area of Improvement 3, Area of Improvement 4]").
 
             3. General Feedback Summary: Craft a detailed, content-specific analysis of my presentation. Your response *must be grounded in specific parts of my transcript*. Include the following:
             - Evaluate the effectiveness of my opening: Was it attention-grabbing, relevant, or emotionally engaging? Did I clearly set the tone or premise for the rest of the talk?
             - Highlight specific trigger words or emotionally resonant phrases I used that effectively drove engagement, and explain how they influenced the audience.
             - List any filler words I overused (e.g., "um", "like", "you know").
             - Comment on how I used powerful or evocative language—did I evoke empathy, joy, urgency, or excitement? Did I show vulnerability or emotional relatability?
-            - Analyze my tone of voice: Was it confident, warm, authoritative, enthusiastic, or inconsistent? Note any tone shifts and how they impacted audience engagement.
+            - Analyze my tone of voice, Was it confident, warm, authoritative, enthusiastic, or inconsistent? Note any tone shifts and how they impacted audience engagement.
             - Reflect on whether my style or personal story helped make the talk more memorable.
-            - Assess how persuasive I was: Did I inspire action, challenge assumptions, or shift perspectives? Highlight specific techniques like storytelling, analogies, or rhetorical questions.
+            - Was I persuasive enough, Did I inspire action, challenge assumptions, or shift perspectives? Highlight specific techniques like storytelling, analogies, or rhetorical questions.
             - Evaluate the structure and flow of my talk. Were transitions smooth? Did I build toward a clear message or emotional climax?
             - Clearly state whether my talk was effective — and if so, *effective at what specifically* (e.g., persuading the audience, building trust, sparking interest).
             - Provide an overall evaluation of how well I demonstrated mastery in storytelling, public speaking, or pitching. Include tailored suggestions for improvement based on the context and audience.
+
+            Tone: btw speak to me personally like a mentor coach, this is not a report its guidance. Don't use headers or "**" for titles, just talk to me. Use \n for line breaks between paragraphs and also start with an encouraging remark relevant to my presentation with my name:  My name is {name}, refer to me in first person.
 
             Evaluation data: {metrics_string}
             Transcript:
@@ -917,6 +951,7 @@ class SessionReportView(APIView):
 
     def get(self, request, session_id):
         try:
+            user = request.user
             session = PracticeSession.objects.get(id=session_id, user=request.user)
             session_serializer = PracticeSessionSerializer(session)
 
@@ -926,6 +961,8 @@ class SessionReportView(APIView):
             )
 
             performance_analytics_over_time = []
+            company = user.user_profile.company
+            print(company)
 
             for chunk in latest_session_chunk:
                 performance_analytics_over_time.append({
@@ -939,6 +976,7 @@ class SessionReportView(APIView):
 
             # Combine both sets of data in the response
             response_data = session_serializer.data
+            response_data['company'] = company
             response_data["performance_analytics"] = performance_analytics_over_time
 
             return Response(response_data, status=status.HTTP_200_OK)
@@ -958,6 +996,9 @@ class SessionReportView(APIView):
         print(f"Starting report generation and summary for session ID: {session_id}")
         duration_seconds = request.data.get("duration")
         slide_specific_seconds = request.data.get("slide_specific_timing")
+        user = request.user
+        company = user.user_profile.company
+        print(company)
         try:
             session = get_object_or_404(PracticeSession, id=session_id, user=request.user)
             print(f"Session found: {session.session_name}")
@@ -1004,6 +1045,7 @@ class SessionReportView(APIView):
                 return Response({
                     "session_id": session.id,
                     "session_name": session.session_name,
+                    "company":company,
                     "duration": str(session.duration) if session.duration else None,
                     "aggregated_scores": {},  # Empty or default values
                     "derived_scores": {},  # Empty or default values
@@ -1165,6 +1207,7 @@ class SessionReportView(APIView):
             report_response_data = {
                 "session_id": session.id,
                 "session_name": session.session_name,
+                "company": company,
                 "duration": str(session.duration) if session.duration else None,
                 "slide_specific_timing": session.slide_specific_timing if session.slide_specific_timing else {},
                 "aggregated_scores": {
@@ -1490,3 +1533,42 @@ class ImproveExistingSequence(APIView):
             response_data = None
 
         return Response(response_data)
+
+
+class SlidePreviewView(APIView):
+    permission_classes = [IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser]
+
+    def post(self, request):
+        user = request.user
+        serializer = SlidePreviewSerializer(data=request.data)
+        if serializer.is_valid():
+            slide_preview = SlidePreview.objects.create(
+                user=user
+            )
+
+            uploaded = serializer.validated_data.get("slides_file")
+            print(uploaded)
+
+            if uploaded.name.endswith('pptx'):
+                pdf_path = convert_pptx_to_pdf(uploaded)
+                print(pdf_path)
+
+                with open(pdf_path, 'rb') as pdf_file:
+                    slide_preview.slides_file.save(
+                        f"{user.id}_slides.pdf",
+                        File(pdf_file),
+                        save=False
+                    )
+                slide_preview.save()
+                # Serialize the saved instance, not the incoming data
+            data = SlidePreviewSerializer(slide_preview).data
+            return Response(
+                {
+                    "status": "success",
+                    "message": "Slides uploaded successfully.",
+                    "data": data,
+                },
+                status=status.HTTP_200_OK,
+            )
+        return Response()

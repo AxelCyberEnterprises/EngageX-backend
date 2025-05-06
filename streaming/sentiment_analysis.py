@@ -15,8 +15,7 @@ from deepgram import (
     DeepgramClient,
     PrerecordedOptions,
     FileSource,
-) # pip install deepgram-sdk
-
+)  # pip install deepgram-sdk
 
 from concurrent.futures import ThreadPoolExecutor
 from dotenv import load_dotenv
@@ -52,17 +51,18 @@ results_data = {
 
 lock = threading.Lock()
 
+
 def ai_audience_question(transcript):
-    prompt =f"""
-        You are an intelligent and curious audience member at a talk or presentation. Based on the following speaker transcript, generate an insightful question
-        you might ask the speaker to deepen the conversation or clarify a point. ONLY return the question
+    prompt = f"""
+        You are a curious audience member at a talk or presentation. Based on the following speaker transcript, ask a thoughtful and insightful question
+        ONLY return the question
         Transcript:\n{transcript}\n"""
 
     try:
-        response =client.chat.completions.create(
+        response = client.chat.completions.create(
             model="gpt-4o",  # You can change to gpt-3.5-turbo or another if preferred
             messages=[
-                {"role": "system", "content": "You are a helpful assistant that asks insightful questions."},
+                {"role": "system", "content": "You are a helpful assistant"},
                 {"role": "user", "content": prompt}
             ],
             temperature=0.7,
@@ -73,7 +73,7 @@ def ai_audience_question(transcript):
     except Exception as e:
         print(f"Error generating audience question: {e}")
         return None
-    
+
 
 # ---------------------- SCORING FUNCTIONS ----------------------
 def scale_to_score(value, min_val, max_val):
@@ -121,7 +121,7 @@ def score_volume(volume):
 def score_pauses(appropriate_pauses, long_pauses):
     """scores pauses using discrete buckets."""
     # call scale_to_score after getting rationale
-    score = scale_to_score(appropriate_pauses, 3, 7) # adjusted for 30 seconds
+    score = scale_to_score(appropriate_pauses, 3, 7)  # adjusted for 30 seconds
 
     if 3 <= appropriate_pauses <= 7:
         rationale = "Ideal pause frequency; pauses enhance clarity without disrupting flow."
@@ -130,13 +130,13 @@ def score_pauses(appropriate_pauses, long_pauses):
     else:
         rationale = "Excessive pause frequency; too many breaks can disrupt continuity."
 
-
     # apply penalty for long pauses: each long pause beyond 3 reduces the score by 1.
     if long_pauses > 2:
-        penalty = (long_pauses -3) * 10
+        penalty = (long_pauses - 3) * 10
         score = max(0, score - penalty)
         rationale += f", with {long_pauses} long pauses (>2s) penalizing flow"
     return score, rationale
+
 
 def score_pace(speaking_rate):
     """scores speaking rate with a peak at 2-3 words/sec, penalizing extremes."""
@@ -150,6 +150,7 @@ def score_pace(speaking_rate):
         rationale = "Too fast speaking rate; rapid delivery can hinder audience comprehension."
 
     return score, rationale
+
 
 def score_pv(pitch_variability):
     """scores pitch variability with a peak at 50-70."""
@@ -168,26 +169,28 @@ def score_pv(pitch_variability):
 
     return score, rationale
 
+
 def score_posture(angle, min_value, max_value, body):
     """Scores back posture with optimal range at 2.5 - 3.5 and smooth drop-off toward 1.5 and 5."""
-    
+
     score = scale_to_score(angle, min_value, max_value)
-    
+
     # Rationale logic for back posture interpretation
-    if (5/3) * min_value <= angle <= (7/10) * max_value:
+    if (5 / 3) * min_value <= angle <= (7 / 10) * max_value:
         rationale = f"Optimal {body}; steady, balanced, and confident presence."
-    elif min_value <= angle < (5/3) * min_value:
+    elif min_value <= angle < (5 / 3) * min_value:
         rationale = f"Good {body}; may appear rigid but controlled."
-    elif (7/10) * max_value < angle <= max_value:
+    elif (7 / 10) * max_value < angle <= max_value:
         rationale = f"Slightly unstable {body}; may reduce perceived confidence."
     elif angle < min_value:
         rationale = f"Extremely stiff {body}; may appear unnatural and uncomfortable."
     else:
         rationale = f"Excessive {body}; suggests restlessness or discomfort."
-    
+
     print(f"score_posture: {body}: {angle} {rationale}")
 
     return score, rationale
+
 
 # ---------------------- FEATURE EXTRACTION FUNCTIONS ----------------------
 
@@ -198,12 +201,14 @@ def get_pitch_variability(audio_file):
     frequencies = pitch.selected_array["frequency"]
     return np.std([f for f in frequencies if f > 0]) or 0
 
-def get_volume(audio_file, top_db = 20):
+
+def get_volume(audio_file, top_db=20):
     """extracts volume (intensity in dB) using Praat."""
     sound = parselmouth.Sound(audio_file)
     intensity = sound.to_intensity()
     num_low = [low for low in intensity.values[0] if low < top_db]
     return np.median(intensity.values[0])
+
 
 def get_pace(audio_file, transcript):
     """calculates pauses."""
@@ -216,7 +221,7 @@ def get_pace(audio_file, transcript):
 
     elapsed_time = time.time() - start_time
     # print(f"\nElapsed time for pace: {elapsed_time:.2f} seconds")
-    return word_count/duration
+    return word_count / duration
 
 
 def get_pauses(audio_file):
@@ -239,7 +244,7 @@ def get_pauses(audio_file):
     intensity_threshold = np.percentile(values, 30)
 
     pause_times = [times[i] for i, val in enumerate(values) if val < intensity_threshold]
-    
+
     if not pause_times:
         print("NO PAUSES DETECTED")
         return 1, 1
@@ -274,22 +279,22 @@ def get_pauses(audio_file):
 def process_audio(audio_file, transcript):
     """processes audio file with Praat in parallel to extract features."""
     start_time = time.time()
-    
+
     with ThreadPoolExecutor() as executor:
         future_pitch_variability = executor.submit(get_pitch_variability, audio_file)
         future_volume = executor.submit(get_volume, audio_file)
-        future_pace= executor.submit(get_pace, audio_file, transcript)
+        future_pace = executor.submit(get_pace, audio_file, transcript)
         future_pauses = executor.submit(get_pauses, audio_file)
 
     # fetch results from threads
     pitch_variability = future_pitch_variability.result()
     avg_volume = future_volume.result()
-    pace= future_pace.result()
+    pace = future_pace.result()
     appropriate_pauses, long_pauses = future_pauses.result()
 
     # score dalculation
     volume_score, volume_rationale = score_volume(avg_volume)
-    pitch_variability_score, pitch_variability_rationale = score_pv(pitch_variability) #(15, 85)
+    pitch_variability_score, pitch_variability_rationale = score_pv(pitch_variability)  # (15, 85)
     pace_score, pace_rationale = score_pace(pace)
     pause_score, pause_score_rationale = score_pauses(appropriate_pauses, long_pauses)
     # back_score, back_rationale = scale_to_score()
@@ -326,7 +331,7 @@ def process_audio(audio_file, transcript):
 # no more whisper, change transcript to contain filler words (duplicate)
 def transcribe_audio(audio_file):
     # Path to the audio file
-    api_key=settings.DEEPGRAM_API_KEY
+    api_key = settings.DEEPGRAM_API_KEY
 
     try:
         # STEP 1 Create a Deepgram client using the API key
@@ -361,6 +366,7 @@ def transcribe_audio(audio_file):
 def find_distance(x1, y1, x2, y2):
     return m.sqrt(((x2 - x1) ** 2) + ((y2 - y1) ** 2))
 
+
 # Calculate Angles
 def find_angle(x1, y1, x2, y2):
     dx, dy = x2 - x1, y2 - y1
@@ -372,12 +378,12 @@ def find_angle(x1, y1, x2, y2):
     cos_theta = max(min(dot / norm_vector, 1.0), -1.0)
     return m.degrees(m.acos(cos_theta))
 
+
 # Extract posture angles
 def extract_posture_angles(landmarks, image_width, image_height):
     def to_pixel(landmark):
         return (int(landmark.x * image_width), int(landmark.y * image_height))
 
-    
     visibility_threshold = 0.5
 
     left_pinky_present = right_pinky_present = left_index_present = right_index_present = left_thumb_present = right_thumb_present = left_wrist_present = right_wrist_present = False
@@ -462,8 +468,9 @@ def extract_posture_angles(landmarks, image_width, image_height):
         "left_thumb_present": left_thumb_present,
         "right_thumb_present": right_thumb_present
     }
-    print(f"\n extracted_posture_angles: {extracted_posture_angles} \n", flush=True) # Added logging
+    print(f"\n extracted_posture_angles: {extracted_posture_angles} \n", flush=True)  # Added logging
     return extracted_posture_angles
+
 
 # Capture Thread
 def capture_frames(video_path):
@@ -501,24 +508,23 @@ def process_frames():
                     results_data["back_angles"].append(angles['back_inclination'])
                     results_data["neck_angles"].append(angles['neck_inclination'])
 
-                
                 # check if any points on the hand are present
                 if (
-                    angles["left_wrist_present"] == True or
-                    angles["right_wrist_present"] == True or
-                    angles["left_pinky_present"] == True or
-                    angles["right_pinky_present"] == True or
-                    angles["left_index_present"] == True or
-                    angles["right_index_present"] == True or
-                    angles["left_thumb_present"] == True or
-                    angles["right_thumb_present"] == True
+                        angles["left_wrist_present"] == True or
+                        angles["right_wrist_present"] == True or
+                        angles["left_pinky_present"] == True or
+                        angles["right_pinky_present"] == True or
+                        angles["left_index_present"] == True or
+                        angles["right_index_present"] == True or
+                        angles["left_thumb_present"] == True or
+                        angles["right_thumb_present"] == True
                 ):
                     with lock:
                         results_data["is_hand_present"] = True
                 else:
                     with lock:
                         results_data["is_hand_present"] = False
-                
+
                 # calculate time in posture
                 if angles["back_inclination"] > posture_threshold:
                     with lock:
@@ -528,7 +534,6 @@ def process_frames():
                     with lock:
                         results_data["good_back_frames"] += 1
                         results_data["back_feedback"] = "Good back posture"
-
 
                 if angles["neck_inclination"] > posture_threshold:
                     with lock:
@@ -545,7 +550,7 @@ def process_frames():
 # Main Analysis Function
 def analyze_posture(video_path):
     start_time = time.time()
-    print(f"analyze_posture called with video_path: {video_path}", flush=True) # Added logging
+    print(f"analyze_posture called with video_path: {video_path}", flush=True)  # Added logging
 
     with ThreadPoolExecutor(max_workers=3) as executor:
         future_capture = executor.submit(capture_frames, video_path)
@@ -557,12 +562,14 @@ def analyze_posture(video_path):
 
     # Final results calculation
     with lock:
-        print("Inside the lock in analyze_posture", flush=True) # Added logging
+        print("Inside the lock in analyze_posture", flush=True)  # Added logging
         mean_back = np.mean(results_data["back_angles"]) if results_data["back_angles"] else 0
-        range_back = np.max(results_data["back_angles"]) - np.min(results_data["back_angles"]) if results_data["back_angles"] else 0
+        range_back = np.max(results_data["back_angles"]) - np.min(results_data["back_angles"]) if results_data[
+            "back_angles"] else 0
 
         mean_neck = np.mean(results_data["neck_angles"]) if results_data["neck_angles"] else 0
-        range_neck = np.max(results_data["neck_angles"]) - np.min(results_data["neck_angles"]) if results_data["neck_angles"] else 0
+        range_neck = np.max(results_data["neck_angles"]) - np.min(results_data["neck_angles"]) if results_data[
+            "neck_angles"] else 0
 
         is_hand_present = results_data["is_hand_present"] if results_data["is_hand_present"] else 0
 
@@ -580,7 +587,8 @@ def analyze_posture(video_path):
         back_feedback = results_data["back_feedback"]
         neck_feedback = results_data["neck_feedback"]
 
-        print(f"gb_time: {gb_time}, bb_time: {bb_time}, gn_time: {gn_time}, bn_time: {bn_time}", flush=True) # Added logging
+        print(f"gb_time: {gb_time}, bb_time: {bb_time}, gn_time: {gn_time}, bn_time: {bn_time}",
+              flush=True)  # Added logging
 
         # calculate normalized time
         if (gb_time + bb_time) > 0:
@@ -605,28 +613,30 @@ def analyze_posture(video_path):
             "mean_back_inclination": mean_back,
             "range_back_inclination": range_back,
             "mean_neck_inclination": mean_neck,
-            "range_neck_inclination": range_neck, # body fluidity (range)
+            "range_neck_inclination": range_neck,  # body fluidity (range)
             "back_feedback": back_feedback,
             "neck_feedback": neck_feedback,
-            "good_back_time": round(good_back_time, 2), # body posture score (time)
+            "good_back_time": round(good_back_time, 2),  # body posture score (time)
             "bad_back_time": round(bad_back_time, 2),
             "good_neck_time": round(good_neck_time, 2),
             "bad_neck_time": round(bad_neck_time, 2),
             "is_hand_present": is_hand_present
         }
 
+
 # ---------------------- SENTIMENT ANALYSIS ----------------------
 
 def analyze_sentiment(transcript, metrics, posture_data):
-
     # Get posture scores
-    mean_back_score, mean_back_rationale = score_posture(posture_data["mean_back_inclination"] ,0, 10, "Back Posture")
-    mean_neck_score, mean_neck_rationale = score_posture(posture_data["mean_neck_inclination"] ,1, 13, "Neck Posture")
-    mean_body_posture = (mean_back_score + mean_neck_score)/2
+    mean_back_score, mean_back_rationale = score_posture(posture_data["mean_back_inclination"], 0, 10, "Back Posture")
+    mean_neck_score, mean_neck_rationale = score_posture(posture_data["mean_neck_inclination"], 1, 13, "Neck Posture")
+    mean_body_posture = (mean_back_score + mean_neck_score) / 2
 
-    range_back_score, range_back_rationale = score_posture(posture_data["range_back_inclination"] ,0, 15, "Back range of movement")
-    range_neck_score, range_neck_rationale = score_posture(posture_data["range_neck_inclination"] ,7, 27, "Neck range of movement")
-    range_body_posture = (range_back_score + range_neck_score)/2
+    range_back_score, range_back_rationale = score_posture(posture_data["range_back_inclination"], 0, 15,
+                                                           "Back range of movement")
+    range_neck_score, range_neck_rationale = score_posture(posture_data["range_neck_inclination"], 7, 27,
+                                                           "Neck range of movement")
+    range_body_posture = (range_back_score + range_neck_score) / 2
 
     is_hand_present = posture_data["is_hand_present"]
 
@@ -685,15 +695,15 @@ def analyze_sentiment(transcript, metrics, posture_data):
                     "type": "object",
                     "properties": {
                         "Audience Emotion": {
-                        "type": "string",
-                        "enum": [
-                            "thinking",
-                            "empathy",
-                            "excitement",
-                            "laughter",
-                            "surprise",
-                            "interested"
-                        ]},
+                            "type": "string",
+                            "enum": [
+                                "thinking",
+                                "empathy",
+                                "excitement",
+                                "laughter",
+                                "surprise",
+                                "interested"
+                            ]},
                         "Conviction": {"type": "number"},
                         "Clarity": {"type": "number"},
                         "Impact": {"type": "number"},
@@ -704,12 +714,12 @@ def analyze_sentiment(transcript, metrics, posture_data):
                         "Grammar": {"type": "number"},
                     },
                     "required": [
-                        "Audience Emotion", "Conviction", 
+                        "Audience Emotion", "Conviction",
                         "Clarity", "Impact", "Brevity",
-                        "Transformative Potential","Trigger Response",
+                        "Transformative Potential", "Trigger Response",
                         "Filler Words", "Grammar"
                     ]
-            }
+                }
             }
         }
     )
@@ -723,7 +733,7 @@ def analyze_sentiment(transcript, metrics, posture_data):
         parsed_response['Feedback'] = json.loads(response)
         feedback = parsed_response['Feedback']
         general_feedback_summary = f"""Chunk analysis: The dominant audience emotion perceived was '{feedback['Audience Emotion']}'. Chunk Transcript: {transcript}\n"""
-        
+
         # general_feedback_summary = f"""Speaker grades: conviction:{feedback['Conviction']}, clarity:{feedback['Clarity']}, impact: {feedback['Impact']}. 
         # Brevity: {feedback['Brevity']}, transformative potential: {feedback['Transformative Potential']}. The audience's trigger response: {feedback['Trigger Response']}, filler words usage score: {feedback['Filler Words']}, 
         # and grammar:{feedback['Grammar']}. The dominant audience emotion perceived was '{feedback['Audience Emotion']}'."""
@@ -735,30 +745,30 @@ def analyze_sentiment(transcript, metrics, posture_data):
             "Posture": round(mean_body_posture),
             "Motion": round(range_body_posture),
             "Gestures": is_hand_present
-        }        
+        }
     except json.JSONDecoder:
         print("Invalid JSON format in response.")
         return None
-    
+
     return parsed_response
 
 
 # def analyze_results(video_path, audio_output_path):
 #     start_time = time.time()
 #     print(f"video_path: {video_path}, audio_output: {audio_output_path}")
-  
+
 
 #     try:
 #         with ThreadPoolExecutor() as executor:
 #             future_transcription = executor.submit(transcribe_audio, audio_output_path)
 #             future_analyze_posture = executor.submit(analyze_posture, video_path=video_path)
-        
+
 
 #         # Fetch results AFTER both are submitted
 #         transcript = future_transcription.result()  # Now transcription runs truly in parallel
 #         posture_data = future_analyze_posture.result()  # Now posture runs in parallel
 #         print(f"posture_data: {posture_data}")
-        
+
 #         metrics = process_audio(audio_output_path, transcript)
 #         print(f"process audio metrics: {metrics}")
 
@@ -802,6 +812,7 @@ def convert_webm_audio_to_mp3(webm_file_path, mp3_output_path):
     except FileNotFoundError:
         print("Error: ffmpeg command not found. Make sure it's installed and in your PATH.", flush=True)
         return None
+
 
 # def analyze_results(video_path, audio_output_path):
 #     start_time = time.time()
@@ -865,7 +876,7 @@ def analyze_results(transcript_text, video_path, audio_path_for_metrics):
         posture_data = future_analyze_posture.result()
         print(f"posture_data: {posture_data}", flush=True)
 
-        metrics = process_audio(audio_path_for_metrics, transcript_text) # Use the audio path for metrics calculation
+        metrics = process_audio(audio_path_for_metrics, transcript_text)  # Use the audio path for metrics calculation
         print(f"process audio metrics: {metrics}", flush=True)
         sentiment_analysis_start_time = time.time()
         sentiment_analysis = analyze_sentiment(transcript_text, metrics, posture_data)
@@ -884,6 +895,6 @@ def analyze_results(transcript_text, video_path, audio_path_for_metrics):
 
     except Exception as e:
         print(f"Error during analysis: {e}", flush=True)
-        return {'error': str(e)} # Return an error dictionary
+        return {'error': str(e)}  # Return an error dictionary
 
     return final_json
