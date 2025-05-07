@@ -358,6 +358,27 @@ class PracticeSessionViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
 
+class PracticeSequenceViewSet(viewsets.ModelViewSet):
+
+    serializer_class = PracticeSequenceSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        user = self.request.user
+
+        if getattr(self, "swagger_fake_view", False) or user.is_anonymous:
+            return (
+                PracticeSequence.objects.none()
+            )  # Return empty queryset for schema generation or anonymous users
+
+        if hasattr(user, "user_profile") and user.user_profile.is_admin():
+            return PracticeSequence.objects.all()
+
+        return PracticeSequence.objects.filter(user=user)
+
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)
+
 
 class SessionDashboardView(APIView):
     """
@@ -1348,6 +1369,14 @@ class SequenceListView(APIView):
         sequence_serializer = PracticeSequenceSerializer(sequences, many=True)
         return Response({"sequences": sequence_serializer.data})
 
+    def post(self, request):
+        serializer = PracticeSessionSerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(data=serializer.data, status=status.HTTP_200_OK)
+        return Response(status=status.HTTP_404_NOT_FOUND)
+
+
 
 class SessionList(APIView):
     permission_classes = [IsAuthenticated]
@@ -1527,7 +1556,9 @@ class ImproveExistingSequence(APIView):
                         {
                             "name": session.session_name,  # assuming your PracticeSession has a 'name' field
                             "date": session.created_at,
-                            "duration": self.format_timedelta(session.duration)  # assuming you store session duration
+                            "duration": self.format_timedelta(session.duration), # assuming you store session duration
+                            "virtual_environment":session.virtual_environment,
+                            "session_type":session.session_type
                         }
                         for session in sequence.sessions.all()
                     ]
