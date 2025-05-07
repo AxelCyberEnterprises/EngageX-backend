@@ -161,7 +161,7 @@ class UserCreateViewSet(viewsets.ModelViewSet):
                 user.save()
 
                 # Send verification email via AWS SES
-                subject = "Verify your account"
+                subject = "Welcome to EngageX: Verify your account"
                 message = f"Your verification code is {user.verification_code}"
                 recipient_list = [user.email]
 

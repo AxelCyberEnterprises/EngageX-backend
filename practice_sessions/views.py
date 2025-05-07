@@ -896,7 +896,7 @@ class SessionReportView(APIView):
             - Clearly state whether my talk was effective — and if so, effective at what specifically (e.g., persuading the audience, building trust, sparking interest).
             - Provide an overall evaluation of how well I demonstrated mastery in storytelling, public speaking, or pitching. Include tailored suggestions for improvement based on the context and audience.
 
-            Tone: speak to me personally but professionaly like a mentor coach, critique me for my growth while referencing my transcript not my evaluation data. Don't use headers or "**" for titles, just correct me and reference my transcript. Use \n\n for line breaks between paragraphs and also start with an encouraging remark relevant to my presentation with my name.
+            Tone: speak to me personally but professionaly like a mentor coach, critique me for my growth while referencing my transcript not my evaluation data. Don't use headers or "**" for titles, just correct me and reference my transcript. Use \n \n for line breaks between paragraphs and also start with an encouraging remark relevant to my presentation with my name.
 
             Evaluation data: {metrics_string}
             Transcript:
@@ -924,7 +924,7 @@ class SessionReportView(APIView):
                     }
                 },
                 temperature=0.7,  # Adjust temperature as needed
-                max_tokens=2400  # Limit tokens to control response length
+                max_tokens=2600  # Limit tokens to control response length
             )
             print(f"prompt: {prompt}")
 
