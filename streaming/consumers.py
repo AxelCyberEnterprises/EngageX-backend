@@ -76,7 +76,7 @@ POSSIBLE_ROOMS = ['conference_room', 'board_room_1', 'board_room_2', 'pitch_stud
 NUMBER_OF_VARIATIONS = 5
 
 # Define the window size for analysis (number of chunks)
-ANALYSIS_WINDOW_SIZE = 3  # Keeping the reduced window size from the previous test
+ANALYSIS_WINDOW_SIZE = 4  # Keeping the reduced window size from the previous test
 
 # Define the interval for generating AI questions (in terms of number of analysis windows)
 QUESTION_INTERVAL_WINDOWS = 8

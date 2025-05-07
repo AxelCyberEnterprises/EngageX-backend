@@ -137,8 +137,8 @@
     let currentRecorder = null;
     let isRecording = false;
     const CHUNK_DURATION = 7000; // 7 seconds per chunk
-    const API_BASE_URL = "https://api.engagexai.io"; // Adjust if needed
-    // const API_BASE_URL = "http://localhost:8000"; // Adjust if needed // !! REMEMBER TO CHANGE IF USING A DIFFERENT PORT !!
+    // const API_BASE_URL = "https://api.engagexai.io"; // Adjust if needed
+    const API_BASE_URL = "http://localhost:8000"; // Adjust if needed // !! REMEMBER TO CHANGE IF USING A DIFFERENT PORT !!
     let sessionId;
     let stream = null;
     let chunkTimer = null;
@@ -166,13 +166,13 @@
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
-                        'Authorization': `Token cbb104b86b94b2116b6b542e496454dea3940039`
+                        'Authorization': `Token 964bb1274267498596eee99d138ba36d9f85942e`
                     },
                     body: JSON.stringify({
                         session_name: "Live Practice Session",
                         session_type: "public",
                         virtual_environment: selectedRoom, // Use the selected room here
-                        goals: ["I want to be more brave"]
+                        goals: ["I want to be more captivating"]
 
                 })
             });
@@ -463,7 +463,7 @@
                         method: 'POST',
                         headers: {
                              'Content-Type': 'application/json',
-                             'Authorization': `Token cbb104b86b94b2116b6b542e496454dea3940039`
+                             'Authorization': `Token 964bb1274267498596eee99d138ba36d9f85942e`
                         },
                         body: JSON.stringify({
                              duration: durationInSeconds

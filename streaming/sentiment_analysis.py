@@ -651,17 +651,11 @@ def analyze_sentiment(transcript, metrics, posture_data):
       - Select one of these emotions that the audience is feeling most strongly ONLY choose from this list(thinking, empathy, excitement, laughter, surprise, interested)
    
     Conviction:
-      - Indicates firmness and clarity of beliefs or message. Evaluates how strongly and clearly the speaker presents their beliefs and message. Dependent on volume Volume_score: {metrics["Metrics"]["Volume"]} {metrics["Metrics"]["Volume Rationale"]}, pace_score: {metrics["Scores"]["Pace Score"]} {metrics["Metrics"]["Pace Rationale"]}, pause_score: {metrics["Scores"]["Pause Score"]} {metrics["Metrics"]["Pause Metric Rationale"]} and transcript content
+      - Indicates firmness and clarity of beliefs or message. Evaluates how strongly and clearly the speaker presents their beliefs and message. Dependent on volume Volume_score: {metrics["Metrics"]["Volume"]} {metrics["Metrics"]["Volume Rationale"]}, pace_score: {metrics["Scores"]["Pace Score"]} {metrics["Metrics"]["Pace Rationale"]}, pause_score: {metrics["Scores"]["Pause Score"]} {metrics["Metrics"]["Pause Metric Rationale"]}, Posture score: {mean_body_posture} {mean_back_rationale} {mean_neck_rationale}, stiffness score: {range_body_posture} {range_back_rationale} {range_neck_rationale}, Hand Motion: {is_hand_present} and transcript content
 
     Clarity:
       -  Measures how easily the audience can understand the speaker’s message, dependent on pace, volume consistency, effective pause usage. Volume_score: {metrics["Metrics"]["Volume"]} {metrics["Metrics"]["Volume Rationale"]}, pace_score: {metrics["Scores"]["Pace Score"]} {metrics["Metrics"]["Pace Rationale"]}, pause_score: {metrics["Scores"]["Pause Score"]} {metrics["Metrics"]["Pause Metric Rationale"]}
       
-    Impact:
-      - Overall measure of how captivating the talk is and how well the user visually presents himself. 
-      Volume_score: {metrics["Metrics"]["Volume"]} {metrics["Metrics"]["Volume Rationale"]}, pitch_variability_score: {metrics["Scores"]["Pitch Variability Score"]} {metrics["Metrics"]["Pitch Variability Rationale"]}, 
-      pace_score: {metrics["Scores"]["Pace Score"]} {metrics["Metrics"]["Pace Rationale"]}, pause_score: {metrics["Scores"]["Pause Score"]} {metrics["Metrics"]["Pause Metric Rationale"]}.
-      Posture score: {mean_body_posture} {mean_back_rationale} {mean_neck_rationale}, stiffness score: {range_body_posture} {range_back_rationale} {range_neck_rationale}, Hand Motion: {is_hand_present}
-
     Brevity:
 	- Measure of conciseness of words. To be graded by the transcript
       
@@ -706,7 +700,6 @@ def analyze_sentiment(transcript, metrics, posture_data):
                             ]},
                         "Conviction": {"type": "number"},
                         "Clarity": {"type": "number"},
-                        "Impact": {"type": "number"},
                         "Brevity": {"type": "number"},
                         "Transformative Potential": {"type": "number"},
                         "Trigger Response": {"type": "number"},
@@ -715,7 +708,7 @@ def analyze_sentiment(transcript, metrics, posture_data):
                     },
                     "required": [
                         "Audience Emotion", "Conviction",
-                        "Clarity", "Impact", "Brevity",
+                        "Clarity", "Brevity",
                         "Transformative Potential", "Trigger Response",
                         "Filler Words", "Grammar"
                     ]
@@ -741,6 +734,7 @@ def analyze_sentiment(transcript, metrics, posture_data):
         # Body posture score: {mean_body_posture}, Body movement score: {range_body_posture} Speaker Transcript: {transcript}\n Volume_score: {metrics["Metrics"]["Volume"]}, pitch_variability_score: {metrics["Scores"]["Pitch Variability Score"]}. pace score: {metrics["Scores"]["Pace Score"]}, pauses score: {metrics["Scores"]["Pause Score"]}, Hand Motion: {is_hand_present}"""
         # Speaker Transcript: {transcript}\n Body Language rationale: {mean_back_rationale}, {mean_neck_rationale}, {range_back_rationale}, {range_neck_rationale}. Volume rationale: {metrics['Metrics']['Volume Rationale']}. Pitch variability rationale: {metrics['Metrics']['Pitch Variability Rationale']}. Pace rationale: {metrics['Metrics']['Pace Rationale']}. Pause rationale: {metrics['Metrics']['Pause Metric Rationale']}."""
         parsed_response['Feedback']["General Feedback Summary"] = general_feedback_summary
+        parsed_response['Feedback']["Impact"] = round((parsed_response['Feedback']["Conviction"] + parsed_response['Feedback']["Transformative Potential"] + parsed_response['Feedback']["Trigger Response"]) / 3 )
         parsed_response['Posture Scores'] = {
             "Posture": round(mean_body_posture),
             "Motion": round(range_body_posture),

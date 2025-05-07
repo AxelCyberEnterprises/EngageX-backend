@@ -849,7 +849,10 @@ class SessionReportView(APIView):
         goals = PracticeSession.objects.filter(id=session_id).values_list("goals", flat=True).first()
 
         name = PracticeSession.objects.get(id=session_id).user.first_name
-        print(f"Firstname: {name}")
+        
+        role = PracticeSession.objects.get(id=session_id).user.user_profile.user_intent
+
+        print(f"Firstname: {name}. role: {role}")
 
         # Retrieve all general feedback summaries for the session's chunks
         general_feedback_summaries = ChunkSentimentAnalysis.objects.filter(
@@ -872,16 +875,16 @@ class SessionReportView(APIView):
 
         # My name is .
         prompt = f"""
-            My name is {name}, refer to me in first person.
-            You are my personal expert communication mentor/coach specializing in public speaking, storytelling, pitching, and presentations. Your role is to guide me to becoming a more impactful professional speaker for my career development, dont be afraid to critique me for my growth.
+            My name is {name},and my career level is {role}.
+            You are my personal expert communication mentor/coach specializing in public speaking, storytelling, pitching, and presentations. Your role is to critique me referencing my speech transcript for my growth, and guide me to becoming a more impactful professional speaker for my career development.
 
             My goal with this presentation is {goals}. Using my provided presentation evaluation data and transcript, generate a structured JSON response with the following three components:
 
-            1. Strengths: Identify my most impactful strengths. Focus on *concrete content choices*, tone, delivery techniques, and audience engagement strategies. Format the output as a Python string representing a list, also make sure not to use commas in your points as that may conflict with the list , with each strength as points separated by a comma with the quotes outside the list brackets (e.g., "[Strength 1, Strength 2, Strength 3]").
+            1. Strengths: Identify my most impactful strengths. Focus on concrete content choices, tone, delivery techniques, and audience engagement strategies. Format the output as a Python string representing a list, also make sure not to use commas in your points as that may conflict with the list , with each strength as points separated by a comma with the quotes outside the list brackets (e.g., "[Strength 1, Strength 2]").
 
-            2. Areas for Improvement: Provide *clear, actionable, and specific feedback* on where I can improve. Emphasize my delivery habits, missed emotional beats, and structural weaknesses. Format the output as a Python string representing a list, with each point separated by a comma and the quotes outside the list brackets (e.g., "[Area of Improvement 1, Area of Improvement 2, Area of Improvement 3, Area of Improvement 4]").
+            2. Areas for Improvement: Provide clear, actionable, and specific feedback on where I can improve. Emphasize my delivery habits, missed emotional beats, and structural weaknesses. Format the output as a Python string representing a list, with each point separated by a comma and the quotes outside the list brackets (e.g., "[Area of Improvement 1, Area of Improvement 2, Area of Improvement 3, Area of Improvement 4]").
 
-            3. General Feedback Summary: Craft a detailed, content-specific analysis of my presentation. Your response *must be grounded in specific parts of my transcript*. Include the following:
+            3. General Feedback Summary: Craft a detailed, content-specific analysis of my presentation. Your response must be grounded in specific parts of my transcript. Include the following:
             - Evaluate the effectiveness of my opening: Was it attention-grabbing, relevant, or emotionally engaging? Did I clearly set the tone or premise for the rest of the talk?
             - Highlight specific trigger words or emotionally resonant phrases I used that effectively drove engagement, and explain how they influenced the audience.
             - List any filler words I overused (e.g., "um", "like", "you know").
@@ -890,10 +893,10 @@ class SessionReportView(APIView):
             - Reflect on whether my style or personal story helped make the talk more memorable.
             - Was I persuasive enough, Did I inspire action, challenge assumptions, or shift perspectives? Highlight specific techniques like storytelling, analogies, or rhetorical questions.
             - Evaluate the structure and flow of my talk. Were transitions smooth? Did I build toward a clear message or emotional climax?
-            - Clearly state whether my talk was effective — and if so, *effective at what specifically* (e.g., persuading the audience, building trust, sparking interest).
+            - Clearly state whether my talk was effective — and if so, effective at what specifically (e.g., persuading the audience, building trust, sparking interest).
             - Provide an overall evaluation of how well I demonstrated mastery in storytelling, public speaking, or pitching. Include tailored suggestions for improvement based on the context and audience.
 
-            Tone: btw speak to me personally like a mentor coach, this is not a report its guidance. Don't use headers or "**" for titles, just talk to me. Use \n for line breaks between paragraphs and also start with an encouraging remark relevant to my presentation with my name:  My name is {name}, refer to me in first person.
+            Tone: speak to me personally but professionaly like a mentor coach, critique me for my growth while referencing my transcript not my evaluation data. Don't use headers or "**" for titles, just correct me and reference my transcript. Use \n\n for line breaks between paragraphs and also start with an encouraging remark relevant to my presentation with my name.
 
             Evaluation data: {metrics_string}
             Transcript:
