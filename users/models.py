@@ -177,6 +177,7 @@ class UserProfile(models.Model):
         ("Healthcare", "Healthcare"),
         ("Finance", "Finance"),
         ("Education", "Education"),
+        ("Others", "Others")
     ]
     industry = models.CharField(
         max_length=50,
