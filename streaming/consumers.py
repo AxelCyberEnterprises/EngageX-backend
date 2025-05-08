@@ -116,6 +116,7 @@ class LiveSessionConsumer(AsyncWebsocketConsumer):
         # Counter for analysis windows to trigger questions
         self.analysis_window_counter = 0
         self.ai_questions_enabled = True  # Default to True, will be updated in connect
+        self.pending_audience_question = None # Holds question waiting for answer/transcript
 
     # Make connect asynchronous to allow DB query
     async def connect(self):
@@ -304,6 +305,12 @@ class LiveSessionConsumer(AsyncWebsocketConsumer):
 
                     else:
                         print("WS: Error: Missing 'data' in media message.")
+                elif message_type == "audience_question":
+                    # Handle audience question from frontend
+                    question = data.get("question")
+                    self.pending_audience_question = question
+                    print(f"WS: Audience question received and pending: {question}")
+                    
                 else:
                     print(f"WS: Received text message of type: {message_type}")
             elif bytes_data:
@@ -349,8 +356,18 @@ class LiveSessionConsumer(AsyncWebsocketConsumer):
                     try:
                         # Assuming transcribe_audio returns the transcript string or None on failure
                         chunk_transcript = await asyncio.to_thread(transcribe_audio, audio_path)
-                        print(
-                            f"WS: Single chunk Transcription Result: {chunk_transcript} after {time.time() - transcription_start_time:.2f} seconds")
+                        print(f"WS: Single chunk Transcription Result: {chunk_transcript} after {time.time() - transcription_start_time:.2f} seconds")
+
+                        # ==== audience question logic GOES HERE ====
+                        if self.pending_audience_question:
+                            # Decorate this transcript with the question/answer prompt as requested
+                            chunk_transcript = (
+                                f"AUDIENCE QUESTION: '{self.pending_audience_question}' "
+                                f"SPEAKER ANSWER: {chunk_transcript}"
+                            )
+                            # Reset so only next chunk is affected
+                            self.pending_audience_question = None
+                        # ==== END audience question logic ====
 
                         # Always store the result, even if it's None or empty string
                         self.transcript_buffer[media_path] = chunk_transcript

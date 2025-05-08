@@ -84,6 +84,12 @@
     <input type="checkbox" id="aiQuestionToggle" checked>
     <button id="startBtn">Start Recording</button>
     <button id="stopBtn" disabled>Stop Recording</button>
+
+    <div style="margin-top: 15px;">
+        <label for="audienceQuestionField"><b>Send Audience Question:</b></label>
+        <input type="text" id="audienceQuestionField" placeholder="Type question here..." style="width:300px;">
+        <button id="audienceQuestionSendBtn" type="button">Send Question</button>
+    </div>
 </div>
 <p id="status">Status: Waiting...</p>
 
@@ -166,7 +172,7 @@
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
-                        'Authorization': `Token 964bb1274267498596eee99d138ba36d9f85942e`
+                        'Authorization': `Token 21de7e46e6861f7671a8af3b9a2e74a84fdac780`
                     },
                     body: JSON.stringify({
                         session_name: "Live Practice Session",
@@ -463,7 +469,7 @@
                         method: 'POST',
                         headers: {
                              'Content-Type': 'application/json',
-                             'Authorization': `Token 964bb1274267498596eee99d138ba36d9f85942e`
+                             'Authorization': `Token 21de7e46e6861f7671a8af3b9a2e74a84fdac780`
                         },
                         body: JSON.stringify({
                              duration: durationInSeconds
@@ -604,6 +610,28 @@
     // Initial state
     document.getElementById("stopBtn").disabled = true;
     document.getElementById("reportContainer").style.display = "none"; // Ensure report is hidden on load
+
+    document.getElementById('audienceQuestionSendBtn').addEventListener('click', function () {
+    const questionField = document.getElementById('audienceQuestionField');
+    const question = questionField.value.trim();
+    if (!question) {
+        alert("Please type a question before sending.");
+        return;
+    }
+    if (!socket || socket.readyState !== WebSocket.OPEN) {
+        alert("WebSocket is not connected. Start recording first.");
+        return;
+    }
+    // Send the audience_question type message
+    socket.send(JSON.stringify({
+        type: "audience_question",
+        question: question,
+        session_id: sessionId    // optional but fine to include
+    }));
+    questionField.value = ""; // Clear input field after sending
+    alert("Question sent!");
+    });
+
 </script>
 </body>
 </html>

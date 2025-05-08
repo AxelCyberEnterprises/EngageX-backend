@@ -170,7 +170,7 @@ def generate_slide_summary(pdf_path):
         """
 
     # STEP 4: Make the completion call using the file and structured JSON schema
-    response = openai.chat.completions.create(
+    response = client.chat.completions.create(
         model="gpt-4o",
         messages=[
             {
