@@ -140,7 +140,7 @@ class UserProfile(models.Model):
     available_credits = models.DecimalField(
         max_digits=10,
         decimal_places=2,
-        default=4.00,
+        default=2.00,
         help_text="Available credits on the user dashboard.",
     )
 

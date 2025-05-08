@@ -132,7 +132,7 @@ Select one of these emotions that the audience is feeling most strongly ONLY cho
 Take into account what came before each entry but prioritize the most recent entry. Respond only with the emotion.""",
         "turn_detection": {
             "type": "server_vad",  # Use Server VAD
-            "silence_duration_ms": 70  # 100ms silence threshold
+            "silence_duration_ms": 60  # 100ms silence threshold
         }
     }
 
@@ -896,14 +896,16 @@ class SessionReportView(APIView):
 
         # My name is .
         prompt = f"""
-            My name is {name},and my career level is {role}.
-            You are my personal expert communication mentor/coach specializing in public speaking, storytelling, pitching, and presentations. Your role is to critique me referencing my speech transcript for my growth, and guide me to becoming a more impactful professional speaker for my career development.
+            My name is {name}, and my career level is {role}.
+            You are my personal expert communication mentor/coach specializing in public speaking, storytelling, pitching, and presentations. Your role is to critique me by referencing my speech transcript for my growth, and guide me to become a more impactful professional speaker for my career development.
 
-            My goal with this presentation is {goals}. Using my provided presentation evaluation data and transcript, generate a structured JSON response with the following three components:
+            My goal with this presentation is: {goals}. Using my provided presentation evaluation data and transcript, generate a structured JSON response with the following three components:
 
-            1. Strengths: Identify my most impactful strengths. Focus on concrete content choices, tone, delivery techniques, and audience engagement strategies. Format the output as a Python string representing a list, also make sure not to use commas in your points as that may conflict with the list , with each strength as points separated by a comma with the quotes outside the list brackets (e.g., "[Strength 1, Strength 2]").
+            Strengths: Identify my most impactful strengths. Focus on concrete content choices, tone, delivery techniques, and audience engagement strategies.
+            Return the output as a valid JSON stringified array (e.g., ["Strength 1", "Strength 2"]). Do not use commas within individual items to avoid parsing errors. always use double quotes for items.
 
-            2. Areas for Improvement: Provide clear, actionable, and specific feedback on where I can improve. Emphasize my delivery habits, missed emotional beats, and structural weaknesses. Format the output as a Python string representing a list, with each point separated by a comma and the quotes outside the list brackets (e.g., "[Area of Improvement 1, Area of Improvement 2, Area of Improvement 3, Area of Improvement 4]").
+            Areas for Improvement: Provide clear, actionable, and specific feedback on where I can improve. Emphasize my delivery habits, missed emotional beats, and structural weaknesses.
+            Return the output as a valid JSON stringified array (e.g., ["Area of improvement 1", "Area of improvement 2", "Area of improvement 3", "Area of improvement 4"]). always use double quotes for items.
 
             3. General Feedback Summary: Craft a detailed, content-specific analysis of my presentation. Your response must be grounded in specific parts of my transcript. Include the following:
             - Evaluate the effectiveness of my opening: Was it attention-grabbing, relevant, or emotionally engaging? Did I clearly set the tone or premise for the rest of the talk?
@@ -915,6 +917,8 @@ class SessionReportView(APIView):
             - Was I persuasive enough, Did I inspire action, challenge assumptions, or shift perspectives? Highlight specific techniques like storytelling, analogies, or rhetorical questions.
             - Evaluate the structure and flow of my talk. Were transitions smooth? Did I build toward a clear message or emotional climax?
             - Clearly state whether my talk was effective — and if so, effective at what specifically (e.g., persuading the audience, building trust, sparking interest).
+            - If "AUDIENCE QUESTION" is in my transcript, evaluate how I answered the audience questions. If no "AUDIENCE QUESTION" is in my transcript dont mention anything about questions
+            - Reference my goal to {goals}
             - Provide an overall evaluation of how well I demonstrated mastery in storytelling, public speaking, or pitching. Include tailored suggestions for improvement based on the context and audience.
 
             Tone: speak to me personally but professionaly like a mentor coach, critique me for my growth while referencing my transcript not my evaluation data. Don't use headers or "**" for titles, just correct me and reference my transcript. Use \n \n for line breaks between paragraphs and also start with an encouraging remark relevant to my presentation with my name.

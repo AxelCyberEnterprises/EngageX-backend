@@ -81,22 +81,21 @@ def scale_to_score(value, min_val, max_val):
     Scales values where:
     - min_val and max_val get exactly 75
     - midpoint gets 100
-    - outside drops smoothly and exponentially toward 50
+    - outside drops smoothly and exponentially toward 40
     """
 
     if value < min_val or value > max_val:
         # Distance from the nearest boundary
         distance = min(abs(value - min_val), abs(value - max_val))
-        # Exponential decay from 75 down to 50
-        score = 50 + (25 * np.exp(-0.1 * distance))  # As distance increases, score approaches 50
+        # Exponential decay from 75 down to 40
+        score = 40 + (35 * np.exp(-0.1 * distance))  # As distance increases, score approaches 40
     else:
         # Normalize value between 0 and 1
         normalized = (value - min_val) / (max_val - min_val)
         # Bell-like curve from 75 to 100 to 75
         score = 75 + 25 * (1 - abs(2 * normalized - 1))  # Peak at 100 in the middle
 
-    return max(50, round(score))  # Ensure the score never drops below 50
-
+    return max(40, round(score))  # Ensure the score never drops below 40
 
 def score_volume(volume):
     """Scores volume with a peak at 55 and smooth drop-off toward 40 and 70."""
