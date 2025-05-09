@@ -580,8 +580,11 @@
 
             // Display Full Summary
             const fullSummary = reportData.full_summary || {}; // Handle case where full_summary might be null/missing
-            document.getElementById("summaryStrength").textContent = fullSummary["Strength"] || 'N/A';
-            document.getElementById("summaryImprovement").textContent = fullSummary["Area of Improvement"] || 'N/A'; // Access with [] due to space
+            document.getElementById("summaryStrength").innerHTML = 
+            (fullSummary["Strength"] || []).map(item => `• ${item}`).join("<br>");
+
+            document.getElementById("summaryImprovement").innerHTML = 
+            (fullSummary["Area of Improvement"] || []).map(item => `• ${item}`).join("<br>");
             document.getElementById("summaryGeneral").textContent = fullSummary["General Feedback Summary"] || 'N/A'; // Access with [] due to space
             // Access gestures_percentage directly from reportData
             const gesturesPercentage = reportData.gestures_percentage !== undefined && reportData.gestures_percentage !== null ? reportData.gestures_percentage : 'N/A';
