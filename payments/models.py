@@ -3,52 +3,52 @@ from django.conf import settings
 from django.utils import timezone
 
 
-class SingletonModel(models.Model):
-    class Meta:
-        abstract = True  # no db table
+# class SingletonModel(models.Model):
+#     class Meta:
+#         abstract = True  # no db table
 
-    def save(self, *args, **kwargs):
-        # ensure there's only one instance by forcing the pk to 1
-        # when saving, we will always overwrite the instance with pk=1
-        self.pk = 1
-        super(SingletonModel, self).save(*args, **kwargs)
+#     def save(self, *args, **kwargs):
+#         # ensure there's only one instance by forcing the pk to 1
+#         # when saving, we will always overwrite the instance with pk=1
+#         self.pk = 1
+#         super(SingletonModel, self).save(*args, **kwargs)
 
-    def delete(self, *args, **kwargs):
-        # Prevent deletion of the single instance
-        pass
+#     def delete(self, *args, **kwargs):
+#         # Prevent deletion of the single instance
+#         pass
 
-    @classmethod
-    def load(cls):
-        defaults = {
-            'access_token': '',
-            'refresh_token': '',
-            'expires_at': timezone.now(),  # future placeholder
-            'realm_id': '',  # must be non‐null
-        }
-        """
-        Load the single model instance.
-        Creates the instance if it doesn't exist.
-        """
-        # Use get_or_create with pk=1 to always retrieve or create the single instance
-        obj, created = cls.objects.get_or_create(pk=1, defaults=defaults)
-        return obj, created
+#     @classmethod
+#     def load(cls):
+#         defaults = {
+#             'access_token': '',
+#             'refresh_token': '',
+#             'expires_at': timezone.now(),  # future placeholder
+#             'realm_id': '',  # must be non‐null
+#         }
+#         """
+#         Load the single model instance.
+#         Creates the instance if it doesn't exist.
+#         """
+#         # Use get_or_create with pk=1 to always retrieve or create the single instance
+#         obj, created = cls.objects.get_or_create(pk=1, defaults=defaults)
+#         return obj, created
 
 
-class QuickBooksToken(SingletonModel):
-    access_token = models.CharField()
-    refresh_token = models.CharField()
-    expires_at = models.DateTimeField()
-    realm_id = models.CharField(max_length=255, unique=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
+# class QuickBooksToken(SingletonModel):
+#     access_token = models.CharField()
+#     refresh_token = models.CharField()
+#     expires_at = models.DateTimeField()
+#     realm_id = models.CharField(max_length=255, unique=True)
+#     created_at = models.DateTimeField(auto_now_add=True)
+#     updated_at = models.DateTimeField(auto_now=True)
 
-    def is_expired(self):
-        if self.expires_at is None:
-            return True
-        return self.expires_at <= timezone.now() - timezone.timedelta(minutes=5)
+#     def is_expired(self):
+#         if self.expires_at is None:
+#             return True
+#         return self.expires_at <= timezone.now() - timezone.timedelta(minutes=5)
 
-    def __str__(self):
-        return f"QuickBooks Token for  Realm ID: {self.realm_id}"
+#     def __str__(self):
+#         return f"QuickBooks Token for  Realm ID: {self.realm_id}"
 
 
 class PaymentTransaction(models.Model):
