@@ -70,7 +70,7 @@ MIDDLEWARE = [
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": (
         "rest_framework.authentication.TokenAuthentication",
-        "rest_framework.authentication.SessionAuthentication",
+        # "rest_framework.authentication.SessionAuthentication",
     ),
     "DEFAULT_PERMISSION_CLASSES": ("rest_framework.permissions.IsAuthenticated",),
     "DEFAULT_PARSER_CLASSES": (
@@ -136,6 +136,7 @@ CORS_ALLOW_ALL_ORIGINS = True
 
 CSRF_TRUSTED_ORIGINS = [
     "https://api.engagexai.io",
+    "http://localhost:3000",
 ]
 
 EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
@@ -388,3 +389,13 @@ LOGGING = {
         "level": "INFO",
     },
 }
+
+
+# Stripe settings
+STRIPE_SECRET_KEY = "sk_test_51RLQiFP8pRFcBjQOnPmMIDNNBljfYdhBmSziD3j7jQKdG3xAjzFFX8ZRPUSx5mwxrAeVt36zdQMB3cuKhCmyZE0V008c5gJPFB"
+STRIPE_PUBLISHABLE_KEY = "pk_test_putYourPublishableKeyHere"  # Replace with your publishable key
+STRIPE_WEBHOOK_SECRET = "whsec_6e0b3880a5e3372b4bcd376bc062b2cc3832c335539813ea8f4252cfddfa6213"
+
+# Frontend URLs for Stripe checkout
+STRIPE_SUCCESS_URL = "http://localhost:3000/success"  # Update with your actual success URL
+STRIPE_CANCEL_URL = "http://localhost:3000/cancel"    # Update with your actual cancel URL

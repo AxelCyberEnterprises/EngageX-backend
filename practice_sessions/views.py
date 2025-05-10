@@ -6,6 +6,7 @@ import json
 import traceback
 import boto3
 import requests
+import asyncio
 from django.core.files import File
 
 from rest_framework import viewsets, status
@@ -16,6 +17,7 @@ from rest_framework.views import APIView
 from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework.exceptions import PermissionDenied
 
+from django.utils.decorators import method_decorator
 from django.core.files.uploadedfile import UploadedFile
 from django.db.models.functions import Round
 from django.conf import settings
@@ -37,7 +39,10 @@ from openai import OpenAI
 from drf_yasg.utils import swagger_auto_schema
 from collections import defaultdict
 from botocore.exceptions import NoCredentialsError, PartialCredentialsError, ClientError
-from itertools import chain
+from urllib.parse import urlparse # Added for S3 URL parsing
+
+# For async DB operations within an async view
+from channels.db import database_sync_to_async
 
 from .models import (
     PracticeSession,
@@ -332,15 +337,53 @@ class PracticeSequenceViewSet(viewsets.ModelViewSet):
         serializer.save(user=self.request.user)
 
 
-class PracticeSessionViewSet(viewsets.ModelViewSet):
-    """
-    ViewSet for handling practice session history.
-    Admin users see all sessions; regular users see only their own sessions.
-    Includes a custom action 'report' to retrieve full session details.
-    """
+# class PracticeSessionViewSet(viewsets.ModelViewSet):
+#     """
+#     ViewSet for handling practice session history.
+#     Admin users see all sessions; regular users see only their own sessions.
+#     Includes a custom action 'report' to retrieve full session details.
+#     """
 
+#     serializer_class = PracticeSessionSerializer
+#     permission_classes = [IsAuthenticated]
+
+#     def get_queryset(self):
+#         user = self.request.user
+
+#         if getattr(self, "swagger_fake_view", False) or user.is_anonymous:
+#             return (
+#                 PracticeSession.objects.none()
+#             )  # Return empty queryset for schema generation or anonymous users
+
+#         if hasattr(user, "user_profile") and user.user_profile.is_admin():
+#             return PracticeSession.objects.all().order_by("-date")
+
+#         return PracticeSession.objects.filter(user=user).order_by("-date")
+
+#     def perform_create(self, serializer):
+#         serializer.save(user=self.request.user)
+
+
+@method_decorator(csrf_exempt, name='dispatch')
+class TestCsrfExemptView(APIView):
+    permission_classes = [] # No auth needed for this test
+
+    def delete(self, request, *args, **kwargs):
+        print(f"TestCsrfExemptView: DELETE received.")
+        return Response({"message": "CSRF Exempt Test DELETE successful."}, status=status.HTTP_200_OK)
+
+
+@method_decorator(csrf_exempt, name='dispatch')
+class PracticeSessionViewSet(viewsets.ModelViewSet):
     serializer_class = PracticeSessionSerializer
     permission_classes = [IsAuthenticated]
+
+    @classmethod
+    def as_view(cls, actions=None, **initkwargs):
+        view = super().as_view(actions=actions, **initkwargs)
+        async def async_view(request, *args, **kwargs):
+            return await view(request._request, *args, **kwargs)
+        return async_view
 
     def get_queryset(self):
         user = self.request.user
@@ -348,7 +391,7 @@ class PracticeSessionViewSet(viewsets.ModelViewSet):
         if getattr(self, "swagger_fake_view", False) or user.is_anonymous:
             return (
                 PracticeSession.objects.none()
-            )  # Return empty queryset for schema generation or anonymous users
+            )
 
         if hasattr(user, "user_profile") and user.user_profile.is_admin():
             return PracticeSession.objects.all().order_by("-date")
@@ -357,6 +400,107 @@ class PracticeSessionViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
+
+    @action(detail=True, methods=['delete'], url_path='delete-session-media', permission_classes=[IsAuthenticated])
+    async def delete_session_media(self, request, pk=None):
+        try:
+            session = await database_sync_to_async(self.get_object)()
+
+            if session.user != request.user and not (hasattr(request.user, 'user_profile') and request.user.user_profile.is_admin()):
+                raise PermissionDenied("You do not have permission to delete media for this session.")
+
+            s3_client = boto3.client("s3", region_name=settings.AWS_S3_REGION_NAME)
+            s3_bucket_name = settings.AWS_STORAGE_BUCKET_NAME
+            s3_user_content_base_folder = "user-videos/"
+
+            s3_keys_to_delete = []
+
+            if session.compiled_video_url:
+                try:
+                    parsed_url = urlparse(session.compiled_video_url)
+                    key_path = parsed_url.path.lstrip('/')
+                    if parsed_url.netloc.startswith(s3_bucket_name) and key_path.startswith(s3_user_content_base_folder):
+                         s3_keys_to_delete.append(key_path)
+                         print(f"Added compiled video key for deletion: {key_path}")
+                    else:
+                        print(f"WARNING: Compiled video URL {session.compiled_video_url} not in expected S3 bucket/folder, skipping S3 delete for this URL.")
+                except Exception as e:
+                    print(f"Error parsing compiled_video_url {session.compiled_video_url}: {e}")
+
+            chunks = await database_sync_to_async(list)(session.chunks.all())
+            for chunk in chunks:
+                if chunk.video_file:
+                    try:
+                        parsed_url = urlparse(chunk.video_file)
+                        key_path = parsed_url.path.lstrip('/')
+                        if parsed_url.netloc.startswith(s3_bucket_name) and key_path.startswith(s3_user_content_base_folder):
+                            s3_keys_to_delete.append(key_path)
+                            print(f"Added chunk video key for deletion: {key_path}")
+                        else:
+                            print(f"WARNING: Chunk video URL {chunk.video_file} not in expected S3 bucket/folder, skipping S3 delete for this URL.")
+                    except Exception as e:
+                        print(f"Error parsing chunk video_file {chunk.video_file}: {e}")
+
+            if session.slides_file and session.slides_file.name:
+                if settings.USE_S3:
+                    slide_s3_key = session.slides_file.name
+                    if slide_s3_key.startswith(f"{session.user.id}_slides") or slide_s3_key.startswith(f"slides/{session.user.id}_slides"):
+                         s3_keys_to_delete.append(slide_s3_key)
+                         print(f"Added slides file key for deletion: {slide_s3_key}")
+                    else:
+                        print(f"WARNING: Slides file {slide_s3_key} not in expected S3 user path, skipping S3 delete for slides.")
+                else:
+                    print(f"Slides file {session.slides_file.name} is on local storage, skipping S3 delete.")
+
+            if s3_keys_to_delete:
+                print(f"Attempting to delete {len(s3_keys_to_delete)} S3 objects for session {session.id}.")
+                with concurrent.futures.ThreadPoolExecutor() as executor:
+                    futures = [executor.submit(self._delete_single_s3_object, s3_client, s3_bucket_name, s3_key) for s3_key in s3_keys_to_delete]
+                    for future in concurrent.futures.as_completed(futures):
+                        try:
+                            future.result()
+                        except Exception as s3_delete_error:
+                            print(f"Error deleting S3 object in background: {s3_delete_error}")
+                            traceback.print_exc()
+                print(f"Completed S3 deletion attempts for session {session.id}.")
+            else:
+                print(f"No S3 objects found to delete for session {session.id}.")
+
+            await database_sync_to_async(self._clear_session_media_urls)(session, chunks)
+            print(f"Media URLs for session {session.id} cleared in database.")
+
+            return Response({"message": "Session media files deleted from S3 and URLs cleared in database."}, status=status.HTTP_200_OK)
+
+        except PracticeSession.DoesNotExist:
+            return Response({"error": "Session not found."}, status=status.HTTP_404_NOT_FOUND)
+        except PermissionDenied as e:
+            return Response({"error": str(e)}, status=status.HTTP_403_FORBIDDEN)
+        except Exception as e:
+            print(f"An unexpected error occurred during session media deletion for ID {pk}: {e}")
+            traceback.print_exc()
+            return Response({"error": f"An internal server error occurred during media deletion: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    def _delete_single_s3_object(self, s3_client, bucket_name, s3_key):
+        try:
+            s3_client.delete_object(Bucket=bucket_name, Key=s3_key)
+            print(f"Successfully deleted S3 object: {s3_key}")
+        except ClientError as e:
+            error_code = e.response.get("Error", {}).get("Code")
+            if error_code == 'NoSuchKey':
+                print(f"S3 object {s3_key} not found (might have been already deleted or never existed).")
+            else:
+                print(f"S3 ClientError deleting {s3_key}: {e}")
+        except Exception as e:
+            print(f"Unexpected error deleting S3 object {s3_key}: {e}")
+
+    def _clear_session_media_urls(self, session, chunks):
+        session.compiled_video_url = None
+        session.slides_file = None
+        session.save(update_fields=['compiled_video_url', 'slides_file'])
+
+        for chunk in chunks:
+            chunk.video_file = None
+            chunk.save(update_fields=['video_file'])
 
 
 class SessionDashboardView(APIView):
