@@ -392,9 +392,9 @@ LOGGING = {
 
 
 # Stripe settings
-STRIPE_SECRET_KEY = "sk_test_51RLQiFP8pRFcBjQOnPmMIDNNBljfYdhBmSziD3j7jQKdG3xAjzFFX8ZRPUSx5mwxrAeVt36zdQMB3cuKhCmyZE0V008c5gJPFB"
-STRIPE_PUBLISHABLE_KEY = "pk_test_putYourPublishableKeyHere"  # Replace with your publishable key
-STRIPE_WEBHOOK_SECRET = "whsec_6e0b3880a5e3372b4bcd376bc062b2cc3832c335539813ea8f4252cfddfa6213"
+STRIPE_SECRET_KEY = os.environ.get("STRIPE_SECRET_KEY")
+STRIPE_PUBLISHABLE_KEY = os.environ.get("STRIPE_PUBLISHABLE_KEY")
+STRIPE_WEBHOOK_SECRET = os.environ.get("STRIPE_WEBHOOK_SECRET")
 
 # Frontend URLs for Stripe checkout
 STRIPE_SUCCESS_URL = "http://localhost:3000/success"  # Update with your actual success URL
