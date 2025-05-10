@@ -54,13 +54,13 @@ lock = threading.Lock()
 
 def ai_audience_question(transcript):
     prompt = f"""
-        You are a curious audience member at a talk or presentation. Based on the following speaker transcript, ask a simple short question
+        You are a curious audience member at a talk or presentation. Based on the following speaker transcript, ask a simple but insightful question
         ONLY return the question
-        Transcript:\n{transcript}\n"""
+        Transcript:{transcript}\n"""
 
     try:
         response = client.chat.completions.create(
-            model="gpt-4o",  # You can change to gpt-3.5-turbo or another if preferred
+            model="gpt-4.1",  # You can change to gpt-3.5-turbo or another if preferred
             messages=[
                 {"role": "system", "content": "You are a helpful assistant"},
                 {"role": "user", "content": prompt}
@@ -81,22 +81,21 @@ def scale_to_score(value, min_val, max_val):
     Scales values where:
     - min_val and max_val get exactly 75
     - midpoint gets 100
-    - outside drops smoothly and exponentially toward 50
+    - outside drops smoothly and exponentially toward 40
     """
 
     if value < min_val or value > max_val:
         # Distance from the nearest boundary
         distance = min(abs(value - min_val), abs(value - max_val))
-        # Exponential decay from 75 down to 50
-        score = 50 + (25 * np.exp(-0.1 * distance))  # As distance increases, score approaches 50
+        # Exponential decay from 75 down to 40
+        score = 40 + (35 * np.exp(-0.1 * distance))  # As distance increases, score approaches 40
     else:
         # Normalize value between 0 and 1
         normalized = (value - min_val) / (max_val - min_val)
         # Bell-like curve from 75 to 100 to 75
         score = 75 + 25 * (1 - abs(2 * normalized - 1))  # Peak at 100 in the middle
 
-    return max(50, round(score))  # Ensure the score never drops below 50
-
+    return max(40, round(score))  # Ensure the score never drops below 40
 
 def score_volume(volume):
     """Scores volume with a peak at 55 and smooth drop-off toward 40 and 70."""
@@ -121,9 +120,9 @@ def score_volume(volume):
 def score_pauses(appropriate_pauses, long_pauses):
     """scores pauses using discrete buckets."""
     # call scale_to_score after getting rationale
-    score = scale_to_score(appropriate_pauses, 3, 7)  # adjusted for 30 seconds
+    score = scale_to_score(appropriate_pauses, 3, 8)  # adjusted for 30 seconds
 
-    if 3 <= appropriate_pauses <= 7:
+    if 3 <= appropriate_pauses <= 8:
         rationale = "Ideal pause frequency; pauses enhance clarity without disrupting flow."
     elif appropriate_pauses < 3:
         rationale = "Insufficient pauses; speech may be rushed and less clear."
@@ -131,7 +130,7 @@ def score_pauses(appropriate_pauses, long_pauses):
         rationale = "Excessive pause frequency; too many breaks can disrupt continuity."
 
     # apply penalty for long pauses: each long pause beyond 3 reduces the score by 1.
-    if long_pauses > 2:
+    if long_pauses > 3:
         penalty = (long_pauses - 3) * 10
         score = max(0, score - penalty)
         rationale += f", with {long_pauses} long pauses (>2s) penalizing flow"
@@ -154,15 +153,15 @@ def score_pace(speaking_rate):
 
 def score_pv(pitch_variability):
     """scores pitch variability with a peak at 50-70."""
-    score = scale_to_score(pitch_variability, 30, 70)
+    score = scale_to_score(pitch_variability, 50, 90)
 
-    if 50 <= pitch_variability <= 70:
+    if 50 <= pitch_variability <= 90:
         rationale = "Optimal pitch variability, with dynamic yet controlled expressiveness, promoting engagement and emotional impact"
     elif 40 <= pitch_variability < 50:
         rationale = "Fair pitch variability; could benefit from more variation for expressiveness."
     elif 30 <= pitch_variability < 40:
         rationale = "Slightly low pitch variability; the delivery sounds somewhat monotone."
-    elif 15 <= pitch_variability < 30:
+    elif 0 <= pitch_variability < 30:
         rationale = "Extremely low pitch variability; speech is overly monotone and lacks expressiveness."
     else:
         rationale = "Slightly excessive pitch variability; the delivery may seem erratic."
@@ -230,8 +229,8 @@ def get_pauses(audio_file):
 
     # Tunable values
     # intensity_threshold = 30
-    min_pause_duration = 0.4
-    long_pause_duration = 0.8
+    min_pause_duration = 0.5
+    long_pause_duration = 1.2
 
     # Extract intensity
     intensity = sound.to_intensity()
@@ -651,25 +650,19 @@ def analyze_sentiment(transcript, metrics, posture_data):
       - Select one of these emotions that the audience is feeling most strongly ONLY choose from this list(thinking, empathy, excitement, laughter, surprise, interested)
    
     Conviction:
-      - Indicates firmness and clarity of beliefs or message. Evaluates how strongly and clearly the speaker presents their beliefs and message. Dependent on volume Volume_score: {metrics["Metrics"]["Volume"]} {metrics["Metrics"]["Volume Rationale"]}, pace_score: {metrics["Scores"]["Pace Score"]} {metrics["Metrics"]["Pace Rationale"]}, pause_score: {metrics["Scores"]["Pause Score"]} {metrics["Metrics"]["Pause Metric Rationale"]} and transcript content
+      - Indicates firmness and clarity of beliefs or message. Evaluates how strongly and clearly the speaker presents their beliefs and message. Dependent on volume Volume_score: {metrics["Metrics"]["Volume"]} {metrics["Metrics"]["Volume Rationale"]}, pace_score: {metrics["Scores"]["Pace Score"]} {metrics["Metrics"]["Pace Rationale"]}, pause_score: {metrics["Scores"]["Pause Score"]} {metrics["Metrics"]["Pause Metric Rationale"]}, Posture score: {mean_body_posture} {mean_back_rationale} {mean_neck_rationale}, stiffness score: {range_body_posture} {range_back_rationale} {range_neck_rationale}, Hand Motion: {is_hand_present} and transcript content
 
     Clarity:
       -  Measures how easily the audience can understand the speaker’s message, dependent on pace, volume consistency, effective pause usage. Volume_score: {metrics["Metrics"]["Volume"]} {metrics["Metrics"]["Volume Rationale"]}, pace_score: {metrics["Scores"]["Pace Score"]} {metrics["Metrics"]["Pace Rationale"]}, pause_score: {metrics["Scores"]["Pause Score"]} {metrics["Metrics"]["Pause Metric Rationale"]}
       
-    Impact:
-      - Overall measure of how captivating the talk is and how well the user visually presents himself. 
-      Volume_score: {metrics["Metrics"]["Volume"]} {metrics["Metrics"]["Volume Rationale"]}, pitch_variability_score: {metrics["Scores"]["Pitch Variability Score"]} {metrics["Metrics"]["Pitch Variability Rationale"]}, 
-      pace_score: {metrics["Scores"]["Pace Score"]} {metrics["Metrics"]["Pace Rationale"]}, pause_score: {metrics["Scores"]["Pause Score"]} {metrics["Metrics"]["Pause Metric Rationale"]}.
-      Posture score: {mean_body_posture} {mean_back_rationale} {mean_neck_rationale}, stiffness score: {range_body_posture} {range_back_rationale} {range_neck_rationale}, Hand Motion: {is_hand_present}
-
     Brevity:
 	- Measure of conciseness of words. To be graded by the transcript
       
     Transformative Potential:
-      - Potential to motivate significant change or shift perspectives.
+      - Potential to motivate significant change or shift perspectives. Graded primarily on transcript content but also Volume_score: {metrics["Metrics"]["Volume"]} {metrics["Metrics"]["Volume Rationale"]}, pace_score: {metrics["Scores"]["Pace Score"]} {metrics["Metrics"]["Pace Rationale"]}, pause_score: {metrics["Scores"]["Pause Score"]} {metrics["Metrics"]["Pause Metric Rationale"]}, Posture score: {mean_body_posture} {mean_back_rationale} {mean_neck_rationale}, stiffness score: {range_body_posture} {range_back_rationale} {range_neck_rationale}, Hand Motion: {is_hand_present}
 
     Trigger Response:
-      - Indicates to what extent the presentation is triggers an audience emotional response
+      - Indicates to what extent the presentation is triggers an audience emotional response. Graded primarily on transcript content but also Volume_score: {metrics["Metrics"]["Volume"]} {metrics["Metrics"]["Volume Rationale"]}, pause_score: {metrics["Scores"]["Pause Score"]} {metrics["Metrics"]["Pause Metric Rationale"]}
 
     Filler Words
       - Filler words are bad and affect overall audience engagement. Score 100 if there are no filler words, then -10 for each filler word
@@ -683,7 +676,7 @@ def analyze_sentiment(transcript, metrics, posture_data):
     """
 
     completion = client.chat.completions.create(
-        model="gpt-4o-mini",
+        model="gpt-4.1",
         messages=[{
             "role": "user", "content": prompt
         }],
@@ -693,6 +686,7 @@ def analyze_sentiment(transcript, metrics, posture_data):
                 "name": "Feedback",
                 "schema": {
                     "type": "object",
+                    "strict": True,
                     "properties": {
                         "Audience Emotion": {
                             "type": "string",
@@ -706,7 +700,6 @@ def analyze_sentiment(transcript, metrics, posture_data):
                             ]},
                         "Conviction": {"type": "number"},
                         "Clarity": {"type": "number"},
-                        "Impact": {"type": "number"},
                         "Brevity": {"type": "number"},
                         "Transformative Potential": {"type": "number"},
                         "Trigger Response": {"type": "number"},
@@ -715,10 +708,11 @@ def analyze_sentiment(transcript, metrics, posture_data):
                     },
                     "required": [
                         "Audience Emotion", "Conviction",
-                        "Clarity", "Impact", "Brevity",
+                        "Clarity", "Brevity",
                         "Transformative Potential", "Trigger Response",
                         "Filler Words", "Grammar"
-                    ]
+                    ],
+                    "additionalProperties": False
                 }
             }
         }
@@ -741,6 +735,7 @@ def analyze_sentiment(transcript, metrics, posture_data):
         # Body posture score: {mean_body_posture}, Body movement score: {range_body_posture} Speaker Transcript: {transcript}\n Volume_score: {metrics["Metrics"]["Volume"]}, pitch_variability_score: {metrics["Scores"]["Pitch Variability Score"]}. pace score: {metrics["Scores"]["Pace Score"]}, pauses score: {metrics["Scores"]["Pause Score"]}, Hand Motion: {is_hand_present}"""
         # Speaker Transcript: {transcript}\n Body Language rationale: {mean_back_rationale}, {mean_neck_rationale}, {range_back_rationale}, {range_neck_rationale}. Volume rationale: {metrics['Metrics']['Volume Rationale']}. Pitch variability rationale: {metrics['Metrics']['Pitch Variability Rationale']}. Pace rationale: {metrics['Metrics']['Pace Rationale']}. Pause rationale: {metrics['Metrics']['Pause Metric Rationale']}."""
         parsed_response['Feedback']["General Feedback Summary"] = general_feedback_summary
+        parsed_response['Feedback']["Impact"] = round((parsed_response['Feedback']["Conviction"] + parsed_response['Feedback']["Transformative Potential"] + parsed_response['Feedback']["Trigger Response"]) / 3 )
         parsed_response['Posture Scores'] = {
             "Posture": round(mean_body_posture),
             "Motion": round(range_body_posture),

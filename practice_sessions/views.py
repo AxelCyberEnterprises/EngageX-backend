@@ -128,16 +128,16 @@ def get_openai_realtime_token(request):
     }
 
     payload = {
-        "model": "gpt-4o-realtime-preview",
+        "model": "gpt-4o-mini-realtime-preview",
         "modalities": ["text"],  # Only return text, not audio
         "instructions": """You are an advanced presentation evaluation system. Using the speaker's transcript.
 
 Select one of these emotions that the audience is feeling most strongly ONLY choose from this list(thinking, empathy, excitement, laughter, surprise, interested).
 
-Take into account what came before each entry but prioritize the most recent entry. Respond only with the emotion.""",
+Respond only with the emotion. (thinking, empathy, excitement, laughter, surprise, interested)""",
         "turn_detection": {
             "type": "server_vad",  # Use Server VAD
-            "silence_duration_ms": 70  # 100ms silence threshold
+            "silence_duration_ms": 10  # 100ms silence threshold
         }
     }
 
@@ -151,19 +151,37 @@ Take into account what came before each entry but prioritize the most recent ent
 
 
 def generate_slide_summary(pdf_path):
-    client = OpenAI(api_key=settings.OPENAI_API_KEY)
-    base64_pdf = None
-    # STEP 2: Read and encode the PDF as Base64
-    if isinstance(pdf_path, (str, bytes, os.PathLike)):
-        with open(pdf_path, 'rb') as file:
-            pdf_bytes = file.read()
-            base64_pdf = base64.b64encode(pdf_bytes).decode('utf-8')
-    elif isinstance(pdf_path, UploadedFile):
-        pdf_bytes = pdf_path.read()
-        base64_pdf = base64.b64encode(pdf_bytes).decode('utf-8')
-        pdf_path.seek(0)
+    print("🔍 Starting slide summary generation...")
 
-        # STEP 3: Construct your evaluation prompt
+    try:
+        client = OpenAI(api_key=settings.OPENAI_API_KEY)
+        print("✅ OpenAI client initialized.")
+    except Exception as e:
+        print(f"❌ Failed to initialize OpenAI client: {e}")
+        raise
+
+    base64_pdf = None
+
+    # STEP 2: Read and encode the PDF as Base64
+    try:
+        if isinstance(pdf_path, (str, bytes, os.PathLike)):
+            print(f"📄 Reading PDF from file path: {pdf_path}")
+            with open(pdf_path, 'rb') as file:
+                pdf_bytes = file.read()
+        elif isinstance(pdf_path, UploadedFile):
+            print("📎 Reading PDF from uploaded file.")
+            pdf_bytes = pdf_path.read()
+            pdf_path.seek(0)
+        else:
+            raise TypeError("Unsupported type for `pdf_path`")
+
+        base64_pdf = base64.b64encode(pdf_bytes).decode('utf-8')
+        print("✅ PDF successfully encoded to Base64.")
+    except Exception as e:
+        print(f"❌ Error reading or encoding PDF: {e}")
+        raise
+
+    # STEP 3: Construct the evaluation prompt
     prompt = """
         You are a presentation evaluator. Review the attached presentation and score it on:
 
@@ -172,60 +190,72 @@ def generate_slide_summary(pdf_path):
         3. *Visual Communication*: Is there a strong use of images, diagrams, or design elements?
 
         Give each a score from 1 (poor) to 100 (excellent).
-        """
+    """
+    print("🧠 Evaluation prompt constructed.")
 
-    # STEP 4: Make the completion call using the file and structured JSON schema
-    response = openai.chat.completions.create(
-        model="gpt-4o",
-        messages=[
-            {
-                "role": "user",
-                "content": [
-                    {
-                        "type": "file",
-                        "file": {
-                            "file_data": f"data:application/pdf;base64,{base64_pdf}",
-                            "filename": "uploaded_document.pdf"
+    # STEP 4: Make the completion call
+    try:
+        print("🚀 Sending request to OpenAI...")
+        response = client.chat.completions.create(
+            model="gpt-4.1",
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "file",
+                            "file": {
+                                "file_data": f"data:application/pdf;base64,{base64_pdf}",
+                                "filename": "uploaded_document.pdf"
+                            }
+                        },
+                        {
+                            "type": "text",
+                            "text": prompt
                         }
-                    },
-                    {
-                        "type": "text",
-                        "text": prompt
-                    }
-                ]
-            }
-        ],
-        response_format={
-            "type": "json_schema",
-            "json_schema": {
-                "name": "PresentationEvaluation",
-                "schema": {
-                    "type": "object",
-                    "properties": {
-                        "SlideEfficiency": {"type": "number"},
-                        "TextEconomy": {"type": "number"},
-                        "VisualCommunication": {"type": "number"},
-                    },
-                    "required": [
-                        "SlideEfficiency",
-                        "TextEconomy",
-                        "VisualCommunication",
                     ]
                 }
+            ],
+            response_format={
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "PresentationEvaluation",
+                    "strict": True,
+                    "schema": {
+                        "type": "object",
+                        "properties": {
+                            "SlideEfficiency": {"type": "number"},
+                            "TextEconomy": {"type": "number"},
+                            "VisualCommunication": {"type": "number"},
+                        },
+                        "required": [
+                            "SlideEfficiency",
+                            "TextEconomy",
+                            "VisualCommunication",
+                        ],
+                        "additionalProperties": False
+
+                    }
+                }
             }
-        }
-    )
+        )
+        print("✅ Response received from OpenAI.")
+    except Exception as e:
+        print(f"❌ Error during OpenAI API call: {e}")
+        raise
 
-    # STEP 5: Unpack and print the response
-    result = json.loads(response.choices[0].message.content)
-
-    print("\n✅ Evaluation Results:")
-    print(f"Slide Efficiency: {result['SlideEfficiency']}/100")
-    print(f"Text Economy: {result['TextEconomy']}/100")
-    print(f"Visual Communication: {result['VisualCommunication']}/100")
+    # STEP 5: Parse and print the response
+    try:
+        result = json.loads(response.choices[0].message.content)
+        print("\n✅ Evaluation Results:")
+        print(f"Slide Efficiency: {result['SlideEfficiency']}/100")
+        print(f"Text Economy: {result['TextEconomy']}/100")
+        print(f"Visual Communication: {result['VisualCommunication']}/100")
+    except Exception as e:
+        print(f"❌ Error parsing response JSON: {e}")
+        raise
 
     return result
-
 
 def format_timedelta_12h(td):
     # Get the total seconds from the timedelta
@@ -993,7 +1023,10 @@ class SessionReportView(APIView):
         goals = PracticeSession.objects.filter(id=session_id).values_list("goals", flat=True).first()
 
         name = PracticeSession.objects.get(id=session_id).user.first_name
-        print(f"Firstname: {name}")
+        
+        role = PracticeSession.objects.get(id=session_id).user.user_profile.user_intent
+
+        print(f"Firstname: {name}. role: {role}")
 
         # Retrieve all general feedback summaries for the session's chunks
         general_feedback_summaries = ChunkSentimentAnalysis.objects.filter(
@@ -1016,28 +1049,30 @@ class SessionReportView(APIView):
 
         # My name is .
         prompt = f"""
-            My name is {name}, refer to me in first person.
-            You are my personal expert communication mentor/coach specializing in public speaking, storytelling, pitching, and presentations. Your role is to guide me to becoming a more impactful professional speaker for my career development, dont be afraid to critique me for my growth.
+            My name is {name}, and my career level is {role}.
+            You are my personal expert communication mentor/coach specializing in public speaking, storytelling, pitching, and presentations. Your role is to critique me for my growth, and guide me to become a more impactful professional speaker for my career development.
 
-            My goal with this presentation is {goals}. Using my provided presentation evaluation data and transcript, generate a structured JSON response with the following three components:
+            My goal with this presentation is: {goals}. Using my provided presentation evaluation data and speech, generate a structured JSON response with the following three components:
 
-            1. Strengths: Identify my most impactful strengths. Focus on *concrete content choices*, tone, delivery techniques, and audience engagement strategies. Format the output as a Python string representing a list, also make sure not to use commas in your points as that may conflict with the list , with each strength as points separated by a comma with the quotes outside the list brackets (e.g., "[Strength 1, Strength 2, Strength 3]").
+            1. Strengths: Identify my most impactful specific strengths. Focus on concrete content choices, tone, delivery techniques, and audience engagement strategies. Use simple sentences.
 
-            2. Areas for Improvement: Provide *clear, actionable, and specific feedback* on where I can improve. Emphasize my delivery habits, missed emotional beats, and structural weaknesses. Format the output as a Python string representing a list, with each point separated by a comma and the quotes outside the list brackets (e.g., "[Area of Improvement 1, Area of Improvement 2, Area of Improvement 3, Area of Improvement 4]").
+            2. Areas for Improvement: Provide clear, actionable, and specific feedback on where I can improve. Emphasize my delivery habits, missed emotional beats, and structural weaknesses. Use simple sentences.
 
-            3. General Feedback Summary: Craft a detailed, content-specific analysis of my presentation. Your response *must be grounded in specific parts of my transcript*. Include the following:
+            3. General Feedback Summary: Craft a detailed, content-specific analysis of my presentation. Your summary must be grounded in specific parts of my speech. Include the following:
             - Evaluate the effectiveness of my opening: Was it attention-grabbing, relevant, or emotionally engaging? Did I clearly set the tone or premise for the rest of the talk?
-            - Highlight specific trigger words or emotionally resonant phrases I used that effectively drove engagement, and explain how they influenced the audience.
-            - List any filler words I overused (e.g., "um", "like", "you know").
+            - Highlight specific trigger words or emotionally resonant phrases I used that effectively drove engagement, and explain how they influenced the audience. Include the actual phrases from the transcript.
+            - List any filler words I overused (e.g., "um", "like", "you know"). Quote a few instances where these occurred.
             - Comment on how I used powerful or evocative language—did I evoke empathy, joy, urgency, or excitement? Did I show vulnerability or emotional relatability?
-            - Analyze my tone of voice, Was it confident, warm, authoritative, enthusiastic, or inconsistent? Note any tone shifts and how they impacted audience engagement.
+            - Analyze my tone of voice, Was it confident, warm, authoritative, enthusiastic, or inconsistent? Note any tone shifts and how they impacted audience engagement. Back this up with quoted phrases that show tone variation.
             - Reflect on whether my style or personal story helped make the talk more memorable.
             - Was I persuasive enough, Did I inspire action, challenge assumptions, or shift perspectives? Highlight specific techniques like storytelling, analogies, or rhetorical questions.
-            - Evaluate the structure and flow of my talk. Were transitions smooth? Did I build toward a clear message or emotional climax?
-            - Clearly state whether my talk was effective — and if so, *effective at what specifically* (e.g., persuading the audience, building trust, sparking interest).
-            - Provide an overall evaluation of how well I demonstrated mastery in storytelling, public speaking, or pitching. Include tailored suggestions for improvement based on the context and audience.
+            - Evaluate the structure and flow of my talk. Were transitions smooth? Did I build toward a clear message or emotional climax? Point to exact sentences where this occurred.
+            - Clearly state whether my talk was effective — and if so, effective at what specifically (e.g., persuading the audience, building trust, sparking interest).
+            - If "AUDIENCE QUESTION" is in my transcript, evaluate how I answered the audience questions. If no "AUDIENCE QUESTION" is in my transcript dont mention anything about questions
+            - Reference my goal to {goals}
+            - Provide an overall evaluation of how well I demonstrated mastery in storytelling, public speaking, or pitching. Include tailored suggestions for improvement based on the context and audience. Ground all observations in direct excerpts from the transcript. Quote exact sentences where possible.
 
-            Tone: btw speak to me personally like a mentor coach, this is not a report its guidance. Don't use headers or titles, just talk to me in paragrapghs. Respond in markdown format and add line breaks between paragraphs and also start with an encouraging remark relevant to my presentation with my name:  My name is {name}, refer to me in first person.
+            Tone: speak to me personally but professionaly like a mentor coach, critique me for my growth while referencing my transcript not my evaluation data. Don't use headers or "**" for titles, just correct me and reference my transcript. Use \n \n for line breaks between paragraphs and also start with an encouraging remark relevant to my presentation with my name.
 
             Evaluation data: {metrics_string}
             Transcript:
@@ -1047,25 +1082,27 @@ class SessionReportView(APIView):
         try:
             print("Calling OpenAI for summary generation...")
             completion = client.chat.completions.create(
-                model="gpt-4o",
+                model="gpt-4.1",
                 messages=[{"role": "user", "content": prompt}],
                 response_format={
                     "type": "json_schema",
                     "json_schema": {
                         "name": "Feedback",
+                        "strict": True,
                         "schema": {
                             "type": "object",
                             "properties": {
-                                "Strength": {"type": "string"},
-                                "Area of Improvement": {"type": "string"},
+                                "Strength": {"type": "array","items": {"type": "string"}},
+                                "Area of Improvement": {"type": "array","items": {"type": "string"}},
                                 "General Feedback Summary": {"type": "string"},
                             },
                             "required": ["Strength", "Area of Improvement", "General Feedback Summary"],
+                        "additionalProperties": False
                         }
                     }
                 },
-                temperature=0.7,  # Adjust temperature as needed
-                max_tokens=2400  # Limit tokens to control response length
+                temperature=0.8,  # Adjust temperature as needed
+                max_tokens=2600  # Limit tokens to control response length
             )
             print(f"prompt: {prompt}")
 
@@ -1080,21 +1117,22 @@ class SessionReportView(APIView):
             print(f"Faulty JSON content: {refined_summary}")
             # Fallback in case of JSON decoding error
             return {
-                "Strength": "N/A - Error generating detailed summary.",
-                "Area of Improvement": "N/A - Error generating detailed summary.",
+                "Strength": f"N/A - Error generating detailed summary.{e}",
+                "Area of Improvement": f"N/A - Error generating detailed summary.{e}",
                 "General Feedback Summary": f"Error processing AI summary. Raw feedback: {combined_feedback}",
             }
         except Exception as e:
             print(f"Error generating summary with OpenAI: {e}")
             # Fallback in case of any other OpenAI error
             return {
-                "Strength": "N/A - Error generating detailed summary.",
-                "Area of Improvement": "N/A - Error generating detailed summary.",
+                "Strength": f"N/A - Error generating detailed summary.{e}",
+                "Area of Improvement": f"N/A - Error generating detailed summary.{e}",
                 "General Feedback Summary": f"Error processing AI summary. Raw feedback: {combined_feedback}",
             }
 
     def get(self, request, session_id):
         try:
+            user = request.user
             session = PracticeSession.objects.get(id=session_id, user=request.user)
             session_serializer = PracticeSessionSerializer(session)
 
@@ -1104,6 +1142,8 @@ class SessionReportView(APIView):
             )
 
             performance_analytics_over_time = []
+            company = user.user_profile.company
+            print(company)
 
             for chunk in latest_session_chunk:
                 performance_analytics_over_time.append({
@@ -1117,6 +1157,7 @@ class SessionReportView(APIView):
 
             # Combine both sets of data in the response
             response_data = session_serializer.data
+            response_data['company'] = company
             response_data["performance_analytics"] = performance_analytics_over_time
 
             return Response(response_data, status=status.HTTP_200_OK)
@@ -1136,6 +1177,9 @@ class SessionReportView(APIView):
         print(f"Starting report generation and summary for session ID: {session_id}")
         duration_seconds = request.data.get("duration")
         slide_specific_seconds = request.data.get("slide_specific_timing")
+        user = request.user
+        company = user.user_profile.company
+        print(company)
         try:
             session = get_object_or_404(PracticeSession, id=session_id, user=request.user)
             print(f"Session found: {session.session_name}")
@@ -1182,6 +1226,7 @@ class SessionReportView(APIView):
                 return Response({
                     "session_id": session.id,
                     "session_name": session.session_name,
+                    "company":company,
                     "duration": str(session.duration) if session.duration else None,
                     "aggregated_scores": {},  # Empty or default values
                     "derived_scores": {},  # Empty or default values
@@ -1259,7 +1304,7 @@ class SessionReportView(APIView):
             total_true_gestures = get_agg_value("total_true_gestures", 0)
             total_chunks_for_aggregation = get_agg_value("total_chunks_for_aggregation", 0)
             gestures_proportion = (
-                    total_true_gestures / total_chunks_for_aggregation) if total_chunks_for_aggregation > 0 else 0.0
+                    (3*total_true_gestures) / total_chunks_for_aggregation) if total_chunks_for_aggregation > 0 else 0.0
 
             transformative_potential = get_agg_value("avg_transformative_potential", 0.0)
 
@@ -1343,6 +1388,7 @@ class SessionReportView(APIView):
             report_response_data = {
                 "session_id": session.id,
                 "session_name": session.session_name,
+                "company": company,
                 "duration": str(session.duration) if session.duration else None,
                 "slide_specific_timing": session.slide_specific_timing if session.slide_specific_timing else {},
                 "aggregated_scores": {
@@ -1479,6 +1525,14 @@ class SequenceListView(APIView):
         sequences = PracticeSequence.objects.filter(user=request.user)
         sequence_serializer = PracticeSequenceSerializer(sequences, many=True)
         return Response({"sequences": sequence_serializer.data})
+
+    def post(self, request):
+        serializer = PracticeSessionSerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(data=serializer.data, status=status.HTTP_200_OK)
+        return Response(status=status.HTTP_404_NOT_FOUND)
+
 
 
 class SessionList(APIView):
@@ -1659,7 +1713,9 @@ class ImproveExistingSequence(APIView):
                         {
                             "name": session.session_name,  # assuming your PracticeSession has a 'name' field
                             "date": session.created_at,
-                            "duration": self.format_timedelta(session.duration)  # assuming you store session duration
+                            "duration": self.format_timedelta(session.duration), # assuming you store session duration
+                            "virtual_environment":session.virtual_environment,
+                            "session_type":session.session_type
                         }
                         for session in sequence.sessions.all()
                     ]

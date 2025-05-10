@@ -16,11 +16,12 @@ from .views import (
     ImproveExistingSequence,
     ImproveNewSequence,
     SlidePreviewView,
-    TestCsrfExemptView
+    PracticeSequenceViewSet,
 )
 
 router = DefaultRouter()
 router.register(r"sessions", PracticeSessionViewSet, basename="practice-session")
+router.register(r"sequence", PracticeSequenceViewSet, basename="practice-sequence")
 
 router.register(
     r"session_chunks", SessionChunkViewSet, basename="session-chunk"
@@ -51,7 +52,7 @@ urlpatterns = [
         PerformanceAnalyticsView.as_view(),
         name="performance-analytics",
     ),
-    path("sequences/", SequenceListView.as_view(), name="sequence-list"),
+    # path("sequences/", SequenceListView.as_view(), name="sequence-list"),
     path("compare-sequences/<str:sequence_id>/", PerformanceMetricsComparison.as_view(), name="compare-sequences"),
 
     path(
@@ -72,8 +73,8 @@ urlpatterns = [
     path("improve-existing-sequence/", ImproveExistingSequence.as_view(), name="improve-existing-sequence"),
 
     path("improve-new-sequence/<str:session_id>/", ImproveNewSequence.as_view(), name="improve-new-sequence"),
-    path("improve-new-sequence/", ImproveNewSequence.as_view(), name="sessionlistwithoutsequence"),
+    # path("improve-new-sequence/", ImproveNewSequence.as_view(), name="sessionlistwithoutsequence"),
+
     path("api/openai/realtime-token/", get_openai_realtime_token),
     path("slide_preview_upload/", SlidePreviewView.as_view(), name="slide_preview"),
-    path('test-csrf-exempt-delete/', TestCsrfExemptView.as_view()),
 ]
