@@ -40,6 +40,7 @@ from drf_yasg.utils import swagger_auto_schema
 from collections import defaultdict
 from botocore.exceptions import NoCredentialsError, PartialCredentialsError, ClientError
 from urllib.parse import urlparse # Added for S3 URL parsing
+from asgiref.sync import async_to_sync
 
 # For async DB operations within an async view
 from channels.db import database_sync_to_async
@@ -394,48 +395,30 @@ class PracticeSequenceViewSet(viewsets.ModelViewSet):
 #         serializer.save(user=self.request.user)
 
 
-@method_decorator(csrf_exempt, name='dispatch')
-class TestCsrfExemptView(APIView):
-    permission_classes = [] # No auth needed for this test
-
-    def delete(self, request, *args, **kwargs):
-        print(f"TestCsrfExemptView: DELETE received.")
-        return Response({"message": "CSRF Exempt Test DELETE successful."}, status=status.HTTP_200_OK)
-
-
-@method_decorator(csrf_exempt, name='dispatch')
 class PracticeSessionViewSet(viewsets.ModelViewSet):
     serializer_class = PracticeSessionSerializer
     permission_classes = [IsAuthenticated]
 
-    @classmethod
-    def as_view(cls, actions=None, **initkwargs):
-        view = super().as_view(actions=actions, **initkwargs)
-        async def async_view(request, *args, **kwargs):
-            return await view(request._request, *args, **kwargs)
-        return async_view
+    # Removed async def dispatch and csrf_exempt (as per previous advice if CsrfViewMiddleware is off)
 
     def get_queryset(self):
         user = self.request.user
-
         if getattr(self, "swagger_fake_view", False) or user.is_anonymous:
-            return (
-                PracticeSession.objects.none()
-            )
-
+            return PracticeSession.objects.none()
         if hasattr(user, "user_profile") and user.user_profile.is_admin():
             return PracticeSession.objects.all().order_by("-date")
-
         return PracticeSession.objects.filter(user=user).order_by("-date")
 
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
 
     @action(detail=True, methods=['delete'], url_path='delete-session-media', permission_classes=[IsAuthenticated])
-    async def delete_session_media(self, request, pk=None):
+    def delete_session_media(self, request, pk=None): # This method is now strictly synchronous
         try:
-            session = await database_sync_to_async(self.get_object)()
+            # Correct usage: Use async_to_sync to run the coroutine returned by database_sync_to_async
+            session = async_to_sync(database_sync_to_async(self.get_object))()
 
+            # Now 'session' is the actual PracticeSession object, not a coroutine
             if session.user != request.user and not (hasattr(request.user, 'user_profile') and request.user.user_profile.is_admin()):
                 raise PermissionDenied("You do not have permission to delete media for this session.")
 
@@ -450,14 +433,15 @@ class PracticeSessionViewSet(viewsets.ModelViewSet):
                     parsed_url = urlparse(session.compiled_video_url)
                     key_path = parsed_url.path.lstrip('/')
                     if parsed_url.netloc.startswith(s3_bucket_name) and key_path.startswith(s3_user_content_base_folder):
-                         s3_keys_to_delete.append(key_path)
-                         print(f"Added compiled video key for deletion: {key_path}")
+                        s3_keys_to_delete.append(key_path)
+                        print(f"Added compiled video key for deletion: {key_path}")
                     else:
                         print(f"WARNING: Compiled video URL {session.compiled_video_url} not in expected S3 bucket/folder, skipping S3 delete for this URL.")
                 except Exception as e:
                     print(f"Error parsing compiled_video_url {session.compiled_video_url}: {e}")
 
-            chunks = await database_sync_to_async(list)(session.chunks.all())
+            # Correct usage: Use async_to_sync to run the coroutine
+            chunks = async_to_sync(database_sync_to_async(list))(session.chunks.all())
             for chunk in chunks:
                 if chunk.video_file:
                     try:
@@ -475,8 +459,8 @@ class PracticeSessionViewSet(viewsets.ModelViewSet):
                 if settings.USE_S3:
                     slide_s3_key = session.slides_file.name
                     if slide_s3_key.startswith(f"{session.user.id}_slides") or slide_s3_key.startswith(f"slides/{session.user.id}_slides"):
-                         s3_keys_to_delete.append(slide_s3_key)
-                         print(f"Added slides file key for deletion: {slide_s3_key}")
+                        s3_keys_to_delete.append(slide_s3_key)
+                        print(f"Added slides file key for deletion: {slide_s3_key}")
                     else:
                         print(f"WARNING: Slides file {slide_s3_key} not in expected S3 user path, skipping S3 delete for slides.")
                 else:
@@ -496,7 +480,8 @@ class PracticeSessionViewSet(viewsets.ModelViewSet):
             else:
                 print(f"No S3 objects found to delete for session {session.id}.")
 
-            await database_sync_to_async(self._clear_session_media_urls)(session, chunks)
+            # Correct usage: Use async_to_sync to run the coroutine
+            async_to_sync(database_sync_to_async(self._clear_session_media_urls))(session, chunks)
             print(f"Media URLs for session {session.id} cleared in database.")
 
             return Response({"message": "Session media files deleted from S3 and URLs cleared in database."}, status=status.HTTP_200_OK)
@@ -510,6 +495,7 @@ class PracticeSessionViewSet(viewsets.ModelViewSet):
             traceback.print_exc()
             return Response({"error": f"An internal server error occurred during media deletion: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+    # _delete_single_s3_object and _clear_session_media_urls methods remain synchronous as before
     def _delete_single_s3_object(self, s3_client, bucket_name, s3_key):
         try:
             s3_client.delete_object(Bucket=bucket_name, Key=s3_key)
