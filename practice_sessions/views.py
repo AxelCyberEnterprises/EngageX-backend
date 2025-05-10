@@ -8,6 +8,8 @@ import boto3
 import requests
 import asyncio
 from django.core.files import File
+import logging
+
 
 from rest_framework import viewsets, status
 from rest_framework.permissions import IsAuthenticated
@@ -19,6 +21,7 @@ from rest_framework.exceptions import PermissionDenied
 
 from django.utils.decorators import method_decorator
 from django.core.files.uploadedfile import UploadedFile
+from django.db.models.fields.files import FieldFile
 from django.db.models.functions import Round
 from django.conf import settings
 from django.db.models import (Count, Avg, Case, When, Value, CharField, Sum, IntegerField, Q,
@@ -63,7 +66,8 @@ from .serializers import (
 )
 
 User = get_user_model()
-
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
 # def generate_full_summary(self, session_id):
 #     """Creates a cohesive summary for Strengths, Improvements, and Feedback."""
@@ -151,8 +155,9 @@ Respond only with the emotion. (thinking, empathy, excitement, laughter, surpris
     return JsonResponse(response.json(), status=response.status_code)
 
 
-def generate_slide_summary(pdf_path):
-    print("🔍 Starting slide summary generation...")
+def generate_slide_summary(pdf_file):
+    logger.info(f"TYPE OF pdf_file: {type(pdf_file)}")
+    logger.info("🔍 Starting slide summary generation...")
 
     try:
         client = OpenAI(api_key=settings.OPENAI_API_KEY)
@@ -161,20 +166,14 @@ def generate_slide_summary(pdf_path):
         print(f"❌ Failed to initialize OpenAI client: {e}")
         raise
 
-    base64_pdf = None
-
     # STEP 2: Read and encode the PDF as Base64
     try:
-        if isinstance(pdf_path, (str, bytes, os.PathLike)):
-            print(f"📄 Reading PDF from file path: {pdf_path}")
-            with open(pdf_path, 'rb') as file:
-                pdf_bytes = file.read()
-        elif isinstance(pdf_path, UploadedFile):
-            print("📎 Reading PDF from uploaded file.")
-            pdf_bytes = pdf_path.read()
-            pdf_path.seek(0)
+        if hasattr(pdf_file, 'read'):
+            print("📎 Reading PDF from uploaded file-like object.")
+            pdf_file.seek(0)
+            pdf_bytes = pdf_file.read()
         else:
-            raise TypeError("Unsupported type for `pdf_path`")
+            raise TypeError("Expected a file-like object or UploadedFile.")
 
         base64_pdf = base64.b64encode(pdf_bytes).decode('utf-8')
         print("✅ PDF successfully encoded to Base64.")
@@ -235,7 +234,6 @@ def generate_slide_summary(pdf_path):
                             "VisualCommunication",
                         ],
                         "additionalProperties": False
-
                     }
                 }
             }
@@ -908,6 +906,7 @@ class UploadSessionSlidesView(APIView):
             print('---processing pdf----')
 
             with concurrent.futures.ThreadPoolExecutor() as executor:
+                print("DEBUG pdf_path:", slides_path, type(slides_path))
                 future = executor.submit(generate_slide_summary, slides_path)
                 result = future.result()
 
@@ -1040,9 +1039,9 @@ class SessionReportView(APIView):
 
             My goal with this presentation is: {goals}. Using my provided presentation evaluation data and speech, generate a structured JSON response with the following three components:
 
-            1. Strengths: Identify my most impactful specific strengths. Focus on concrete content choices, tone, delivery techniques, and audience engagement strategies. Use simple sentences.
+            1. Strengths: Identify my most impactful specific strengths. Focus on concrete content choices, tone, delivery techniques, and audience engagement strategies. Use simple sentences, do not include transcript quotes here.
 
-            2. Areas for Improvement: Provide clear, actionable, and specific feedback on where I can improve. Emphasize my delivery habits, missed emotional beats, and structural weaknesses. Use simple sentences.
+            2. Areas for Improvement: Provide clear, actionable, and specific feedback on where I can improve. Emphasize my delivery habits, missed emotional beats, and structural weaknesses. Use simple sentences, do not include transcript quotes here.
 
             3. General Feedback Summary: Craft a detailed, content-specific analysis of my presentation. Your summary must be grounded in specific parts of my speech. Include the following:
             - Evaluate the effectiveness of my opening: Was it attention-grabbing, relevant, or emotionally engaging? Did I clearly set the tone or premise for the rest of the talk?
@@ -1058,7 +1057,7 @@ class SessionReportView(APIView):
             - Reference my goal to {goals}
             - Provide an overall evaluation of how well I demonstrated mastery in storytelling, public speaking, or pitching. Include tailored suggestions for improvement based on the context and audience. Ground all observations in direct excerpts from the transcript. Quote exact sentences where possible.
 
-            Tone: speak to me personally but professionaly like a mentor coach, critique me for my growth while referencing my transcript not my evaluation data. Don't use headers or "**" for titles, just correct me and reference my transcript. Use \n \n for line breaks between paragraphs and also start with an encouraging remark relevant to my presentation with my name.
+            Tone: speak to me personally but professionaly like a mentor coach, critique me for my growth while referencing my transcript not my evaluation data. Don't use headers or "**" for titles, dont use hyphens or dashes '—' in your response, just correct me and reference my transcript. Use \n \n for line breaks between paragraphs and also start with an encouraging remark relevant to my presentation with my name.
 
             Evaluation data: {metrics_string}
             Transcript:
