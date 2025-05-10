@@ -397,5 +397,5 @@ STRIPE_PUBLISHABLE_KEY = os.environ.get("STRIPE_PUBLISHABLE_KEY")
 STRIPE_WEBHOOK_SECRET = os.environ.get("STRIPE_WEBHOOK_SECRET")
 
 # Frontend URLs for Stripe checkout
-STRIPE_SUCCESS_URL = "http://localhost:3000/success"  # Update with your actual success URL
-STRIPE_CANCEL_URL = "http://localhost:3000/cancel"    # Update with your actual cancel URL
+STRIPE_SUCCESS_URL = "https://main.d2wwdi7x8g70xe.amplifyapp.com/dashboard/user "  # Update with your actual success URL
+STRIPE_CANCEL_URL = "https://main.d2wwdi7x8g70xe.amplifyapp.com/dashboard/user"    # Update with your actual cancel URL
