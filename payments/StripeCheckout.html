@@ -1,0 +1,224 @@
+<!-- <!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <title>Stripe Checkout Test</title>
+    <link
+      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"
+      rel="stylesheet">
+    <style>
+      .stripe-checkout-container { max-width: 600px; margin: 2rem auto; }
+      .tier-card { border: 1px solid #ddd; border-radius: .5rem; padding: 1rem; margin-bottom: 1rem; }
+    </style>
+  </head>
+  
+  <body>
+    <div class="stripe-checkout-container">
+      <h2>Choose a Credit Package</h2>
+      <p>Select a package to purchase credits for your account</p>
+      <div id="alert-placeholder"></div>
+      <div id="loading">Loading payment options...</div>
+      <div id="tiers-container" class="tier-options"></div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    <script>
+      // Mirror your TIERS constant
+      const TIERS = {
+        tester:    { name: 'Tester',   description: '1 credit for testing',            priceId: 'price_1RfGhBPH9MsL890i9cF5VLWz', price: '$5'  },
+        starter:   { name: 'Starter',  description: '4 credits to get started',         priceId: 'price_1RfGiLPH9MsL890iJfBt5YEn', price: '$20' },
+        growth:    { name: 'Growth',   description: '6 credits for growth',              priceId: 'price_1RfGjFPH9MsL890iLpJA3Cpe', price: '$30' },
+        pro:       { name: 'Pro',      description: '8 credits for professionals',       priceId: 'price_1RfGkDPH9MsL890i8IhLnmOL', price: '$40' },
+        ultimate:  { name: 'Ultimate', description: '12 credits for power users',        priceId: 'price_1RfGl3PH9MsL890iKQJVQaO8', price: '$60' },
+      };
+
+      // Replace with the actual user email you want to test
+      const userEmail = 'jumanji@gmail.com';
+
+      const alertPlaceholder = document.getElementById('alert-placeholder');
+      const loadingEl        = document.getElementById('loading');
+      const tiersContainer   = document.getElementById('tiers-container');
+
+      function showError(message) {
+        alertPlaceholder.innerHTML = 
+          `<div class="alert alert-danger">${message}</div>`;
+      }
+
+      function clearError() {
+        alertPlaceholder.innerHTML = '';
+      }
+
+      function fetchConfig() {
+        axios.get('http://localhost:8000/payments/stripe/status/')
+        .then(res => {
+            loadingEl.style.display = 'none';
+            renderTiers(res.data.tiers || {});
+          })
+          .catch(err => {
+            loadingEl.style.display = 'none';
+            showError('Failed to load payment options. Please try again later.');
+            console.error(err);
+          });
+      }
+
+      function renderTiers(stripeTiersConfig) {
+        Object.keys(TIERS).forEach(key => {
+          const tier    = TIERS[key];
+          const credits = stripeTiersConfig[key]?.credits ?? 'N/A';
+          const card = document.createElement('div');
+          card.className = 'tier-card';
+          card.innerHTML = `
+            <h3>${tier.name}</h3>
+            <p>${tier.description}</p>
+            <p><strong>Credits:</strong> ${credits}</p>
+            <p><strong>Price:</strong> ${tier.price}</p>
+            <button class="btn btn-primary buy-btn" data-tier="${key}">
+              Buy Now (${tier.price})
+            </button>
+          `;
+          tiersContainer.appendChild(card);
+        });
+
+        // Attach handlers
+        document.querySelectorAll('.buy-btn').forEach(btn => {
+          btn.addEventListener('click', handleCheckout);
+        });
+      }
+
+      function handleCheckout(event) {
+        const tierKey = event.currentTarget.getAttribute('data-tier');
+        event.currentTarget.disabled = true;
+        event.currentTarget.textContent = 'Processing...';
+        clearError();
+
+        axios.post('http://localhost:8000/payments/checkout/', {
+          priceId: TIERS[tierKey].priceId,
+          email:   userEmail,
+          tier:    tierKey,
+        })
+        .then(res => {
+          window.location.href = res.data.url;
+        })
+        .catch(err => {
+          console.error(err);
+          showError(err.response?.data?.error || 'An error occurred during checkout');
+          event.currentTarget.disabled = false;
+          event.currentTarget.textContent = `Buy Now (${TIERS[tierKey].price})`;
+        });
+      }
+
+      // Start
+      fetchConfig();
+    </script>
+  </body>
+</html> -->
+
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Stripe Checkout Test</title>
+  <!-- Bootstrap CSS -->
+  <link
+    href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"
+    rel="stylesheet">
+  <style>
+    .stripe-checkout-container { max-width: 600px; margin: 2rem auto; }
+    .tier-card { border: 1px solid #ddd; border-radius: .5rem; padding: 1rem; margin-bottom: 1rem; }
+  </style>
+</head>
+<body>
+  <div class="stripe-checkout-container">
+    <h2>Choose a Credit Package</h2>
+    <p>Select a package to purchase credits for your account</p>
+    <div id="alert-placeholder"></div>
+    <div id="loading">Loading payment options...</div>
+    <div id="tiers-container" class="tier-options"></div>
+  </div>
+
+  <!-- Axios CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+  <script>
+    // Replace with test user email
+    const userEmail = 'adminuser@gmail.com';
+
+    const alertPlaceholder = document.getElementById('alert-placeholder');
+    const loadingEl        = document.getElementById('loading');
+    const tiersContainer   = document.getElementById('tiers-container');
+
+    function showError(message) {
+      alertPlaceholder.innerHTML = 
+        `<div class="alert alert-danger">${message}</div>`;
+    }
+
+    function clearError() {
+      alertPlaceholder.innerHTML = '';
+    }
+
+    function fetchConfig() {
+      axios.get('http://localhost:8000/payments/stripe/status/')
+        .then(res => {
+          loadingEl.style.display = 'none';
+          renderTiers(res.data.tiers || {});
+        })
+        .catch(err => {
+          loadingEl.style.display = 'none';
+          showError('Failed to load payment options. Please try again later.');
+          console.error(err);
+        });
+    }
+
+    function renderTiers(stripeTiersConfig) {
+      tiersContainer.innerHTML = ''; // clear existing
+      Object.keys(stripeTiersConfig).forEach(key => {
+        const tierConfig = stripeTiersConfig[key];
+        const card = document.createElement('div');
+        card.className = 'tier-card';
+        card.innerHTML = `
+          <h3>${key.charAt(0).toUpperCase() + key.slice(1)}</h3>
+          <p><strong>Credits:</strong> ${tierConfig.credits}</p>
+          <button 
+            class="btn btn-primary buy-btn" 
+            data-tier="${key}" 
+            data-price-id="${tierConfig.priceId}">
+            Buy Now
+          </button>
+        `;
+        tiersContainer.appendChild(card);
+      });
+
+      document.querySelectorAll('.buy-btn').forEach(btn => {
+        btn.addEventListener('click', handleCheckout);
+      });
+    }
+
+    function handleCheckout(e) {
+      const btn = e.currentTarget;
+      const tierKey = btn.dataset.tier;
+      const priceId = btn.dataset.priceId;
+      btn.disabled = true;
+      btn.textContent = 'Processing…';
+      clearError();
+
+      axios.post('http://localhost:8000/payments/checkout/', {
+        priceId,
+        email:   userEmail,
+        tier:    tierKey,
+      })
+      .then(res => {
+        window.location.href = res.data.url;
+      })
+      .catch(err => {
+        console.error(err);
+        showError(err.response?.data?.error || 'An error occurred during checkout');
+        btn.disabled = false;
+        btn.textContent = 'Buy Now';
+      });
+    }
+
+    // Initialize
+    fetchConfig();
+  </script>
+</body>
+</html>

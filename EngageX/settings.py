@@ -70,7 +70,7 @@ MIDDLEWARE = [
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": (
         "rest_framework.authentication.TokenAuthentication",
-        "rest_framework.authentication.SessionAuthentication",
+        # "rest_framework.authentication.SessionAuthentication",
     ),
     "DEFAULT_PERMISSION_CLASSES": ("rest_framework.permissions.IsAuthenticated",),
     "DEFAULT_PARSER_CLASSES": (
@@ -136,6 +136,7 @@ CORS_ALLOW_ALL_ORIGINS = True
 
 CSRF_TRUSTED_ORIGINS = [
     "https://api.engagexai.io",
+    "http://localhost:3000",
 ]
 
 EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
@@ -388,3 +389,13 @@ LOGGING = {
         "level": "INFO",
     },
 }
+
+
+# Stripe settings
+STRIPE_SECRET_KEY = os.environ.get("STRIPE_SECRET_KEY")
+STRIPE_PUBLISHABLE_KEY = os.environ.get("STRIPE_PUBLISHABLE_KEY")
+STRIPE_WEBHOOK_SECRET = os.environ.get("STRIPE_WEBHOOK_SECRET")
+
+# Frontend URLs for Stripe checkout
+STRIPE_SUCCESS_URL = "https://main.d2wwdi7x8g70xe.amplifyapp.com/dashboard/user "  # Update with your actual success URL
+STRIPE_CANCEL_URL = "https://main.d2wwdi7x8g70xe.amplifyapp.com/dashboard/user"    # Update with your actual cancel URL
