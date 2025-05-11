@@ -157,7 +157,7 @@
     }
 
     function fetchConfig() {
-      axios.get('https://api.engagexai.io/payments/stripe/status/')
+      axios.get('http://localhost:8000/payments/stripe/status/')
         .then(res => {
           loadingEl.style.display = 'none';
           renderTiers(res.data.tiers || {});
@@ -201,7 +201,7 @@
       btn.textContent = 'Processing…';
       clearError();
 
-      axios.post('https://api.engagexai.io/payments/checkout/', {
+      axios.post('http://localhost:8000/payments/checkout/', {
         priceId,
         email:   userEmail,
         tier:    tierKey,
