@@ -479,12 +479,17 @@ def capture_frames(video_path):
         False
     fps = cap.get(cv2.CAP_PROP_FPS)
 
+    frame_number = 0
+    frame_skip = 4  # <=== only process every 4th frame
+
     while cap.isOpened():
         ret, frame = cap.read()
         if not ret:
             break
-        if not frame_queue.full():
-            frame_queue.put(frame)
+        if frame_number % frame_skip == 0:
+            if not frame_queue.full():
+                frame_queue.put(frame)
+        frame_number += 1
 
     cap.release()
     stop_flag.set()  # signal other threads to stop
