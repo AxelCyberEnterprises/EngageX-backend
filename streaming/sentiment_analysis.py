@@ -3,7 +3,7 @@ import time
 import json
 import math as m
 import threading
-from queue import Queue, Empty
+from queue import Queue
 import numpy as np
 import pandas as pd
 import parselmouth
@@ -29,11 +29,7 @@ client = OpenAI(api_key=settings.OPENAI_API_KEY)
 
 # initialize Mediapipe Pose Detection
 mp_pose = mp.solutions.pose
-pose = mp_pose.Pose(
-    model_complexity=0,  # Lite
-    min_detection_confidence=0.3,
-    min_tracking_confidence=0.3
-)
+pose = mp_pose.Pose()
 
 # queues for thread communication
 frame_queue = Queue(maxsize=5)
@@ -364,8 +360,11 @@ def transcribe_audio(audio_file):
     except Exception as e:
         print(f"Exception: {e}")
 
+
+
 def find_distance(x1, y1, x2, y2):
-    return m.sqrt(((x2 - x1) ** 2) + ((y2 - y1) ** 2))
+    return np.sqrt(((x2 - x1) ** 2) + ((y2 - y1) ** 2))
+
 
 def find_angle(x1, y1, x2, y2):
     dx, dy = x2 - x1, y2 - y1
@@ -374,15 +373,16 @@ def find_angle(x1, y1, x2, y2):
     if norm_vector == 0:
         return 0.0
     cos_theta = max(min(dot / norm_vector, 1.0), -1.0)
-    return m.degrees(m.acos(cos_theta))
+    return np.degrees(np.arccos(cos_theta))
+
 
 def extract_posture_angles(landmarks, image_width, image_height):
     def to_pixel(landmark):
         return (int(landmark.x * image_width), int(landmark.y * image_height))
 
     visibility_threshold = 0.5
-    
-    # Shoulders, ears, hips
+
+    # Only keep flags for hand points and required joints
     left_shoulder = to_pixel(landmarks[mp_pose.PoseLandmark.LEFT_SHOULDER.value])
     right_shoulder = to_pixel(landmarks[mp_pose.PoseLandmark.RIGHT_SHOULDER.value])
     left_ear = to_pixel(landmarks[mp_pose.PoseLandmark.LEFT_EAR.value])
@@ -390,100 +390,120 @@ def extract_posture_angles(landmarks, image_width, image_height):
     left_hip = to_pixel(landmarks[mp_pose.PoseLandmark.LEFT_HIP.value])
     right_hip = to_pixel(landmarks[mp_pose.PoseLandmark.RIGHT_HIP.value])
 
-    # Hands
-    def present(landmark_idx):
-        return landmarks[landmark_idx].visibility > visibility_threshold
+    # Only for is_hand_present
+    hand_points = [
+        mp_pose.PoseLandmark.LEFT_WRIST.value,
+        mp_pose.PoseLandmark.RIGHT_WRIST.value,
+        mp_pose.PoseLandmark.LEFT_PINKY.value,
+        mp_pose.PoseLandmark.RIGHT_PINKY.value,
+        mp_pose.PoseLandmark.LEFT_INDEX.value,
+        mp_pose.PoseLandmark.RIGHT_INDEX.value,
+        mp_pose.PoseLandmark.LEFT_THUMB.value,
+        mp_pose.PoseLandmark.RIGHT_THUMB.value,
+    ]
+    hand_present = any(
+        getattr(landmarks[i], "visibility", 0) > visibility_threshold for i in hand_points
+    )
 
-    is_hand_present = any([
-        present(mp_pose.PoseLandmark.LEFT_WRIST.value),
-        present(mp_pose.PoseLandmark.RIGHT_WRIST.value),
-        present(mp_pose.PoseLandmark.LEFT_PINKY.value),
-        present(mp_pose.PoseLandmark.RIGHT_PINKY.value),
-        present(mp_pose.PoseLandmark.LEFT_INDEX.value),
-        present(mp_pose.PoseLandmark.RIGHT_INDEX.value),
-        present(mp_pose.PoseLandmark.LEFT_THUMB.value),
-        present(mp_pose.PoseLandmark.RIGHT_THUMB.value),
-    ])
-
-    # Midpoints
-    shoulder_mid = ((left_shoulder[0] + right_shoulder[0]) // 2, (left_shoulder[1] + right_shoulder[1]) // 2)
-    hip_mid = ((left_hip[0] + right_hip[0]) // 2, (left_hip[1] + right_hip[1]) // 2)
-    ear_mid = ((left_ear[0] + right_ear[0]) // 2, (left_ear[1] + right_ear[1]) // 2)
+    shoulder_mid = (
+        (left_shoulder[0] + right_shoulder[0]) // 2,
+        (left_shoulder[1] + right_shoulder[1]) // 2,
+    )
+    hip_mid = (
+        (left_hip[0] + right_hip[0]) // 2,
+        (left_hip[1] + right_hip[1]) // 2,
+    )
+    ear_mid = (
+        (left_ear[0] + right_ear[0]) // 2,
+        (left_ear[1] + right_ear[1]) // 2,
+    )
 
     neck_inclination = find_angle(ear_mid[0], ear_mid[1], shoulder_mid[0], shoulder_mid[1])
     back_inclination = find_angle(shoulder_mid[0], shoulder_mid[1], hip_mid[0], hip_mid[1])
 
-    return {
+    extracted_posture_angles = {
         "neck_inclination": neck_inclination,
         "back_inclination": back_inclination,
-        "is_hand_present": is_hand_present
+        "is_hand_present": hand_present,
     }
+    # print(f"\n extracted_posture_angles: {extracted_posture_angles} \n", flush=True)
+    return extracted_posture_angles
 
-def capture_frames(video_path, frame_skip=10, queue=None, stop=None):
+# --- VIDEO THREADS ---
+
+def capture_frames(video_path):
     cap = cv2.VideoCapture(video_path)
     if not cap.isOpened():
         print(f"Error: Could not open video file {video_path}")
-        return
+        return  # Was: False, but return nothing is idiomatic
+
     frame_number = 0
+    frame_skip = 10
+
     while cap.isOpened():
         ret, frame = cap.read()
         if not ret:
             break
         if frame_number % frame_skip == 0:
-            if not queue.full():
-                queue.put(frame)
+            if not frame_queue.full():
+                frame_queue.put(frame)
         frame_number += 1
+
     cap.release()
-    stop.set()
+    stop_flag.set()
 
 
-def process_frames(queue, stop, angles_list, is_hand_present_list, target_width=640, target_height=360):
-    while not stop.is_set() or not queue.empty():
-        if not queue.empty():
-            frame = queue.get()
-            # Downscale
-            frame_small = cv2.resize(frame, (target_width, target_height))
-            frame_rgb = cv2.cvtColor(frame_small, cv2.COLOR_BGR2RGB)
+def process_frames():
+    posture_threshold = 5
+
+    while not stop_flag.is_set() or not frame_queue.empty():
+        if not frame_queue.empty():
+            frame = frame_queue.get()
+            image_height, image_width, _ = frame.shape
+            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             results = pose.process(frame_rgb)
+
             if results.pose_landmarks:
-                angles = extract_posture_angles(
-                    results.pose_landmarks.landmark, target_width, target_height
-                )
-                angles_list["back"].append(angles['back_inclination'])
-                angles_list["neck"].append(angles['neck_inclination'])
-                is_hand_present_list.append(angles["is_hand_present"])
+                angles = extract_posture_angles(results.pose_landmarks.landmark, image_width, image_height)
+                with lock:
+                    results_data["back_angles"].append(angles["back_inclination"])
+                    results_data["neck_angles"].append(angles["neck_inclination"])
+                    results_data["is_hand_present"] = angles["is_hand_present"]
+
+                # Optionally display landmarks
+                # mp.solutions.drawing_utils.draw_landmarks(
+                #     frame, results.pose_landmarks, mp_pose.POSE_CONNECTIONS
+                # )
 
 
 def analyze_posture(video_path):
-    from threading import Event
+    start_time = time.time()
+    print(f"analyze_posture called with video_path: {video_path}", flush=True)
 
-    queue = Queue(maxsize=5)
-    stop = Event()
-    angles_list = {"neck": [], "back": []}
-    is_hand_present_list = []
+    with ThreadPoolExecutor(max_workers=3) as executor:
+        future_capture = executor.submit(capture_frames, video_path)
+        future_process = executor.submit(process_frames)
+        future_capture.result()
+        future_process.result()
 
-    capture_thread = threading.Thread(target=capture_frames, args=(video_path, 4, queue, stop))
-    process_thread = threading.Thread(target=process_frames, args=(queue, stop, angles_list, is_hand_present_list))
+    with lock:
+        mean_back = np.mean(results_data["back_angles"]) if results_data["back_angles"] else 0
+        range_back = np.max(results_data["back_angles"]) - np.min(results_data["back_angles"]) if results_data["back_angles"] else 0
+        mean_neck = np.mean(results_data["neck_angles"]) if results_data["neck_angles"] else 0
+        range_neck = np.max(results_data["neck_angles"]) - np.min(results_data["neck_angles"]) if results_data["neck_angles"] else 0
+        is_hand_present = results_data["is_hand_present"] if results_data["is_hand_present"] else 0
 
-    capture_thread.start()
-    process_thread.start()
+        elapsed_time = time.time() - start_time
+        print(f"\nElapsed time for posture: {elapsed_time:.2f} seconds")
 
-    capture_thread.join()
-    process_thread.join()
+        return {
+            "mean_back_inclination": mean_back,
+            "range_back_inclination": range_back,
+            "mean_neck_inclination": mean_neck,
+            "range_neck_inclination": range_neck,
+            "is_hand_present": is_hand_present,
+        }
 
-    mean_back = np.mean(angles_list["back"]) if angles_list["back"] else 0
-    range_back = np.ptp(angles_list["back"]) if angles_list["back"] else 0
-    mean_neck = np.mean(angles_list["neck"]) if angles_list["neck"] else 0
-    range_neck = np.ptp(angles_list["neck"]) if angles_list["neck"] else 0
-    is_hand_present = any(is_hand_present_list)
-
-    return {
-        "mean_back_inclination": mean_back,
-        "range_back_inclination": range_back,
-        "mean_neck_inclination": mean_neck,
-        "range_neck_inclination": range_neck,
-        "is_hand_present": is_hand_present
-    }
 # ---------------------- SENTIMENT ANALYSIS ----------------------
 
 def analyze_sentiment(transcript, metrics, posture_data):
