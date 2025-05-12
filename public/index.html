@@ -447,163 +447,157 @@
     }
 
 
-    async function triggerSessionReport() {
-        if (!sessionId) {
-            console.error("No session ID available to trigger report.");
-            document.getElementById("status").textContent = "Status: Cannot generate report, session not created.";
-            return;
-        }
+ async function triggerSessionReport() {
+    if (!sessionId) {
+        console.error("No session ID available to trigger report.");
+        document.getElementById("status").textContent = "Status: Cannot generate report, session not created.";
+        return;
+    }
 
-        document.getElementById("status").textContent = "Status: Generating report...";
-        console.log("Triggering session report generation.");
+    document.getElementById("status").textContent = "Status: Generating report...";
+    console.log("Triggering session report generation for Session ID:", sessionId);
 
-        // Calculate session duration
-        const endTime = new Date();
-        // Ensure startTime is set before calculating duration
-        const durationInSeconds = startTime ? Math.round((endTime - startTime) / 1000) : 0;
-        console.log("Calculated Session Duration (seconds):", durationInSeconds);
+    const endTime = new Date();
+    const durationInSeconds = startTime ? Math.round((endTime - startTime) / 1000) : 0;
+    console.log("Start Time:", startTime);
+    console.log("End Time:", endTime);
+    console.log("Calculated Session Duration (seconds):", durationInSeconds);
 
-               // Call the session report endpoint
-               try {
-                   const response = await fetch(`${API_BASE_URL}/sessions/sessions-report/${sessionId}/`, {
-                        method: 'POST',
-                        headers: {
-                             'Content-Type': 'application/json',
-                             'Authorization': `Token 21de7e46e6861f7671a8af3b9a2e74a84fdac780`
-                        },
-                        body: JSON.stringify({
-                             duration: durationInSeconds
-                        })
-                   });
+    try {
+        console.log("Sending POST request to session report endpoint...");
+        const response = await fetch(`${API_BASE_URL}/sessions/sessions-report/${sessionId}/`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Token 21de7e46e6861f7671a8af3b9a2e74a84fdac780`
+            },
+            body: JSON.stringify({
+                duration: durationInSeconds
+            })
+        });
 
-            if (!response.ok) {
-                const errorText = await response.text();
-                console.error('Failed to get session report:', response.status, errorText);
-                document.getElementById("status").textContent = `Status: Failed to get report (${response.status}).`;
-                // Display partial data or error message in report container
-                document.getElementById("reportContainer").style.display = "block";
-                document.getElementById("sessionInfo").innerHTML = `<h4>Session Details:</h4><p>Error loading report for Session ID: ${sessionId}</p><p>Status: ${response.status}</p><p>Error: ${errorText}</p>`;
-                document.getElementById("aggregatedScores").style.display = "none";
-                document.getElementById("derivedScores").style.display = "none";
-                document.getElementById("fullSummary").style.display = "none";
+        console.log("Response status:", response.status);
+        if (!response.ok) {
+            const errorText = await response.text();
+            console.error('❌ Failed to get session report:', response.status, errorText);
+            document.getElementById("status").textContent = `Status: Failed to get report (${response.status}).`;
 
-
-                return;
-            }
-
-            const reportData = await response.json();
-            console.log('Session Report Data:', reportData); // This log shows the correct structure
-
-            // Display the report data
             document.getElementById("reportContainer").style.display = "block";
-            document.getElementById("aggregatedScores").style.display = "block";
-            document.getElementById("derivedScores").style.display = "block";
-            document.getElementById("fullSummary").style.display = "block";
-
-
-            // Display session info
-            document.getElementById("reportSessionId").textContent = reportData.session_id;
-            document.getElementById("reportSessionName").textContent = reportData.session_name;
-            document.getElementById("reportDuration").textContent = reportData.duration || 'N/A'; // Display duration
-            document.getElementById("reportRoom").textContent = reportData.virtual_environment || 'N/A'; // Display virtual environment/room
-
-            // Display Aggregated Scores
-            const aggregatedScoresGrid = document.getElementById("aggregatedScoresGrid");
-            aggregatedScoresGrid.innerHTML = ''; // Clear previous content
-            // Ensure the expected keys match the reportData structure
-            const aggregatedKeys = {
-                volume: 'Volume',
-                pitch_variability: 'Pitch Variability',
-                pace: 'Pace',
-                pauses: 'Pauses',
-                conviction: 'Conviction',
-                clarity: 'Clarity',
-                impact: 'Impact',
-                brevity: 'Brevity',
-                trigger_response: 'Trigger Response',
-                filler_words: 'Filler Words',
-                grammar: 'Grammar',
-                posture: 'Posture',
-                motion: 'Motion',
-                // Note: 'gestures_percentage' is handled separately below
-            };
-
-            // *** FIX: Access scores from reportData.aggregated_scores ***
-            const receivedAggregatedScores = reportData.aggregated_scores || {}; // Handle case where aggregated_scores might be missing
-
-            for (const key in aggregatedKeys) {
-                if (receivedAggregatedScores[key] !== undefined) { // Check if key exists in the *received* object
-                    const displayKey = aggregatedKeys[key];
-                    const value = receivedAggregatedScores[key]; // Accessing from the received nested object
-                    const scoreItem = document.createElement('div');
-                    scoreItem.classList.add('score-item');
-                    scoreItem.innerHTML = `<strong>${displayKey}:</strong> ${value !== null ? value : 'N/A'}`;
-                    aggregatedScoresGrid.appendChild(scoreItem);
-                } else {
-                    console.warn(`Key "${key}" not found in received aggregated_scores for report display.`); // Updated warning message
-                }
-            }
-            // *** End FIX ***
-
-
-            // Display Derived Scores
-            const derivedScoresGrid = document.getElementById("derivedScoresGrid");
-            derivedScoresGrid.innerHTML = ''; // Clear previous content
-            const derivedKeys = {
-                audience_engagement: 'Audience Engagement',
-                overall_captured_impact: 'Overall Captured Impact',
-                vocal_variety: 'Vocal Variety',
-                emotional_impact: 'Emotional Impact',
-                body_language: 'Body Language',
-                transformative_communication: 'Transformative Communication',
-                structure_and_clarity: 'Structure and Clarity',
-                language_and_word_choice: 'Language and Word Choice',
-            };
-
-            // *** FIX: Access scores from reportData.derived_scores ***
-            const receivedDerivedScores = reportData.derived_scores || {}; // Handle case where derived_scores might be missing
-
-            for (const key in derivedKeys) {
-                if (receivedDerivedScores[key] !== undefined) { // Check if key exists in the *received* object
-                    const displayKey = derivedKeys[key];
-                    const value = receivedDerivedScores[key]; // Accessing from the received nested object
-                    const scoreItem = document.createElement('div');
-                    scoreItem.classList.add('score-item');
-                    scoreItem.innerHTML = `<strong>${displayKey}:</strong> ${value !== null ? value : 'N/A'}`;
-                    derivedScoresGrid.appendChild(scoreItem);
-                } else {
-                    console.warn(`Key "${key}" not found in received derived_scores for report display.`); // Updated warning message
-                }
-            }
-            // *** End FIX ***
-
-
-            // Display Full Summary
-            const fullSummary = reportData.full_summary || {}; // Handle case where full_summary might be null/missing
-            document.getElementById("summaryStrength").innerHTML = 
-            (fullSummary["Strength"] || []).map(item => `• ${item}`).join("<br>");
-
-            document.getElementById("summaryImprovement").innerHTML = 
-            (fullSummary["Area of Improvement"] || []).map(item => `• ${item}`).join("<br>");
-            document.getElementById("summaryGeneral").textContent = fullSummary["General Feedback Summary"] || 'N/A'; // Access with [] due to space
-            // Access gestures_percentage directly from reportData
-            const gesturesPercentage = reportData.gestures_percentage !== undefined && reportData.gestures_percentage !== null ? reportData.gestures_percentage : 'N/A';
-            document.getElementById("summaryGestures").textContent = `${gesturesPercentage}%`; // Display percentage, handle missing key/null value
-
-
-            document.getElementById("status").textContent = "Status: Report generated successfully.";
-
-        } catch (error) {
-            console.error('Error getting session report:', error);
-            document.getElementById("status").textContent = "Status: Error generating report.";
-            // Display error message in report container
-            document.getElementById("reportContainer").style.display = "block";
-            document.getElementById("sessionInfo").innerHTML = `<h4>Session Details:</h4><p>An unexpected error occurred while generating the report.</p><p>Error: ${error.message}</p>`;
+            document.getElementById("sessionInfo").innerHTML = `
+                <h4>Session Details:</h4>
+                <p>Error loading report for Session ID: ${sessionId}</p>
+                <p>Status: ${response.status}</p>
+                <p>Error: ${errorText}</p>`;
             document.getElementById("aggregatedScores").style.display = "none";
             document.getElementById("derivedScores").style.display = "none";
             document.getElementById("fullSummary").style.display = "none";
+            return;
         }
+
+        const reportData = await response.json();
+        console.log('✅ Successfully fetched Session Report Data:', reportData);
+
+        document.getElementById("reportContainer").style.display = "block";
+        document.getElementById("aggregatedScores").style.display = "block";
+        document.getElementById("derivedScores").style.display = "block";
+        document.getElementById("fullSummary").style.display = "block";
+
+        // --- Session Info Display ---
+        document.getElementById("reportSessionId").textContent = reportData.session_id || 'N/A';
+        document.getElementById("reportSessionName").textContent = reportData.session_name || 'N/A';
+        document.getElementById("reportDuration").textContent = reportData.duration || 'N/A';
+        document.getElementById("reportRoom").textContent = reportData.virtual_environment || 'N/A';
+
+        // --- Aggregated Scores ---
+        const aggregatedScoresGrid = document.getElementById("aggregatedScoresGrid");
+        aggregatedScoresGrid.innerHTML = '';
+        const aggregatedKeys = {
+            volume: 'Volume',
+            pitch_variability: 'Pitch Variability',
+            pace: 'Pace',
+            pauses: 'Pauses',
+            conviction: 'Conviction',
+            clarity: 'Clarity',
+            impact: 'Impact',
+            brevity: 'Brevity',
+            trigger_response: 'Trigger Response',
+            filler_words: 'Filler Words',
+            grammar: 'Grammar',
+            posture: 'Posture',
+            motion: 'Motion',
+        };
+        const receivedAggregatedScores = reportData.aggregated_scores || {};
+        console.log("Aggregated Scores:", receivedAggregatedScores);
+
+        for (const key in aggregatedKeys) {
+            if (receivedAggregatedScores[key] !== undefined) {
+                const scoreItem = document.createElement('div');
+                scoreItem.classList.add('score-item');
+                scoreItem.innerHTML = `<strong>${aggregatedKeys[key]}:</strong> ${receivedAggregatedScores[key]}`;
+                aggregatedScoresGrid.appendChild(scoreItem);
+            } else {
+                console.warn(`⚠️ Missing aggregated key: "${key}" in report data.`);
+            }
+        }
+
+        // --- Derived Scores ---
+        const derivedScoresGrid = document.getElementById("derivedScoresGrid");
+        derivedScoresGrid.innerHTML = '';
+        const derivedKeys = {
+            audience_engagement: 'Audience Engagement',
+            overall_captured_impact: 'Overall Captured Impact',
+            vocal_variety: 'Vocal Variety',
+            emotional_impact: 'Emotional Impact',
+            body_language: 'Body Language',
+            transformative_communication: 'Transformative Communication',
+            structure_and_clarity: 'Structure and Clarity',
+            language_and_word_choice: 'Language and Word Choice',
+        };
+        const receivedDerivedScores = reportData.derived_scores || {};
+        console.log("Derived Scores:", receivedDerivedScores);
+
+        for (const key in derivedKeys) {
+            if (receivedDerivedScores[key] !== undefined) {
+                const scoreItem = document.createElement('div');
+                scoreItem.classList.add('score-item');
+                scoreItem.innerHTML = `<strong>${derivedKeys[key]}:</strong> ${receivedDerivedScores[key]}`;
+                derivedScoresGrid.appendChild(scoreItem);
+            } else {
+                console.warn(`⚠️ Missing derived key: "${key}" in report data.`);
+            }
+        }
+
+        // --- Full Summary ---
+        const fullSummary = reportData.full_summary || {};
+        console.log("Full Summary:", fullSummary);
+
+        document.getElementById("summaryStrength").innerHTML = 
+            (fullSummary["Strength"] || []).map(item => `• ${item}`).join("<br>");
+
+        document.getElementById("summaryImprovement").innerHTML = 
+            (fullSummary["Area of Improvement"] || []).map(item => `• ${item}`).join("<br>");
+
+        document.getElementById("summaryGeneral").textContent = fullSummary["General Feedback Summary"] || 'N/A';
+
+        const gesturesPercentage = reportData.gestures_percentage != null ? reportData.gestures_percentage : 'N/A';
+        document.getElementById("summaryGestures").textContent = `${gesturesPercentage}%`;
+
+        document.getElementById("status").textContent = "Status: Report generated successfully.";
+
+    } catch (error) {
+        console.error('❌ Exception during session report generation:', error);
+        document.getElementById("status").textContent = "Status: Error generating report.";
+
+        document.getElementById("reportContainer").style.display = "block";
+        document.getElementById("sessionInfo").innerHTML = `
+            <h4>Session Details:</h4>
+            <p>An unexpected error occurred while generating the report.</p>
+            <p>Error: ${error.message}</p>`;
+        document.getElementById("aggregatedScores").style.display = "none";
+        document.getElementById("derivedScores").style.display = "none";
+        document.getElementById("fullSummary").style.display = "none";
     }
+}
 
 
     document.getElementById("stopBtn").addEventListener("click", () => {
