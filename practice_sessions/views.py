@@ -1029,8 +1029,6 @@ class SessionReportView(APIView):
                 "General Feedback Summary": "No feedback was generated for the chunks in this session.",
             }
 
-        if goals == '':
-            goals = 'to have an impact'
 
         # My name is .
         prompt = f"""
@@ -1054,7 +1052,7 @@ class SessionReportView(APIView):
             - Evaluate the structure and flow of my talk. Were transitions smooth? Did I build toward a clear message or emotional climax? Point to exact sentences where this occurred.
             - Clearly state whether my talk was effective — and if so, effective at what specifically (e.g., persuading the audience, building trust, sparking interest).
             - If "AUDIENCE QUESTION" is in my transcript, evaluate how I answered the audience questions. If no "AUDIENCE QUESTION" is in my transcript dont mention anything about questions
-            - Reference my goal to {goals}
+            - Reference my goal to {goals}. If I have no goals dont mention anything about goals.
             - Provide an overall evaluation of how well I demonstrated mastery in storytelling, public speaking, or pitching. Include tailored suggestions for improvement based on the context and audience. Ground all observations in direct excerpts from the transcript. Quote exact sentences where possible.
 
             Tone: speak to me personally but professionaly like a mentor coach, critique me for my growth while referencing my transcript not my evaluation data. Don't use headers or "**" for titles, dont use hyphens or dashes '—' in your response, just correct me and reference my transcript. Use \n \n for line breaks between paragraphs and also start with an encouraging remark relevant to my presentation with my name.
@@ -1290,6 +1288,7 @@ class SessionReportView(APIView):
             total_chunks_for_aggregation = get_agg_value("total_chunks_for_aggregation", 0)
             gestures_proportion = (
                     (3*total_true_gestures) / total_chunks_for_aggregation) if total_chunks_for_aggregation > 0 else 0.0
+            gestures_proportion = min(gestures_proportion, 0.95)
 
             transformative_potential = get_agg_value("avg_transformative_potential", 0.0)
 
