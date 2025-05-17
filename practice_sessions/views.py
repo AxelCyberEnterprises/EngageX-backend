@@ -1444,7 +1444,7 @@ class PerformanceAnalyticsView(APIView):
             speaking_time=Sum("duration"),
             total_session=Count("id"),
             impact=Avg("impact"),
-            vocal_variety=Avg("vocal_variety"),
+            structure_and_clarity=Avg("structure_and_clarity"),
         )
         # Convert timedelta to HH:MM:SS
         if card_data["speaking_time"]:
@@ -1478,19 +1478,19 @@ class PerformanceAnalyticsView(APIView):
             )
             .values("day")
             .annotate(
-                clarity=Sum("chunk__session__clarity"),
+                trigger_response=Sum("chunk__session__trigger_response"),
                 impact=Sum("chunk__session__impact"),
-                audience_engagement=Sum("chunk__session__audience_engagement"),
+                conviction=Sum("chunk__session__conviction"),
             )
             .order_by("day")
         )
 
         result = (
             {
-                "month": item["day"],
-                "clarity": item["clarity"] or 0,
+                "date": item["day"],
+                "trigger_response": item["trigger_response"] or 0,
                 "impact": item["impact"] or 0,
-                "audience_engagement": item["audience_engagement"] or 0,
+                "conviction": item["conviction"] or 0,
             }
             for item in graph_data
         )
