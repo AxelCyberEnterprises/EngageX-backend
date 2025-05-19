@@ -1424,24 +1424,42 @@ class SessionReportView(APIView):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
-
+import  math
 class PerformanceAnalyticsView(APIView):
     def get(self, request):
         user = request.user
         session = PracticeSession.objects.filter(user=user)
 
-        chunk = ChunkSentimentAnalysis.objects.select_related("chunk__session").all()
+        start_date = request.query_params.get("start_date")
+        end_date = request.query_params.get("end_date")
+        sort = request.query_params.get("sort")
+        sort_type = {"max-date":"-date",'min-date':"date",'max-impact':'-impact','min-impact':"impact",'max-duration':"-duration", 'min-duration':'duration'}
+
+        if start_date and end_date:
+            parsed_start = datetime.strptime(start_date, "%Y-%m-%d").date()
+            parsed_end = datetime.strptime(end_date, "%Y-%m-%d").date()
+
+            graph_session = PracticeSession.objects.filter(user=user, date__date__range=(parsed_start, parsed_end))
+        else:
+            graph_session = PracticeSession.objects.filter(user=user)
+
+        if sort and sort in sort_type.keys():
+            recent_session = PracticeSession.objects.filter(user=user).order_by(sort_type[sort])[:5]
+        else:
+            recent_session = PracticeSession.objects.filter(user=user).order_by("-date")[:5]
+
         card_data = session.aggregate(
             speaking_time=Sum("duration"),
             total_session=Count("id"),
-            impact=Avg("impact"),
-            structure_and_clarity=Avg("structure_and_clarity"),
+            impact=Round(Avg("impact")),
+            transformative_communication=Round(Avg("transformative_communication"))
         )
         # Convert timedelta to HH:MM:SS
         if card_data["speaking_time"]:
             card_data["speaking_time"] = str(card_data["speaking_time"])
+
         recent_data = (
-            session.annotate(
+            recent_session.annotate(
                 session_type_display=Case(
                     When(session_type="pitch", then=Value("Pitch Practice")),
                     When(session_type="public", then=Value("Public Speaking")),
@@ -1450,7 +1468,6 @@ class PerformanceAnalyticsView(APIView):
                 ),
                 formatted_duration=Cast("duration", output_field=CharField()),
             )
-            .order_by("-date")[:5]
             .values(
                 "id",
                 "session_name",
@@ -1460,19 +1477,13 @@ class PerformanceAnalyticsView(APIView):
                 "impact",
             )
         )
+
         graph_data = (
-            ChunkSentimentAnalysis.objects.select_related("chunk__session")
-            .all()
+            graph_session
             .annotate(
-                # month=TruncMonth("chunk__session__date"),
-                day=TruncDay("chunk__session__date"),
+                day=TruncDay("date"),
             )
-            .values("day")
-            .annotate(
-                trigger_response=Sum("chunk__session__trigger_response"),
-                impact=Sum("chunk__session__impact"),
-                conviction=Sum("chunk__session__conviction"),
-            )
+            .values("day", "trigger_response","impact","conviction")
             .order_by("day")
         )
 
