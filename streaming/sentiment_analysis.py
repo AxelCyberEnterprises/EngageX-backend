@@ -746,11 +746,19 @@ def analyze_results(transcript_text, video_path, audio_path_for_metrics):
     print(f"video_path: {video_path}, audio_path_for_metrics: {audio_path_for_metrics}", flush=True)
 
     try:
-        with ThreadPoolExecutor() as executor:
-            future_analyze_posture = executor.submit(analyze_posture, video_path=video_path)
+        # with ThreadPoolExecutor() as executor:
+        #     future_analyze_posture = executor.submit(analyze_posture, video_path=video_path)
 
-        posture_data = future_analyze_posture.result()
-        print(f"posture_data: {posture_data}", flush=True)
+        # posture_data = future_analyze_posture.result()
+        # print(f"posture_data: {posture_data}", flush=True)
+
+        posture_data = {
+            "mean_back_inclination": 0,
+            "range_back_inclination": 0,
+            "mean_neck_inclination": 0,
+            "range_neck_inclination": 0,
+            "is_hand_present": False,
+        }
 
         metrics = process_audio(audio_path_for_metrics, transcript_text)  # Use the audio path for metrics calculation
         print(f"process audio metrics: {metrics}", flush=True)

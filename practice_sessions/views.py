@@ -33,6 +33,7 @@ from django.contrib.auth import get_user_model
 from django.db.models.functions import Cast, TruncMonth, TruncDay
 from django.views.decorators.csrf import csrf_exempt
 from django.http import JsonResponse
+from django.db.models import F, FloatField
 
 from requests import session
 from datetime import timedelta
@@ -279,6 +280,16 @@ import subprocess
 import platform
 import time
 
+def avg_top_scores(queryset, field, top_n=5):
+    top_scores = (
+        queryset
+        .exclude(**{f"sentiment_analysis__{field}__isnull": True})
+        .annotate(score=Cast(F(f"sentiment_analysis__{field}"), output_field=FloatField()))
+        .order_by('-score')[:top_n]
+        .values_list('score', flat=True)
+    )
+    values = list(top_scores)
+    return round(sum(values) / len(values)) if values else 0
 
 def get_soffice_path():
     system = platform.system()
@@ -1228,90 +1239,70 @@ class SessionReportView(APIView):
             )
             performance_analytics_over_time = []
 
-            for chunk in latest_session_chunk:
-                performance_analytics_over_time.append({
-                    "chunk_number": chunk.chunk_number if chunk.chunk_number is not None else 0,
-                    "start_time": chunk.chunk.start_time if chunk.chunk.start_time is not None else 0,
-                    "end_time": chunk.chunk.end_time if chunk.chunk.end_time is not None else 0,
-                    "impact": chunk.impact if chunk.impact is not None else 0,
-                    "trigger_response": chunk.trigger_response if chunk.trigger_response is not None else 0,
-                    "conviction": chunk.conviction if chunk.conviction is not None else 0,
-                })
-            print(performance_analytics_over_time)
+           # Calculate top 5 average values for specific metrics
+            avg_conviction = avg_top_scores(chunks_with_sentiment, 'conviction')
+            avg_trigger_response = avg_top_scores(chunks_with_sentiment, 'trigger_response')
+            avg_impact = avg_top_scores(chunks_with_sentiment, 'impact')
+            avg_transformative_potential = avg_top_scores(chunks_with_sentiment, 'transformative_potential')
+
+            # Original Aggregation (excluding the ones we override manually)
             aggregation_results = chunks_with_sentiment.aggregate(
-                # Aggregate individual metrics
                 avg_volume=Round(Avg("sentiment_analysis__volume"), output_field=IntegerField()),
                 avg_pitch_variability=Round(Avg("sentiment_analysis__pitch_variability"), output_field=IntegerField()),
                 avg_pace=Round(Avg("sentiment_analysis__pace"), output_field=IntegerField()),
-                avg_conviction=Round(Avg("sentiment_analysis__conviction"), output_field=IntegerField()),
                 avg_clarity=Round(Avg("sentiment_analysis__clarity"), output_field=IntegerField()),
-                avg_impact=Round(Avg("sentiment_analysis__impact"), output_field=IntegerField()),
                 avg_brevity=Round(Avg("sentiment_analysis__brevity"), output_field=IntegerField()),
-                avg_trigger_response=Round(Avg("sentiment_analysis__trigger_response"), output_field=IntegerField()),
                 avg_filler_words=Round(Avg("sentiment_analysis__filler_words"), output_field=IntegerField()),
                 avg_grammar=Round(Avg("sentiment_analysis__grammar"), output_field=IntegerField()),
                 avg_posture=Round(Avg("sentiment_analysis__posture"), output_field=IntegerField()),
                 avg_motion=Round(Avg("sentiment_analysis__motion"), output_field=IntegerField()),
                 avg_pauses=Round(Avg("sentiment_analysis__pauses"), output_field=IntegerField()),
                 total_true_gestures=Round(Sum(Cast('sentiment_analysis__gestures', output_field=IntegerField()))),
-                # Count the number of chunks considered for aggregation
-                total_chunks_for_aggregation=Count('sentiment_analysis__conviction'),
-                # Use Count on a non-nullable field
-                avg_transformative_potential=Round(Avg("sentiment_analysis__transformative_potential"),
-                                                   output_field=IntegerField()),
+                total_chunks_for_aggregation=Count('sentiment_analysis__clarity'),
             )
 
-            print(f"Raw aggregation results: {aggregation_results}")
-
-            # --- Calculate Derived Fields and Prepare Data for Saving/Response ---
-            # Use .get with a default value (0 or 0.0) and check for None explicitly
+            # Helper to safely fetch or default a value
             def get_agg_value(key, default):
                 value = aggregation_results.get(key, default)
                 return value if value is not None else default
 
+            # Use top 5 average values directly
+            conviction = avg_conviction
+            trigger_response = avg_trigger_response
+            impact = avg_impact
+            transformative_potential = avg_transformative_potential
+
+            # Pull the remaining values from aggregate results
             volume = get_agg_value("avg_volume", 0.0)
             pitch_variability = get_agg_value("avg_pitch_variability", 0.0)
             pace = get_agg_value("avg_pace", 0.0)
-            pauses_average = get_agg_value("avg_pauses", 0.0)  # <-- Get the average pauses (expected to be over 100)
-            conviction = get_agg_value("avg_conviction", 0.0)
+            pauses_average = get_agg_value("avg_pauses", 0.0)
             clarity = get_agg_value("avg_clarity", 0.0)
-            impact = get_agg_value("avg_impact", 0.0)
             brevity = get_agg_value("avg_brevity", 0.0)
-            trigger_response = get_agg_value("avg_trigger_response", 0.0)
             filler_words = get_agg_value("avg_filler_words", 0.0)
             grammar = get_agg_value("avg_grammar", 0.0)
             posture = get_agg_value("avg_posture", 0.0)
             motion = get_agg_value("avg_motion", 0.0)
 
-            # Calculate gestures proportion manually after fetching sum and count
+            # Gesture calculations
             total_true_gestures = get_agg_value("total_true_gestures", 0)
             total_chunks_for_aggregation = get_agg_value("total_chunks_for_aggregation", 0)
-            gestures_proportion = (
-                    (3*total_true_gestures) / total_chunks_for_aggregation) if total_chunks_for_aggregation > 0 else 0.0
+            gestures_proportion = (3 * total_true_gestures / total_chunks_for_aggregation) if total_chunks_for_aggregation > 0 else 0.0
             gestures_proportion = min(gestures_proportion, 0.95)
+            gestures_score_for_body_language = gestures_proportion * 100
 
-            transformative_potential = get_agg_value("avg_transformative_potential", 0.0)
-
-            # Calculate derived fields as per PracticeSession model help text and common interpretations
-            # Use helper function to avoid division by zero
+            # Derived scores
             def safe_division(numerator, denominator):
                 return (numerator / denominator) if denominator > 0 else 0.0
 
-            audience_engagement = safe_division((impact + trigger_response + conviction),
-                                                3.0)  # Use 3.0 for float division
-            overall_captured_impact = impact  # Same as impact
-            vocal_variety = safe_division((volume + pitch_variability + pace + pauses_average),
-                                          4.0)  # <-- Use the average here
-
-            emotional_impact = trigger_response  # Same as trigger response
-            # Body language score calculation - Example: simple average of posture, motion, and gestures (represented as 0 or 100)
-            gestures_score_for_body_language = gestures_proportion * 100
-            body_language = safe_division((posture + motion + gestures_score_for_body_language),
-                                          3.0)  # Use 3.0 for float division
-            transformative_communication = transformative_potential  # Same as transformative potential
-            structure_and_clarity = clarity  # Same as clarity
-            language_and_word_choice = safe_division((brevity + filler_words + grammar),
-                                                     3.0)  # Use 3.0 for float division
+            audience_engagement = safe_division((impact + trigger_response + conviction), 3.0)
+            overall_captured_impact = impact
+            vocal_variety = safe_division((volume + pitch_variability + pace + pauses_average), 4.0)
+            emotional_impact = trigger_response
+            body_language = safe_division((posture + motion + gestures_score_for_body_language), 3.0)
+            transformative_communication = transformative_potential
+            structure_and_clarity = clarity
+            language_and_word_choice = safe_division((brevity + filler_words + grammar), 3.0)
 
             # --- Save Calculated Data and Summary to PracticeSession ---
             print("Saving aggregated and summary data to PracticeSession...")
