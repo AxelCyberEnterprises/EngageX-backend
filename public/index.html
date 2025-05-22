@@ -144,8 +144,11 @@
     let isRecording = false;
     const CHUNK_DURATION = 7000; // 7 seconds per chunk
     // const API_BASE_URL = "https://api.engagexai.io"; // Adjust if needed
-    // const API_BASE_URL = "http://localhost:8000";
-    const API_BASE_URL = "http://engagex-1162743864.us-west-1.elb.amazonaws.com";
+    // const API_BASE_URL = "http://localhost:8000"; ""
+    const API_BASE_URL = "https://api-stream.engagexai.io";
+    // const API_BASE_URL = "http://engagex-streaming-lb-1bf25e63a288a392.elb.us-west-1.amazonaws.com:8000"
+    // const API_BASE_URL = "http://engagex-1162743864.us-west-1.elb.amazonaws.com";
+
       // Adjust if needed // !! REMEMBER TO CHANGE IF USING A DIFFERENT PORT !!
     let sessionId;
     let stream = null;
