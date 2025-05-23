@@ -138,9 +138,9 @@ def get_openai_realtime_token(request):
         "modalities": ["text"],  # Only return text, not audio
         "instructions": """You are an advanced presentation evaluation system. Using the speaker's transcript.
 
-Select one of these emotions that the audience is feeling most strongly ONLY choose from this list(thinking, empathy, excitement, laughter, surprise, interested).
+Select one of these emotions that the audience is feeling most strongly ONLY choose from this list(thinking, sorrow, excitement, laughter, surprise, interested).
 
-Respond only with the emotion. (thinking, empathy, excitement, laughter, surprise, interested)""",
+Respond only with the emotion. (thinking, sorrow, excitement, laughter, surprise, interested)""",
         "turn_detection": {
             "type": "server_vad",  # Use Server VAD
             "silence_duration_ms": 10  # 100ms silence threshold
