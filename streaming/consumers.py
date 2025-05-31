@@ -176,10 +176,10 @@ class LiveSessionConsumer(AsyncWebsocketConsumer):
         print(f"WS: Client disconnected for Session ID: {self.session_id}. Cleaning up...")
 
         # Trigger video compilation as a background task
-        if self.session_id:
-            print(f"WS: Triggering video compilation for session {self.session_id}")
-            # Use asyncio.create_task to run compilation in the background
-            asyncio.create_task(self.compile_session_video(self.session_id))
+        # if self.session_id:
+        #     print(f"WS: Triggering video compilation for session {self.session_id}")
+        #     # Use asyncio.create_task to run compilation in the background
+        #     asyncio.create_task(self.compile_session_video(self.session_id))
 
         # Attempt to wait for background chunk save tasks to finish gracefully
         print(f"WS: Waiting for {len(self.background_chunk_save_tasks)} pending background save tasks...")
