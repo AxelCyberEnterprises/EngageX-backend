@@ -9,6 +9,10 @@ import requests
 import asyncio
 from django.core.files import File
 import logging
+import tempfile
+import subprocess
+import platform
+import time
 
 
 from rest_framework import viewsets, status
@@ -34,6 +38,7 @@ from django.db.models.functions import Cast, TruncMonth, TruncDay
 from django.views.decorators.csrf import csrf_exempt
 from django.http import JsonResponse
 from django.db.models import F, FloatField
+from django.db.models import Min, Max, Count
 
 from requests import session
 from datetime import timedelta
@@ -45,6 +50,7 @@ from collections import defaultdict
 from botocore.exceptions import NoCredentialsError, PartialCredentialsError, ClientError
 from urllib.parse import urlparse # Added for S3 URL parsing
 from asgiref.sync import async_to_sync
+
 
 # For async DB operations within an async view
 from channels.db import database_sync_to_async
@@ -70,61 +76,6 @@ User = get_user_model()
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
-# def generate_full_summary(self, session_id):
-#     """Creates a cohesive summary for Strengths, Improvements, and Feedback."""
-#     client = OpenAI(api_key=settings.OPENAI_API_KEY)
-
-#     general_feedback_summary = ChunkSentimentAnalysis.objects.filter(
-#         chunk__session__id=session_id
-#     ).values_list("general_feedback_summary", flat=True)
-
-#     combined_feedback = " ".join([g for g in general_feedback_summary if g])
-
-#     # get strenghts and areas of improvements
-#     # grade content_organisation (0-100), from transcript
-
-#     prompt = f"""
-#         Using the following presentation evaluation data, provide a structured JSON response containing three key elements:
-
-#         1. **Strength**: Identify the speaker’s most notable strengths based on their delivery, clarity, and engagement.
-#         2. **Area of Improvement**: Provide actionable and specific recommendations for improving the speaker’s performance.
-#         3. **General Feedback Summary**: Summarize the presentation’s overall effectiveness, balancing positive feedback with constructive advice.
-
-#         Data to analyze:
-#         {combined_feedback}
-#         """
-
-#     try:
-#         completion = client.chat.completions.create(
-#             model="gpt-4o-mini",
-#             messages=[{"role": "user", "content": prompt}],
-#             response_format={
-#                 "type": "json_schema",
-#                 "json_schema": {
-#                     "name": "Feedback",
-#                     "schema": {
-#                         "type": "object",
-#                         "properties": {
-#                             "Strength": {"type": "string"},
-#                             "Area of Improvement": {"type": "string"},
-#                             "General Feedback Summary": {"type": "string"},
-#                         },
-#                     },
-#                 },
-#             },
-#         )
-
-#         refined_summary = completion.choices[0].message.content
-#         parsed_summary = json.loads(refined_summary)
-
-#     except Exception as e:
-#         print(f"Error generating summary: {e}")
-#         parsed_data = {
-#             "Strength": "N/A",
-#             "Area of Improvement": "N/A",
-#             "General Feedback Summary": combined_feedback,
-#         }
-#     return parsed_summary
 
 @csrf_exempt
 def get_openai_realtime_token(request):
@@ -257,6 +208,7 @@ def generate_slide_summary(pdf_file):
 
     return result
 
+
 def format_timedelta_12h(td):
     # Get the total seconds from the timedelta
     total_seconds = int(td.total_seconds())
@@ -275,11 +227,6 @@ def format_timedelta_12h(td):
     return f"{hours:02}:{minutes:02}:{seconds:02}"
 
 
-import tempfile
-import subprocess
-import platform
-import time
-
 def avg_top_scores(queryset, field, top_n=5):
     top_scores = (
         queryset
@@ -290,6 +237,7 @@ def avg_top_scores(queryset, field, top_n=5):
     )
     values = list(top_scores)
     return round(sum(values) / len(values)) if values else 0
+
 
 def get_soffice_path():
     system = platform.system()
@@ -375,33 +323,6 @@ class PracticeSequenceViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
-
-
-# class PracticeSessionViewSet(viewsets.ModelViewSet):
-#     """
-#     ViewSet for handling practice session history.
-#     Admin users see all sessions; regular users see only their own sessions.
-#     Includes a custom action 'report' to retrieve full session details.
-#     """
-
-#     serializer_class = PracticeSessionSerializer
-#     permission_classes = [IsAuthenticated]
-
-#     def get_queryset(self):
-#         user = self.request.user
-
-#         if getattr(self, "swagger_fake_view", False) or user.is_anonymous:
-#             return (
-#                 PracticeSession.objects.none()
-#             )  # Return empty queryset for schema generation or anonymous users
-
-#         if hasattr(user, "user_profile") and user.user_profile.is_admin():
-#             return PracticeSession.objects.all().order_by("-date")
-
-#         return PracticeSession.objects.filter(user=user).order_by("-date")
-
-#     def perform_create(self, serializer):
-#         serializer.save(user=self.request.user)
 
 
 class PracticeSessionViewSet(viewsets.ModelViewSet):
@@ -1424,7 +1345,7 @@ class SessionReportView(APIView):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
-import  math
+
 class PerformanceAnalyticsView(APIView):
     def get(self, request):
         user = request.user
@@ -1518,7 +1439,6 @@ class SequenceListView(APIView):
             serializer.save()
             return Response(data=serializer.data, status=status.HTTP_200_OK)
         return Response(status=status.HTTP_404_NOT_FOUND)
-
 
 
 class SessionList(APIView):
@@ -1650,9 +1570,6 @@ class ImproveNewSequence(APIView):
         session_serializer = PracticeSessionSerializer(sessions, many=True)
 
         return Response(session_serializer.data)
-
-
-from django.db.models import Min, Max, Count
 
 
 class ImproveExistingSequence(APIView):
