@@ -41,8 +41,7 @@ from django.db.models import F, FloatField
 from django.db.models import Min, Max, Count
 
 from requests import session
-from datetime import timedelta
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from collections import Counter
 from openai import OpenAI
 from drf_yasg.utils import swagger_auto_schema
@@ -54,6 +53,7 @@ from asgiref.sync import async_to_sync
 
 # For async DB operations within an async view
 from channels.db import database_sync_to_async
+from asgiref.sync import async_to_sync, sync_to_async # For async/sync bridging
 
 from .models import (
     PracticeSession,
@@ -71,6 +71,8 @@ from .serializers import (
     SessionReportSerializer,
     SlidePreviewSerializer
 )
+from streaming.sentiment_analysis import ai_audience_question # This import might need adjustment based on project structure
+
 
 User = get_user_model()
 logger = logging.getLogger(__name__)
@@ -325,110 +327,170 @@ class PracticeSequenceViewSet(viewsets.ModelViewSet):
         serializer.save(user=self.request.user)
 
 
+# class PracticeSessionViewSet(viewsets.ModelViewSet):
+#     serializer_class = PracticeSessionSerializer
+#     permission_classes = [IsAuthenticated]
+
+
+#     def get_queryset(self):
+#         user = self.request.user
+#         if getattr(self, "swagger_fake_view", False) or user.is_anonymous:
+#             return PracticeSession.objects.none()
+#         if hasattr(user, "user_profile") and user.user_profile.is_admin():
+#             return PracticeSession.objects.all().order_by("-date")
+#         return PracticeSession.objects.filter(user=user).order_by("-date")
+
+#     def perform_create(self, serializer):
+#         serializer.save(user=self.request.user)
+
+#     @action(detail=True, methods=['delete'], url_path='delete-session-media', permission_classes=[IsAuthenticated])
+#     def delete_session_media(self, request, pk=None): # This method is now strictly synchronous
+#         try:
+#             # Correct usage: Use async_to_sync to run the coroutine returned by database_sync_to_async
+#             session = async_to_sync(database_sync_to_async(self.get_object))()
+
+#             # Now 'session' is the actual PracticeSession object, not a coroutine
+#             if session.user != request.user and not (hasattr(request.user, 'user_profile') and request.user.user_profile.is_admin()):
+#                 raise PermissionDenied("You do not have permission to delete media for this session.")
+
+#             s3_client = boto3.client("s3", region_name=settings.AWS_S3_REGION_NAME)
+#             s3_bucket_name = settings.AWS_STORAGE_BUCKET_NAME
+#             s3_user_content_base_folder = "user-videos/"
+
+#             s3_keys_to_delete = []
+
+#             if session.compiled_video_url:
+#                 try:
+#                     parsed_url = urlparse(session.compiled_video_url)
+#                     key_path = parsed_url.path.lstrip('/')
+#                     if parsed_url.netloc.startswith(s3_bucket_name) and key_path.startswith(s3_user_content_base_folder):
+#                         s3_keys_to_delete.append(key_path)
+#                         print(f"Added compiled video key for deletion: {key_path}")
+#                     else:
+#                         print(f"WARNING: Compiled video URL {session.compiled_video_url} not in expected S3 bucket/folder, skipping S3 delete for this URL.")
+#                 except Exception as e:
+#                     print(f"Error parsing compiled_video_url {session.compiled_video_url}: {e}")
+
+#             # Correct usage: Use async_to_sync to run the coroutine
+#             chunks = async_to_sync(database_sync_to_async(list))(session.chunks.all())
+#             for chunk in chunks:
+#                 if chunk.video_file:
+#                     try:
+#                         parsed_url = urlparse(chunk.video_file)
+#                         key_path = parsed_url.path.lstrip('/')
+#                         if parsed_url.netloc.startswith(s3_bucket_name) and key_path.startswith(s3_user_content_base_folder):
+#                             s3_keys_to_delete.append(key_path)
+#                             print(f"Added chunk video key for deletion: {key_path}")
+#                         else:
+#                             print(f"WARNING: Chunk video URL {chunk.video_file} not in expected S3 bucket/folder, skipping S3 delete for this URL.")
+#                     except Exception as e:
+#                         print(f"Error parsing chunk video_file {chunk.video_file}: {e}")
+
+#             if session.slides_file and session.slides_file.name:
+#                 if settings.USE_S3:
+#                     slide_s3_key = session.slides_file.name
+#                     if slide_s3_key.startswith(f"{session.user.id}_slides") or slide_s3_key.startswith(f"slides/{session.user.id}_slides"):
+#                         s3_keys_to_delete.append(slide_s3_key)
+#                         print(f"Added slides file key for deletion: {slide_s3_key}")
+#                     else:
+#                         print(f"WARNING: Slides file {slide_s3_key} not in expected S3 user path, skipping S3 delete for slides.")
+#                 else:
+#                     print(f"Slides file {session.slides_file.name} is on local storage, skipping S3 delete.")
+
+#             if s3_keys_to_delete:
+#                 print(f"Attempting to delete {len(s3_keys_to_delete)} S3 objects for session {session.id}.")
+#                 with concurrent.futures.ThreadPoolExecutor() as executor:
+#                     futures = [executor.submit(self._delete_single_s3_object, s3_client, s3_bucket_name, s3_key) for s3_key in s3_keys_to_delete]
+#                     for future in concurrent.futures.as_completed(futures):
+#                         try:
+#                             future.result()
+#                         except Exception as s3_delete_error:
+#                             print(f"Error deleting S3 object in background: {s3_delete_error}")
+#                             traceback.print_exc()
+#                 print(f"Completed S3 deletion attempts for session {session.id}.")
+#             else:
+#                 print(f"No S3 objects found to delete for session {session.id}.")
+
+#             # Correct usage: Use async_to_sync to run the coroutine
+#             async_to_sync(database_sync_to_async(self._clear_session_media_urls))(session, chunks)
+#             print(f"Media URLs for session {session.id} cleared in database.")
+
+#             return Response({"message": "Session media files deleted from S3 and URLs cleared in database."}, status=status.HTTP_200_OK)
+
+#         except PracticeSession.DoesNotExist:
+#             return Response({"error": "Session not found."}, status=status.HTTP_404_NOT_FOUND)
+#         except PermissionDenied as e:
+#             return Response({"error": str(e)}, status=status.HTTP_403_FORBIDDEN)
+#         except Exception as e:
+#             print(f"An unexpected error occurred during session media deletion for ID {pk}: {e}")
+#             traceback.print_exc()
+#             return Response({"error": f"An internal server error occurred during media deletion: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+#     # _delete_single_s3_object and _clear_session_media_urls methods remain synchronous as before
+#     def _delete_single_s3_object(self, s3_client, bucket_name, s3_key):
+#         try:
+#             s3_client.delete_object(Bucket=bucket_name, Key=s3_key)
+#             print(f"Successfully deleted S3 object: {s3_key}")
+#         except ClientError as e:
+#             error_code = e.response.get("Error", {}).get("Code")
+#             if error_code == 'NoSuchKey':
+#                 print(f"S3 object {s3_key} not found (might have been already deleted or never existed).")
+#             else:
+#                 print(f"S3 ClientError deleting {s3_key}: {e}")
+#         except Exception as e:
+#             print(f"Unexpected error deleting S3 object {s3_key}: {e}")
+
+#     def _clear_session_media_urls(self, session, chunks):
+#         session.compiled_video_url = None
+#         session.slides_file = None
+#         session.save(update_fields=['compiled_video_url', 'slides_file'])
+
+#         for chunk in chunks:
+#             chunk.video_file = None
+#             chunk.save(update_fields=['video_file'])
+
+
+# Define BUCKET_NAME and BASE_FOLDER from settings
+BUCKET_NAME = settings.AWS_STORAGE_BUCKET_NAME
+BASE_FOLDER = getattr(settings, 'S3_BASE_FOLDER', 'user-videos/')
+
 class PracticeSessionViewSet(viewsets.ModelViewSet):
     serializer_class = PracticeSessionSerializer
     permission_classes = [IsAuthenticated]
-
-    # Removed async def dispatch and csrf_exempt (as per previous advice if CsrfViewMiddleware is off)
+    queryset = PracticeSession.objects.all() # Define at class level, though get_queryset overrides.
 
     def get_queryset(self):
         user = self.request.user
+        # This handles cases for documentation generation (e.g., Swagger/DRF spectacular)
+        # or for truly anonymous users (though IsAuthenticated should prevent most of this).
         if getattr(self, "swagger_fake_view", False) or user.is_anonymous:
             return PracticeSession.objects.none()
-        if hasattr(user, "user_profile") and user.user_profile.is_admin():
-            return PracticeSession.objects.all().order_by("-date")
-        return PracticeSession.objects.filter(user=user).order_by("-date")
+        # Admin/superuser can see all sessions
+        if user.is_staff or user.is_superuser: # Using is_staff/is_superuser for admin check
+            return PracticeSession.objects.all().order_by('-date')
+        # Regular users see only their own sessions
+        return PracticeSession.objects.filter(user=user).order_by('-date')
 
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
 
-    @action(detail=True, methods=['delete'], url_path='delete-session-media', permission_classes=[IsAuthenticated])
-    def delete_session_media(self, request, pk=None): # This method is now strictly synchronous
+    # Helper methods for S3 operations
+    async def _download_file_from_s3_async(self, s3_client, bucket_name, s3_key, local_path):
+        """Asynchronously downloads a file from S3 by running the blocking boto3 call in a thread."""
+        print(f"Downloading {s3_key} to {local_path}")
+        await asyncio.to_thread(s3_client.download_file, bucket_name, s3_key, local_path)
+        print(f"Finished downloading {s3_key}")
+
+    async def _upload_file_to_s3_async(self, s3_client, bucket_name, local_path, s3_key):
+        """Asynchronously uploads a file to S3 by running the blocking boto3 call in a thread."""
+        print(f"Uploading {local_path} to s3://{bucket_name}/{s3_key}")
+        await asyncio.to_thread(s3_client.upload_file, local_path, bucket_name, s3_key)
+        print(f"Finished uploading {s3_key}")
+
+    def _delete_single_s3_object(self, s3_client_sync, bucket_name, s3_key):
+        """Synchronously deletes a single S3 object. Intended to be called by ThreadPoolExecutor."""
         try:
-            # Correct usage: Use async_to_sync to run the coroutine returned by database_sync_to_async
-            session = async_to_sync(database_sync_to_async(self.get_object))()
-
-            # Now 'session' is the actual PracticeSession object, not a coroutine
-            if session.user != request.user and not (hasattr(request.user, 'user_profile') and request.user.user_profile.is_admin()):
-                raise PermissionDenied("You do not have permission to delete media for this session.")
-
-            s3_client = boto3.client("s3", region_name=settings.AWS_S3_REGION_NAME)
-            s3_bucket_name = settings.AWS_STORAGE_BUCKET_NAME
-            s3_user_content_base_folder = "user-videos/"
-
-            s3_keys_to_delete = []
-
-            if session.compiled_video_url:
-                try:
-                    parsed_url = urlparse(session.compiled_video_url)
-                    key_path = parsed_url.path.lstrip('/')
-                    if parsed_url.netloc.startswith(s3_bucket_name) and key_path.startswith(s3_user_content_base_folder):
-                        s3_keys_to_delete.append(key_path)
-                        print(f"Added compiled video key for deletion: {key_path}")
-                    else:
-                        print(f"WARNING: Compiled video URL {session.compiled_video_url} not in expected S3 bucket/folder, skipping S3 delete for this URL.")
-                except Exception as e:
-                    print(f"Error parsing compiled_video_url {session.compiled_video_url}: {e}")
-
-            # Correct usage: Use async_to_sync to run the coroutine
-            chunks = async_to_sync(database_sync_to_async(list))(session.chunks.all())
-            for chunk in chunks:
-                if chunk.video_file:
-                    try:
-                        parsed_url = urlparse(chunk.video_file)
-                        key_path = parsed_url.path.lstrip('/')
-                        if parsed_url.netloc.startswith(s3_bucket_name) and key_path.startswith(s3_user_content_base_folder):
-                            s3_keys_to_delete.append(key_path)
-                            print(f"Added chunk video key for deletion: {key_path}")
-                        else:
-                            print(f"WARNING: Chunk video URL {chunk.video_file} not in expected S3 bucket/folder, skipping S3 delete for this URL.")
-                    except Exception as e:
-                        print(f"Error parsing chunk video_file {chunk.video_file}: {e}")
-
-            if session.slides_file and session.slides_file.name:
-                if settings.USE_S3:
-                    slide_s3_key = session.slides_file.name
-                    if slide_s3_key.startswith(f"{session.user.id}_slides") or slide_s3_key.startswith(f"slides/{session.user.id}_slides"):
-                        s3_keys_to_delete.append(slide_s3_key)
-                        print(f"Added slides file key for deletion: {slide_s3_key}")
-                    else:
-                        print(f"WARNING: Slides file {slide_s3_key} not in expected S3 user path, skipping S3 delete for slides.")
-                else:
-                    print(f"Slides file {session.slides_file.name} is on local storage, skipping S3 delete.")
-
-            if s3_keys_to_delete:
-                print(f"Attempting to delete {len(s3_keys_to_delete)} S3 objects for session {session.id}.")
-                with concurrent.futures.ThreadPoolExecutor() as executor:
-                    futures = [executor.submit(self._delete_single_s3_object, s3_client, s3_bucket_name, s3_key) for s3_key in s3_keys_to_delete]
-                    for future in concurrent.futures.as_completed(futures):
-                        try:
-                            future.result()
-                        except Exception as s3_delete_error:
-                            print(f"Error deleting S3 object in background: {s3_delete_error}")
-                            traceback.print_exc()
-                print(f"Completed S3 deletion attempts for session {session.id}.")
-            else:
-                print(f"No S3 objects found to delete for session {session.id}.")
-
-            # Correct usage: Use async_to_sync to run the coroutine
-            async_to_sync(database_sync_to_async(self._clear_session_media_urls))(session, chunks)
-            print(f"Media URLs for session {session.id} cleared in database.")
-
-            return Response({"message": "Session media files deleted from S3 and URLs cleared in database."}, status=status.HTTP_200_OK)
-
-        except PracticeSession.DoesNotExist:
-            return Response({"error": "Session not found."}, status=status.HTTP_404_NOT_FOUND)
-        except PermissionDenied as e:
-            return Response({"error": str(e)}, status=status.HTTP_403_FORBIDDEN)
-        except Exception as e:
-            print(f"An unexpected error occurred during session media deletion for ID {pk}: {e}")
-            traceback.print_exc()
-            return Response({"error": f"An internal server error occurred during media deletion: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-    # _delete_single_s3_object and _clear_session_media_urls methods remain synchronous as before
-    def _delete_single_s3_object(self, s3_client, bucket_name, s3_key):
-        try:
-            s3_client.delete_object(Bucket=bucket_name, Key=s3_key)
+            s3_client_sync.delete_object(Bucket=bucket_name, Key=s3_key)
             print(f"Successfully deleted S3 object: {s3_key}")
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code")
@@ -439,7 +501,8 @@ class PracticeSessionViewSet(viewsets.ModelViewSet):
         except Exception as e:
             print(f"Unexpected error deleting S3 object {s3_key}: {e}")
 
-    def _clear_session_media_urls(self, session, chunks):
+    def _clear_session_media_urls_sync(self, session, chunks):
+        """Synchronously clears media URLs in the database. Intended to be wrapped by sync_to_async."""
         session.compiled_video_url = None
         session.slides_file = None
         session.save(update_fields=['compiled_video_url', 'slides_file'])
@@ -447,6 +510,546 @@ class PracticeSessionViewSet(viewsets.ModelViewSet):
         for chunk in chunks:
             chunk.video_file = None
             chunk.save(update_fields=['video_file'])
+        print(f"Media URLs for session {session.id} cleared in database.")
+
+    @action(detail=True, methods=['post'], url_path='start-compilation')
+    def start_compilation(self, request, pk=None):
+        """
+        Initiates the video compilation process for a session.
+        Downloads chunks from S3, compiles using FFmpeg, uploads compiled video to S3,
+        and updates the session with the new video URL.
+        Uses asynchronous helpers for S3 operations to avoid blocking.
+        """
+        try:
+            # self.get_object() is a synchronous ORM call in ModelViewSet
+            session = self.get_object()
+
+            if session.user != request.user:
+                raise PermissionDenied("You do not have permission to compile this session's video.")
+
+            if not BUCKET_NAME:
+                print("ERROR: S3 BUCKET_NAME is not configured in settings.")
+                return Response({'status': 'Failed to start compilation', 'error': 'S3 bucket name is not configured.'},
+                                status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+            temp_file_paths = []
+            s3_client_sync = boto3.client("s3", region_name=settings.AWS_S3_REGION_NAME)
+
+            print(f"Starting immediate video compilation for session {session.id} by user {session.user.id}")
+
+            # 1. Fetch chunk URLs
+            # Using sync_to_async to run the synchronous ORM query in an async-safe manner
+            chunks = async_to_sync(sync_to_async(session.chunks.all().order_by('chunk_number').iterator))()
+            
+            if not any(True for _ in chunks): # Check if iterator has any elements without consuming it
+                 # Re-fetch if iterator was consumed by 'any'
+                chunks = async_to_sync(sync_to_async(session.chunks.all().order_by('chunk_number').iterator))()
+                return Response({'status': 'No video chunks found for compilation'}, status=status.HTTP_400_BAD_REQUEST)
+
+            input_files = []
+            # We are in a synchronous ViewSet, so direct await calls are not possible here.
+            # We use async_to_sync to bridge to our async helper methods which use asyncio.to_thread.
+            for chunk in chunks:
+                if chunk.video_file:
+                    try:
+                        parsed_url = urlparse(chunk.video_file)
+                        s3_key = parsed_url.path.lstrip('/')
+                        if not s3_key:
+                            print(f"WARNING: Invalid S3 key derived from chunk video_file: {chunk.video_file}")
+                            continue
+
+                        temp_input_path = os.path.join(tempfile.gettempdir(), f"chunk_{chunk.id}_{os.path.basename(s3_key)}")
+                        temp_file_paths.append(temp_input_path)
+
+                        # Download video chunk from S3 (using async_to_sync for the async helper)
+                        async_to_sync(self._download_file_from_s3_async)(s3_client_sync, BUCKET_NAME, s3_key, temp_input_path)
+                        input_files.append(temp_input_path)
+                    except Exception as e:
+                        print(f"ERROR: Error processing chunk {chunk.id} video_file {chunk.video_file}: {e}")
+                        traceback.print_exc()
+                        return Response({'status': 'Failed to process video chunks', 'error': str(e)},
+                                        status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+                else:
+                    print(f"WARNING: Chunk {chunk.id} has no video_file. Skipping.")
+
+            if not input_files:
+                return Response({'status': 'No valid video files found to compile'}, status=status.HTTP_400_BAD_REQUEST)
+
+            # Create a file list for ffmpeg concat demuxer
+            file_list_path = os.path.join(tempfile.gettempdir(), f"ffmpeg_file_list_{session.id}.txt")
+            temp_file_paths.append(file_list_path)
+
+            with open(file_list_path, 'w') as f:
+                for f_path in input_files:
+                    f.write(f"file '{f_path}'\n")
+
+            compiled_video_filename = f"compiled_session_{session.id}.mp4"
+            compiled_video_path = os.path.join(tempfile.gettempdir(), compiled_video_filename)
+            temp_file_paths.append(compiled_video_path)
+
+            # 2. Compile video using ffmpeg concat demuxer
+            print(f"Compiling video to {compiled_video_path}")
+            ffmpeg_command = [
+                'ffmpeg',
+                '-y', # Overwrite output files without asking
+                '-f', 'concat', # Concatenate demuxer
+                '-safe', '0', # Allow unsafe file paths (for tempfile paths)
+                '-i', file_list_path, # Input file list
+                '-c', 'copy', # Copy streams without re-encoding
+                compiled_video_path # Output compiled video file
+            ]
+            try:
+                # subprocess.run is blocking, consider offloading if this action were async
+                process = subprocess.run(ffmpeg_command, check=True, capture_output=True, text=True)
+                print(f"FFmpeg compilation stdout: {process.stdout}")
+                print(f"FFmpeg compilation stderr: {process.stderr}")
+            except subprocess.CalledProcessError as e:
+                print(f"ERROR: FFmpeg compilation failed: {e.stderr}")
+                return Response({'status': 'Video compilation failed', 'error': e.stderr},
+                                status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            except FileNotFoundError:
+                print("ERROR: ffmpeg command not found. Please ensure ffmpeg is installed and in your PATH.")
+                return Response({'status': 'ffmpeg not found', 'error': 'Server configuration error: ffmpeg is not installed or accessible.'},
+                                status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+            # 3. Upload compiled video to S3
+            print(f"Uploading compiled video to S3 for session {session.id}.")
+            s3_key = f"{BASE_FOLDER}{session.user.id}/{session.id}/{compiled_video_filename}"
+            # Use async_to_sync for the async helper
+            async_to_sync(self._upload_file_to_s3_async)(s3_client_sync, BUCKET_NAME, compiled_video_path, s3_key)
+            print(f"Uploaded {compiled_video_path} to s3://{BUCKET_NAME}/{s3_key}")
+
+            # 4. Generate pre-signed URL (24 hours expiration)
+            expiration_seconds = 24 * 3600
+            compiled_s3_url = s3_client_sync.generate_presigned_url(
+                ClientMethod='get_object',
+                Params={'Bucket': BUCKET_NAME, 'Key': s3_key},
+                ExpiresIn=expiration_seconds
+            )
+            print(f"Generated pre-signed URL for {s3_key}: {compiled_s3_url}")
+
+            # 5. Update PracticeSession with the pre-signed URL
+            session.compiled_video_url = compiled_s3_url
+            # Use sync_to_async to save the session asynchronously
+            async_to_sync(sync_to_async(session.save))(update_fields=['compiled_video_url'])
+            print(f"Session {session.id} updated with compiled video URL.")
+
+            return Response({'status': 'Compilation complete', 'session_id': session.id, 'compiled_video_url': compiled_s3_url},
+                            status=status.HTTP_200_OK)
+
+        except Exception as e:
+            print(f"ERROR: An error occurred during video compilation for session {session.id}: {e}")
+            traceback.print_exc()
+            return Response({'status': 'Failed to complete compilation', 'error': str(e)},
+                            status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        finally:
+            print(f"Cleaning up temporary files for session {session.id}.")
+            for file_path in temp_file_paths:
+                if os.path.exists(file_path):
+                    try:
+                        os.remove(file_path)
+                        print(f"Removed temporary file: {file_path}")
+                    except OSError as e:
+                        print(f"WARNING: Error removing temporary file {file_path}: {e}")
+
+    @action(detail=True, methods=['delete'], url_path='delete-session-media', permission_classes=[IsAuthenticated])
+    def delete_session_media(self, request, pk=None):
+        """
+        Deletes media files (compiled video, chunks, slides) from S3 for a given session
+        and clears their URLs in the database.
+        Includes logic to set a 'scheduled_delete_at' timestamp.
+        Uses asynchronous database and S3 operations for efficiency.
+        """
+        try:
+            # self.get_object() is synchronous in ModelViewSet
+            session = self.get_object()
+
+            # Permission check: User must own the session or be an admin/superuser
+            if session.user != request.user and not (request.user.is_staff or request.user.is_superuser):
+                raise PermissionDenied("You do not have permission to delete this session's media.")
+
+            # Retain the logic of deleting media in 24 hours (by setting the timestamp)
+            session.scheduled_delete_at = datetime.now(timezone.utc) + timedelta(hours=24)
+            # Use sync_to_async to save the session (DB operation) asynchronously
+            async_to_sync(sync_to_async(session.save))(update_fields=['scheduled_delete_at'])
+            print(f"Session {session.id} marked for deletion at {session.scheduled_delete_at}.")
+            # TODO: Placeholder for sending the corresponding email.
+            # Example: YourAppEmailService.send_deletion_notification(session.user, session.id, session.scheduled_delete_at)
+
+            s3_client_sync = boto3.client("s3", region_name=settings.AWS_S3_REGION_NAME)
+            s3_bucket_name = BUCKET_NAME
+            s3_user_content_base_folder = BASE_FOLDER # Already defined globally
+
+            s3_keys_to_delete = []
+
+            # Handle compiled video URL deletion
+            if session.compiled_video_url:
+                try:
+                    parsed_url = urlparse(session.compiled_video_url)
+                    key_path = parsed_url.path.lstrip('/')
+                    # Security check: Ensure the key belongs to the expected bucket and base folder
+                    # (parsed_url.netloc check is generally not needed if you enforce bucket ownership via IAM)
+                    if parsed_url.netloc == f"{s3_bucket_name}.s3.{settings.AWS_S3_REGION_NAME}.amazonaws.com" and key_path.startswith(s3_user_content_base_folder):
+                        s3_keys_to_delete.append(key_path)
+                        print(f"Added compiled video key for deletion: {key_path}")
+                    else:
+                        print(f"WARNING: Compiled video URL {session.compiled_video_url} not in expected S3 bucket/folder, skipping S3 delete for this URL.")
+                except Exception as e:
+                    print(f"Error parsing compiled_video_url {session.compiled_video_url}: {e}")
+
+            # Handle chunk video URLs deletion
+            # Use sync_to_async to fetch chunks (DB operation) asynchronously
+            chunks = async_to_sync(sync_to_async(list))(session.chunks.all())
+            for chunk in chunks:
+                if chunk.video_file:
+                    try:
+                        parsed_url = urlparse(chunk.video_file)
+                        key_path = parsed_url.path.lstrip('/')
+                        if parsed_url.netloc == f"{s3_bucket_name}.s3.{settings.AWS_S3_REGION_NAME}.amazonaws.com" and key_path.startswith(s3_user_content_base_folder):
+                            s3_keys_to_delete.append(key_path)
+                            print(f"Added chunk video key for deletion: {key_path}")
+                        else:
+                            print(f"WARNING: Chunk video URL {chunk.video_file} not in expected S3 bucket/folder, skipping S3 delete for this URL.")
+                    except Exception as e:
+                        print(f"Error parsing chunk video_file {chunk.video_file}: {e}")
+
+            # Handle slides file deletion
+            if session.slides_file and session.slides_file.name:
+                slide_s3_key = session.slides_file.name
+                # More robust checks for user-specific slide paths
+                # Adjust these prefixes based on how your slides are actually stored in S3
+                expected_slide_path_prefixes = [
+                    f"slides/{session.user.id}/", # New typical path
+                    f"{BASE_FOLDER}slides/{session.user.id}/", # If BASE_FOLDER is used for slides
+                    f"{session.user.id}_slides/", # Older direct user ID prefix
+                    f"slides/{session.user.id}_slides/", # Older "slides/user_id_slides/"
+                ]
+                
+                is_safe_to_delete_slide = False
+                for prefix in expected_slide_path_prefixes:
+                    if slide_s3_key.startswith(prefix):
+                        is_safe_to_delete_slide = True
+                        break
+
+                if is_safe_to_delete_slide:
+                    s3_keys_to_delete.append(slide_s3_key)
+                    print(f"Added slides file key for deletion: {slide_s3_key}")
+                else:
+                    print(f"WARNING: Slides file {slide_s3_key} not in expected S3 user path, skipping S3 delete for slides.")
+
+            # Perform S3 deletions concurrently using ThreadPoolExecutor for blocking S3 calls
+            if s3_keys_to_delete:
+                print(f"Attempting to delete {len(s3_keys_to_delete)} S3 objects for session {session.id}.")
+                with concurrent.futures.ThreadPoolExecutor() as executor:
+                    futures = [executor.submit(self._delete_single_s3_object, s3_client_sync, s3_bucket_name, s3_key)
+                               for s3_key in s3_keys_to_delete]
+                    # Wait for all futures to complete and handle potential exceptions
+                    for future in concurrent.futures.as_completed(futures):
+                        try:
+                            future.result() # This will re-raise any exception from the thread
+                        except Exception as s3_delete_error:
+                            print(f"ERROR: Error deleting S3 object in background: {s3_delete_error}")
+                            traceback.print_exc()
+                print(f"Completed S3 deletion attempts for session {session.id}.")
+            else:
+                print(f"No S3 objects found to delete for session {session.id}.")
+
+            # Clear URLs in the database after successful S3 deletion
+            # Use sync_to_async to run the synchronous helper (DB operation) asynchronously
+            async_to_sync(sync_to_async(self._clear_session_media_urls_sync))(session, chunks)
+            print(f"Media URLs for session {session.id} cleared in database immediately.")
+
+            return Response({'status': 'Media files deleted from S3 and URLs cleared in database immediately.'}, status=status.HTTP_200_OK)
+
+        except PracticeSession.DoesNotExist:
+            return Response({'detail': 'Practice session not found.'}, status=status.HTTP_404_NOT_FOUND)
+        except PermissionDenied as e:
+            return Response({"error": str(e)}, status=status.HTTP_403_FORBIDDEN)
+        except Exception as e:
+            print(f"ERROR: An unhandled error occurred during immediate media deletion for session {pk}: {e}")
+            traceback.print_exc()
+            return Response({'detail': f'An error occurred while deleting media: {e}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    @action(detail=True, methods=['get'], url_path='compiled-video-status')
+    def compiled_video_status(self, request, pk=None):
+        """
+        Retrieves the compilation status and URL of the compiled video for a session.
+        """
+        session = self.get_object()
+        if session.user != request.user and not (request.user.is_staff or request.user.is_superuser):
+            raise PermissionDenied("You do not have permission to view this session's status.")
+
+        status_message = ""
+        is_compiled = False
+        compiled_video_url = session.compiled_video_url
+
+        if compiled_video_url:
+            status_message = "Video compiled and available (URL may expire after 24 hours)."
+            is_compiled = True
+        elif session.duration is not None and session.duration.total_seconds() > 0:
+            status_message = "Video compilation in progress or pending."
+            is_compiled = False
+        else:
+            status_message = "No video data to compile or compilation not started."
+            is_compiled = False
+
+        response_data = {
+            "session_id": session.id,
+            "compiled_video_url": compiled_video_url,
+            "status_message": status_message,
+            "is_compiled": is_compiled
+        }
+        return Response(response_data)
+
+    @action(detail=False, methods=['get'], url_path='sessions-by-month')
+    def sessions_by_month(self, request):
+        """
+        Returns a count of practice sessions grouped by month for the authenticated user/admin.
+        """
+        sessions = self.get_queryset()
+        monthly_counts = sessions.annotate(
+            month=TruncMonth('date')).values('month').annotate(
+            count=Count('id')).order_by('month')
+
+        formatted_monthly_counts = [
+            {'month': item['month'].strftime('%Y-%m'), 'count': item['count']}
+            for item in monthly_counts
+        ]
+
+        return Response(formatted_monthly_counts)
+
+    @action(detail=False, methods=['get'], url_path='sessions-by-day')
+    def sessions_by_day(self, request):
+        """
+        Returns a count of practice sessions grouped by day for the authenticated user/admin.
+        """
+        sessions = self.get_queryset()
+        daily_counts = sessions.annotate(
+            day=TruncDay('date')).values('day').annotate(
+            count=Count('id')).order_by('day')
+
+        formatted_daily_counts = [
+            {'day': item['day'].strftime('%Y-%m-%d'), 'count': item['count']}
+            for item in daily_counts
+        ]
+        return Response(formatted_daily_counts)
+
+    @action(detail=True, methods=['get'], url_path='analytics')
+    def get_session_analytics(self, request, pk=None):
+        """
+        Retrieves comprehensive analytics for a specific practice session,
+        including aggregated sentiment scores and calculated metrics.
+        """
+        session = self.get_object()
+        if session.user != request.user and not (request.user.is_staff or request.user.is_superuser):
+            raise PermissionDenied("You do not have permission to view this session's analytics.")
+
+        # Aggregate chunk sentiment analysis data
+        sentiment_data = session.chunks.aggregate(
+            avg_conviction=Avg('sentiment_analysis__conviction', default=0),
+            avg_clarity=Avg('sentiment_analysis__clarity', default=0),
+            avg_impact=Avg('sentiment_analysis__impact', default=0),
+            avg_brevity=Avg('sentiment_analysis__brevity', default=0),
+            avg_transformative_potential=Avg('sentiment_analysis__transformative_potential', default=0),
+            avg_volume=Avg('sentiment_analysis__volume', default=0),
+            avg_pitch_variability=Avg('sentiment_analysis__pitch_variability', default=0),
+            avg_pace=Avg('sentiment_analysis__pace', default=0),
+            avg_trigger_response=Avg('sentiment_analysis__trigger_response', default=0),
+            avg_filler_words=Avg('sentiment_analysis__filler_words', default=0),
+            avg_grammar=Avg('sentiment_analysis__grammar', default=0),
+            avg_posture=Avg('sentiment_analysis__posture', default=0),
+            avg_motion=Avg('sentiment_analysis__motion', default=0),
+            avg_pauses=Avg('sentiment_analysis__pauses', default=0),
+            total_chunks=Count('id'))
+
+        # Fetch all ChunkSentimentAnalysis objects for the session's chunks
+        all_chunk_sentiment = ChunkSentimentAnalysis.objects.filter(chunk__session=session)
+
+        # Calculate the count of positive gestures (True values)
+        positive_gestures_count = all_chunk_sentiment.aggregate(
+            positive_gestures_sum=Sum(Case(When(gestures=True, then=Value(1)), default=Value(0), output_field=IntegerField()))
+        )['positive_gestures_sum'] or 0
+
+        # Calculate gestures_score_for_body_language based on the percentage of positive gestures
+        gestures_score = 0
+        if sentiment_data['total_chunks'] > 0:
+            gestures_score = (positive_gestures_count / sentiment_data['total_chunks']) * 100
+            gestures_score = int(round(gestures_score))
+
+        # Calculate the new aggregated fields based on the provided formulas
+        audience_engagement = round( (sentiment_data['avg_impact'] + sentiment_data['avg_trigger_response'] + sentiment_data['avg_conviction']) / 3 , 2) if sentiment_data['total_chunks'] > 0 else 0
+        overall_captured_impact = round(sentiment_data['avg_impact'] , 2)
+        vocal_variety = round( (sentiment_data['avg_volume'] + sentiment_data['avg_pitch_variability'] + sentiment_data['avg_pace'] + sentiment_data['avg_pauses']) / 4 , 2) if sentiment_data['total_chunks'] > 0 else 0
+        emotional_impact = round(sentiment_data['avg_trigger_response'] , 2)
+        body_language = round( (sentiment_data['avg_posture'] + sentiment_data['avg_motion'] + gestures_score) / 3 , 2) if sentiment_data['total_chunks'] > 0 else 0
+        transformative_communication = round(sentiment_data['avg_transformative_potential'] , 2)
+        structure_and_clarity = round( (sentiment_data['avg_clarity']) , 2)
+        language_and_word_choice = round( (sentiment_data['avg_brevity'] + sentiment_data['avg_filler_words'] + sentiment_data['avg_grammar']) / 3 , 2) if sentiment_data['total_chunks'] > 0 else 0
+
+        # Update the PracticeSession instance with the aggregated scores
+        session.volume = int(round(sentiment_data['avg_volume']))
+        session.pitch_variability = int(round(sentiment_data['avg_pitch_variability']))
+        session.pace = int(round(sentiment_data['avg_pace']))
+        session.pauses = int(round(sentiment_data['avg_pauses']))
+        session.conviction = int(round(sentiment_data['avg_conviction']))
+        session.clarity = int(round(sentiment_data['avg_clarity']))
+        session.impact = int(round(sentiment_data['avg_impact']))
+        session.brevity = int(round(sentiment_data['avg_brevity']))
+        session.trigger_response = int(round(sentiment_data['avg_trigger_response']))
+        session.filler_words = int(round(sentiment_data['avg_filler_words']))
+        session.grammar = int(round(sentiment_data['avg_grammar']))
+        session.posture = int(round(sentiment_data['avg_posture']))
+        session.motion = int(round(sentiment_data['avg_motion']))
+        session.gestures = True if positive_gestures_count > 0 else False # Assuming gestures is a boolean field
+        session.gestures_score_for_body_language = gestures_score
+        session.transformative_potential = int(round(sentiment_data['avg_transformative_potential']))
+
+        # Update the new calculated fields
+        session.audience_engagement = audience_engagement
+        session.overall_captured_impact = overall_captured_impact
+        session.vocal_variety = vocal_variety
+        session.emotional_impact = emotional_impact
+        session.body_language = body_language
+        session.transformative_communication = transformative_communication
+        session.structure_and_clarity = structure_and_clarity
+        session.language_and_word_choice = language_and_word_choice
+
+        session.save() # Save the updated session fields
+
+        # Prepare the response data, including all relevant analytics fields
+        response_data = PracticeSessionSerializer(session).data
+        return Response(response_data)
+
+    @action(detail=True, methods=['get'], url_path='chunk-details')
+    def get_chunk_details(self, request, pk=None):
+        """
+        Retrieves details for all chunks belonging to a specific practice session.
+        """
+        session = self.get_object()
+        if session.user != request.user and not (request.user.is_staff or request.user.is_superuser):
+            raise PermissionDenied("You do not have permission to view this session's chunk details.")
+        chunks = session.chunks.all()
+        serializer = SessionChunkSerializer(chunks, many=True)
+        return Response(serializer.data)
+
+    @action(detail=True, methods=['get'], url_path='sentiment-analysis-details')
+    def get_sentiment_analysis_details(self, request, pk=None):
+        """
+        Retrieves detailed sentiment analysis data for all chunks of a specific practice session.
+        """
+        session = self.get_object()
+        if session.user != request.user and not (request.user.is_staff or request.user.is_superuser):
+            raise PermissionDenied("You do not have permission to view this session's sentiment analysis details.")
+        sentiment_analyses = ChunkSentimentAnalysis.objects.filter(chunk__session=session)
+        serializer = ChunkSentimentAnalysisSerializer(sentiment_analyses, many=True)
+        return Response(serializer.data)
+
+    @action(detail=True, methods=['get'], url_path='audio-transcript')
+    def get_audio_transcript(self, request, pk=None):
+        """
+        Compiles and returns the full audio transcript for a specific practice session.
+        """
+        session = self.get_object()
+        if session.user != request.user and not (request.user.is_staff or request.user.is_superuser):
+            raise PermissionDenied("You do not have permission to view this session's transcript.")
+        chunks = session.chunks.all().order_by('chunk_number')
+        full_transcript = " ".join([chunk.transcript or "" for chunk in chunks])
+        return Response({'session_id': session.id, 'full_transcript': full_transcript})
+
+    @action(detail=True, methods=['get'], url_path='overall-feedback')
+    def get_overall_feedback(self, request, pk=None):
+        """
+        Retrieves the overall feedback summary, strengths, and areas for improvement for a session.
+        """
+        session = self.get_object()
+        if session.user != request.user and not (request.user.is_staff or request.user.is_superuser):
+            raise PermissionDenied("You do not have permission to view this session's feedback.")
+
+        feedback_data = {
+            "session_id": session.id,
+            "general_feedback_summary": session.general_feedback_summary,
+            "strength": session.strength,
+            "area_of_improvement": session.area_of_improvement,
+        }
+        return Response(feedback_data)
+
+    @action(detail=True, methods=['post'], url_path='ai-question')
+    def ai_question(self, request, pk=None):
+        """
+        Generates an AI audience question for a specific session, if allowed.
+        """
+        session = self.get_object()
+        if session.user != request.user:
+            raise PermissionDenied("You do not have permission to get AI questions for this session.")
+        if not session.allow_ai_questions:
+            return Response({"detail": "AI questions are not allowed for this session."},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            # Call your AI audience question function (assuming it's synchronous)
+            question = ai_audience_question(session.id)
+            if question:
+                return Response({"session_id": session.id, "question": question})
+            else:
+                return Response({"detail": "Could not generate an AI question."}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            print(f"ERROR: Error generating AI question for session {session.id}: {e}")
+            return Response({"detail": f"An error occurred: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    @action(detail=True, methods=['get'], url_path='sentiment-breakdown')
+    def get_sentiment_breakdown(self, request, pk=None):
+        """
+        Provides a detailed breakdown of sentiment and communication scores for a session.
+        """
+        session = self.get_object()
+        if session.user != request.user and not (request.user.is_staff or request.user.is_superuser):
+            raise PermissionDenied("You do not have permission to view this session's sentiment breakdown.")
+
+        # Check if any sentiment data exists for this session before returning.
+        # This checks if any of the sentiment score fields are populated.
+        if any([session.volume, session.pitch_variability, session.pace, session.pauses,
+                session.conviction, session.clarity, session.impact, session.brevity,
+                session.trigger_response, session.filler_words, session.grammar,
+                session.posture, session.motion, session.gestures_score_for_body_language,
+                session.transformative_potential]):
+            response_data = {
+                "session_id": session.id,
+                "sentiment_scores": {
+                    "volume": session.volume,
+                    "pitch_variability": session.pitch_variability,
+                    "pace": session.pace,
+                    "pauses": session.pauses,
+                    "conviction": session.conviction,
+                    "clarity": session.clarity,
+                    "impact": session.impact,
+                    "brevity": session.brevity,
+                    "trigger_response": session.trigger_response,
+                    "filler_words": session.filler_words,
+                    "grammar": session.grammar,
+                    "posture": session.posture,
+                    "motion": session.motion,
+                    "gestures_score_for_body_language": session.gestures_score_for_body_language,
+                    "transformative_potential": session.transformative_potential,
+                },
+                "calculated_metrics": {
+                    "audience_engagement": session.audience_engagement,
+                    "overall_captured_impact": session.overall_captured_impact,
+                    "vocal_variety": session.vocal_variety,
+                    "emotional_impact": session.emotional_impact,
+                    "body_language": session.body_language,
+                    "transformative_communication": session.transformative_communication,
+                    "structure_and_clarity": session.structure_and_clarity,
+                    "language_and_word_choice": session.language_and_word_choice,
+                }
+            }
+        else:
+            response_data = {
+                "session_id": session.id,
+                "message": "Sentiment breakdown not available or not yet calculated for this session.",
+                "sentiment_scores": {},
+                "calculated_metrics": {}
+            }
+        return Response(response_data)
 
 
 class SessionDashboardView(APIView):

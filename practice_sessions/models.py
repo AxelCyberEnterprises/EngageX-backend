@@ -114,6 +114,7 @@ class PracticeSession(models.Model):
     note = models.TextField(
         blank=True, null=True, help_text="Optional note (for users)"
     )
+    scheduled_delete_at = models.DateTimeField(null=True, blank=True)
 
     # --- Replace original slides_URL with slides_file (FileField) ---
     slides_file = models.FileField(
