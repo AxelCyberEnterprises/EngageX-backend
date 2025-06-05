@@ -4,3 +4,4 @@ venv/
 /migrations
 testdata.txt
 file_upload.py
+stripe-promo-codes.txt

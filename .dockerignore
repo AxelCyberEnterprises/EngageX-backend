@@ -10,3 +10,4 @@ README.md
 *.jpeg
 .ebextensions/
 file_upload.py
+stripe-promo-codes.txt

@@ -53,6 +53,7 @@ def create_checkout_session(price_id, email, tier):
                 }
             ],
             mode="payment",
+            allow_promotion_codes=True,
             success_url=settings.STRIPE_SUCCESS_URL,
             cancel_url=settings.STRIPE_CANCEL_URL,
             metadata={"tier": tier},
