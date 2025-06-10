@@ -144,15 +144,6 @@ class UserProfile(models.Model):
         help_text="Available credits on the user dashboard.",
     )
 
-    # Additional profile fields.
-    quickbooks_customer_id = models.CharField(
-        max_length=100,
-        blank=True,
-        null=True,
-        unique=True,
-        help_text="QuickBooks Customer ID linked to this user."
-    )
-
     country = models.CharField(
         max_length=100, blank=True, null=True, help_text="Country of the user."
     )
@@ -176,7 +167,7 @@ class UserProfile(models.Model):
         ("Technology", "Technology"),
         ("Healthcare", "Healthcare"),
         ("Finance", "Finance"),
-        ("Education", "Education"),
+        ("Major League Sports", "Major League Sports"),
         ("Others", "Others")
     ]
     industry = models.CharField(
