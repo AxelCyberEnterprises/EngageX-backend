@@ -119,10 +119,10 @@ EngageX is a comprehensive public speaking and presentation practice platform wi
 
 ### Subscription Tiers
 1. **Tester**: 5 credits
-2. **Starter**: 20 credits
-3. **Growth**: 50 credits
-4. **Pro**: 150 credits
-5. **Ultimate**: 500 credits
+2. **Starter**: 4 credits
+3. **Growth**: 6 credits
+4. **Pro**: 8 credits
+5. **Ultimate**: 12 credits
 
 ### Payment Flow
 1. User selects credit package

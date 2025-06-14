@@ -15,6 +15,6 @@ from intuitlib.client import AuthClient
 from intuitlib.enums import Scopes
 from intuitlib.exceptions import AuthClientError
 
-from .models import QuickBooksToken, PaymentTransaction
+from .models import PaymentTransaction
 from users.models import UserProfile
 
