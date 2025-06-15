@@ -92,11 +92,66 @@ class PracticeSequence(models.Model):
         return f"{self.sequence_name} by {self.user.email}"
 
 
+class EnterpriseSpecialtySession(models.Model):
+    """Stores settings specific to Enterprise Specialty sessions."""
+    ENTERPRISE_TYPE_CHOICES = [
+        ("rookie", "Rookie"),
+        ("pharmahq", "PharmaHQ"),
+    ]
+    
+    ROOKIE_TYPE_CHOICES = [
+        ("media_training", "Media Training"),
+        ("speaking", "Speaking"),
+    ]
+    
+    SPORT_TYPE_CHOICES = [
+        ("basketball", "Basketball"),
+        ("football", "Football"),
+        ("swimming", "Swimming"),
+        ("table_tennis", "Table Tennis"),
+        ("boxing", "Boxing"),
+        ("long_tennis", "Long Tennis"),
+    ]
+    
+    session = models.OneToOneField(
+        'PracticeSession',
+        on_delete=models.CASCADE,
+        related_name='enterprise_settings'
+    )
+    enterprise_type = models.CharField(
+        max_length=20,
+        choices=ENTERPRISE_TYPE_CHOICES,
+        default="rookie"
+    )
+    rookie_type = models.CharField(
+        max_length=20,
+        choices=ROOKIE_TYPE_CHOICES,
+        null=True,
+        blank=True
+    )
+    sport_type = models.CharField(
+        max_length=20,
+        choices=SPORT_TYPE_CHOICES,
+        null=True,
+        blank=True,
+        help_text="Sport type for the session (applicable for Media Training)"
+    )
+    speaker_notes = models.TextField(
+        blank=True,
+        null=True,
+        help_text="Speaker notes for the session"
+    )
+    
+    def __str__(self):
+        return f"{self.get_enterprise_type_display()} - {self.get_rookie_type_display() if self.rookie_type else ''}"
+
+
 class PracticeSession(models.Model):
     SESSION_TYPE_CHOICES = [
         ("pitch", "Pitch Practice"),
         ("public", "Public Speaking"),
         ("presentation", "Presentation"),
+        ("enterprise", "Enterprise Specialty"),
     ]
     # The user who created this session.
     user = models.ForeignKey(

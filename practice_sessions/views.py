@@ -470,6 +470,16 @@ class PracticeSessionViewSet(viewsets.ModelViewSet):
             return PracticeSession.objects.all().order_by('-date')
         # Regular users see only their own sessions
         return PracticeSession.objects.filter(user=user).order_by('-date')
+        
+    def get_serializer_context(self):
+        """
+        Add extra context to the serializer.
+        """
+        context = super().get_serializer_context()
+        if self.action in ['retrieve', 'list']:
+            # Prefetch related enterprise settings to avoid N+1 queries
+            self.queryset = self.queryset.prefetch_related('enterprise_settings')
+        return context
 
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
