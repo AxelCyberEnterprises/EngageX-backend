@@ -18,6 +18,12 @@ from .storages_backends import (
 )
 
 
+def validate_hex_color(value):
+    import re
+    if not re.match(r'^#([A-Fa-f0-9]{6})$', value):
+        raise ValidationError("Color must be in the format #RRGGBB")
+
+
 # Create your models here.
 
 
@@ -185,6 +191,36 @@ class UserProfile(models.Model):
         blank=True,
         null=True,
 
+    )
+
+    # White-labeling fields
+    logo = models.ImageField(
+        storage=ProfilePicStorage(),
+        upload_to="whitelabel/logo/",
+        null=True,
+        blank=True,
+        validators=[FileExtensionValidator(allowed_extensions=["jpg", "jpeg", "png", "svg"])],
+        help_text="Upload your company logo (JPG, PNG, or SVG)",
+    )
+    favicon = models.ImageField(
+        storage=ProfilePicStorage(),
+        upload_to="whitelabel/favicon/",
+        null=True,
+        blank=True,
+        validators=[FileExtensionValidator(allowed_extensions=["ico", "png", "jpg"])],
+        help_text="Upload your favicon (ICO, PNG, or JPG)",
+    )
+    primary_color = models.CharField(
+        max_length=7,
+        default="#000000",
+        validators=[validate_hex_color],
+        help_text="Primary brand color in hex format (e.g., #RRGGBB)",
+    )
+    secondary_color = models.CharField(
+        max_length=7,
+        default="#000000",
+        validators=[validate_hex_color],
+        help_text="Secondary brand color in hex format (e.g., #RRGGBB)",
     )
 
     def __str__(self):

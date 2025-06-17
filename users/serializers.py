@@ -223,8 +223,13 @@ class UserProfileSerializer(serializers.ModelSerializer):
     class Meta:
         model = UserProfile
         exclude = ["user"]
-        # fields = "__all__"
-        # read_only_fields=["user"]
+        read_only_fields = ["available_credits"]  # Ensure credits can't be modified directly
+        extra_kwargs = {
+            "logo": {"required": False},
+            "favicon": {"required": False},
+            "primary_color": {"required": False},
+            "secondary_color": {"required": False},
+        }
 
     def create(self, validated_data):
         print(validated_data)
