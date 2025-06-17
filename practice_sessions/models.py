@@ -110,7 +110,10 @@ class EnterpriseSpecialtySession(models.Model):
         ("swimming", "Swimming"),
         ("table_tennis", "Table Tennis"),
         ("boxing", "Boxing"),
-        ("long_tennis", "Long Tennis"),
+        ("tennis", "Tennis"),
+        ("hockey", "Hockey"),
+        ("soccer", "Soccer"),
+        ("baseball", "Baseball"),
     ]
     
     session = models.OneToOneField(
