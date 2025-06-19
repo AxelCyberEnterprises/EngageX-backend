@@ -522,7 +522,7 @@ class PracticeSessionViewSet(viewsets.ModelViewSet):
             chunk.save(update_fields=['video_file'])
         print(f"Media URLs for session {session.id} cleared in database.")
 
-    @action(detail=True, methods=['post'], url_path='start-compilation')
+    @action(detail=True, methods=['post'], url_path='queue-video-compilation')
     def start_compilation(self, request, pk=None):
         """
         Initiates the video compilation process for a session.
@@ -530,6 +530,8 @@ class PracticeSessionViewSet(viewsets.ModelViewSet):
         and updates the session with the new video URL.
         Uses asynchronous helpers for S3 operations to avoid blocking.
         """
+        session = None # Initialize session to None for finally block
+        temp_file_paths = [] # Initialize here to ensure it's available for finally
         try:
             # self.get_object() is a synchronous ORM call in ModelViewSet
             session = self.get_object()
@@ -542,18 +544,16 @@ class PracticeSessionViewSet(viewsets.ModelViewSet):
                 return Response({'status': 'Failed to start compilation', 'error': 'S3 bucket name is not configured.'},
                                 status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-            temp_file_paths = []
             s3_client_sync = boto3.client("s3", region_name=settings.AWS_S3_REGION_NAME)
 
             print(f"Starting immediate video compilation for session {session.id} by user {session.user.id}")
 
             # 1. Fetch chunk URLs
             # Using sync_to_async to run the synchronous ORM query in an async-safe manner
-            chunks = async_to_sync(sync_to_async(session.chunks.all().order_by('chunk_number').iterator))()
+            # Convert to list immediately to avoid re-fetching or iterator issues later
+            chunks = async_to_sync(sync_to_async(list))(session.chunks.all().order_by('chunk_number'))
             
-            if not any(True for _ in chunks): # Check if iterator has any elements without consuming it
-                 # Re-fetch if iterator was consumed by 'any'
-                chunks = async_to_sync(sync_to_async(session.chunks.all().order_by('chunk_number').iterator))()
+            if not chunks:
                 return Response({'status': 'No video chunks found for compilation'}, status=status.HTTP_400_BAD_REQUEST)
 
             input_files = []
@@ -601,11 +601,15 @@ class PracticeSessionViewSet(viewsets.ModelViewSet):
             print(f"Compiling video to {compiled_video_path}")
             ffmpeg_command = [
                 'ffmpeg',
-                '-y', # Overwrite output files without asking
-                '-f', 'concat', # Concatenate demuxer
-                '-safe', '0', # Allow unsafe file paths (for tempfile paths)
-                '-i', file_list_path, # Input file list
-                '-c', 'copy', # Copy streams without re-encoding
+                '-y',  # Overwrite output files without asking
+                '-f', 'concat',  # Concatenate demuxer
+                '-safe', '0',  # Allow unsafe file paths (for tempfile paths)
+                '-i', file_list_path,  # Input file list
+                '-c:v', 'libx264', # Re-encode video to H.264
+                '-preset', 'medium', # Encoding speed vs. compression efficiency tradeoff
+                '-crf', '23', # Constant Rate Factor for quality (lower is higher quality)
+                '-c:a', 'copy', # Copy audio stream without re-encoding
+                '-pix_fmt', 'yuv420p', # Ensure common pixel format for broad compatibility
                 compiled_video_path # Output compiled video file
             ]
             try:
@@ -647,20 +651,27 @@ class PracticeSessionViewSet(viewsets.ModelViewSet):
             return Response({'status': 'Compilation complete', 'session_id': session.id, 'compiled_video_url': compiled_s3_url},
                             status=status.HTTP_200_OK)
 
+        except PermissionDenied as e:
+            return Response({'status': 'Permission Denied', 'error': str(e)},
+                            status=status.HTTP_403_FORBIDDEN)
         except Exception as e:
-            print(f"ERROR: An error occurred during video compilation for session {session.id}: {e}")
+            error_message = f"An unexpected error occurred during video compilation: {str(e)}"
+            if session:
+                error_message = f"An unexpected error occurred during video compilation for session {session.id}: {str(e)}"
+            print(f"ERROR: {error_message}")
             traceback.print_exc()
-            return Response({'status': 'Failed to complete compilation', 'error': str(e)},
+            return Response({'status': 'Failed to complete compilation', 'error': error_message},
                             status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         finally:
-            print(f"Cleaning up temporary files for session {session.id}.")
-            for file_path in temp_file_paths:
-                if os.path.exists(file_path):
-                    try:
-                        os.remove(file_path)
-                        print(f"Removed temporary file: {file_path}")
-                    except OSError as e:
-                        print(f"WARNING: Error removing temporary file {file_path}: {e}")
+            if temp_file_paths:
+                print(f"Cleaning up temporary files for session {session.id if session else 'unknown'}.")
+                for file_path in temp_file_paths:
+                    if os.path.exists(file_path):
+                        try:
+                            os.remove(file_path)
+                            print(f"Removed temporary file: {file_path}")
+                        except OSError as e:
+                            print(f"WARNING: Error removing temporary file {file_path}: {e}")
 
     @action(detail=True, methods=['delete'], url_path='delete-session-media', permission_classes=[IsAuthenticated])
     def delete_session_media(self, request, pk=None):
