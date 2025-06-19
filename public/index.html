@@ -79,6 +79,7 @@
         <option value="conference_room">Conference Room</option>
         <option value="board_room_1">Board Room 1</option>
         <option value="board_room_2">Board Room 2</option>
+        
     </select>
     <label for="aiQuestionToggle">Enable AI Audience Questions:</label>
     <input type="checkbox" id="aiQuestionToggle" checked>
@@ -144,8 +145,8 @@
     let isRecording = false;
     const CHUNK_DURATION = 7000; // 7 seconds per chunk
     // const API_BASE_URL = "https://api.engagexai.io"; // Adjust if needed
-    // const API_BASE_URL = "http://localhost:8000"; ""
-    const API_BASE_URL = "https://api-stream.engagexai.io";
+    const API_BASE_URL = "http://localhost:8000"; ""
+    // const API_BASE_URL = "https://api-stream.engagexai.io";
     // const API_BASE_URL = "http://engagex-streaming-lb-1bf25e63a288a392.elb.us-west-1.amazonaws.com:8000"
     // const API_BASE_URL = "http://engagex-1162743864.us-west-1.elb.amazonaws.com";
 
@@ -180,8 +181,8 @@
                         'Authorization': `Token 21de7e46e6861f7671a8af3b9a2e74a84fdac780`
                     },
                     body: JSON.stringify({
-                        session_name: "Live Practice Session",
-                        session_type: "public",
+                        session_name: "enterprise Practice Session",
+                        session_type: "enterprise",
                         virtual_environment: selectedRoom, // Use the selected room here
                         goals: ["I want to be more captivating"]
 

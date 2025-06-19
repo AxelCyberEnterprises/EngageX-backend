@@ -1550,11 +1550,10 @@ class SessionReportView(APIView):
         """Creates a cohesive summary for Strengths, Improvements, and Feedback using OpenAI."""
         client = OpenAI(api_key=settings.OPENAI_API_KEY)
 
-        goals = PracticeSession.objects.filter(id=session_id).values_list("goals", flat=True).first()
-
-        name = PracticeSession.objects.get(id=session_id).user.first_name
-        
-        role = PracticeSession.objects.get(id=session_id).user.user_profile.user_intent
+        session = PracticeSession.objects.get(id=session_id)
+        goals = session.goals
+        name = session.user.first_name
+        role = session.user.user_profile.user_intent
 
         print(f"Firstname: {name}. role: {role}")
 
@@ -1574,38 +1573,72 @@ class SessionReportView(APIView):
                 "General Feedback Summary": "No feedback was generated for the chunks in this session.",
             }
 
+        if session.session_type == "enterprise":
+            print("This is an Enterprise Specialty session.")
+            prompt = f"""
+            My name is {name}, and I’m currently a {role} in my sports journey.
 
-        # My name is .
-        prompt = f"""
-            My name is {name}, and my career level is {role}.
-            You are my personal expert communication mentor/coach specializing in public speaking, storytelling, pitching, and presentations. Your role is to critique me for my growth, and guide me to become a more impactful professional speaker for my career development.
+            You are my personal communication mentor. Your focus is to help young athletes like me grow as confident and impactful speakers — whether in interviews, team talks, public appearances, or leadership moments. Your feedback should guide me to express myself better, show up with presence, and connect with others.
 
-            My goal with this presentation is: {goals}. Using my provided presentation evaluation data and speech, generate a structured JSON response with the following three components:
+            My goal with this talk is: {goals}.
+
+            I want you to give me helpful feedback using my presentation and the evaluation data. Structure your feedback in three clear parts, and speak to me like a trusted coach who wants me to win — not just in sports, but in how I show up as a person.
 
             1. Strengths: Identify my most impactful specific strengths. Focus on concrete content choices, tone, delivery techniques, and audience engagement strategies. Use simple sentences, do not include transcript quotes here.
 
             2. Areas for Improvement: Provide clear, actionable, and specific feedback on where I can improve. Emphasize my delivery habits, missed emotional beats, and structural weaknesses. Use simple sentences, do not include transcript quotes here.
 
-            3. General Feedback Summary: Craft a detailed, content-specific analysis of my presentation. Your summary must be grounded in specific parts of my speech. Include the following:
+            3. General Feedback Summary: Craft a detailed, content-specific analysis of my session. Your summary must be grounded in specific parts of my speech. Your pirmary focus is how I handled the questions but include the following:
             - Evaluate the effectiveness of my opening: Was it attention-grabbing, relevant, or emotionally engaging? Did I clearly set the tone or premise for the rest of the talk?
-            - Highlight specific trigger words or emotionally resonant phrases I used that effectively drove engagement, and explain how they influenced the audience. Include the actual phrases from the transcript.
-            - List any filler words I overused (e.g., "um", "like", "you know"). Quote a few instances where these occurred.
-            - Comment on how I used powerful or evocative language—did I evoke empathy, joy, urgency, or excitement? Did I show vulnerability or emotional relatability?
-            - Analyze my tone of voice, Was it confident, warm, authoritative, enthusiastic, or inconsistent? Note any tone shifts and how they impacted audience engagement. Back this up with quoted phrases that show tone variation.
-            - Reflect on whether my style or personal story helped make the talk more memorable.
-            - Was I persuasive enough, Did I inspire action, challenge assumptions, or shift perspectives? Highlight specific techniques like storytelling, analogies, or rhetorical questions.
-            - Evaluate the structure and flow of my talk. Were transitions smooth? Did I build toward a clear message or emotional climax? Point to exact sentences where this occurred.
-            - Clearly state whether my talk was effective — and if so, effective at what specifically (e.g., persuading the audience, building trust, sparking interest).
-            - If "AUDIENCE QUESTION" is in my transcript, evaluate how I answered the audience questions. If no "AUDIENCE QUESTION" is in my transcript dont mention anything about questions
-            - Reference my goal to {goals}. If I have no goals dont mention anything about goals.
-            - Provide an overall evaluation of how well I demonstrated mastery in storytelling, public speaking, or pitching. Include tailored suggestions for improvement based on the context and audience. Ground all observations in direct excerpts from the transcript. Quote exact sentences where possible.
+            - Were there any standout words or phrases I used that really connected or showed emotion?
+            - Did I use any filler words too often (like “uh,” “you know,” “like”)? If so, quote a few examples.
+            - How did I sound — confident, calm, excited, nervous? Did that shift anywhere in the talk?
+            - Reflect on whether my style or personal story helped make the talk connect with more people.
+            - Clearly state whether my talk was effective — and if so, effective at what specifically 
+            - Did my message feel organized, and did I build it up toward something important?
+            - "AUDIENCE QUESTION" is in my transcript, evaluate how I answered the audience questions. If no "AUDIENCE QUESTION" is in my transcript dont mention anything about questions
+            - Mention my goal {goals} only if I had one — skip this part if I didn’t mention any goal.
+            - End with your view on how I’m growing as a speaker and how I can take the next step.
 
-            Tone: speak to me personally but professionaly like a mentor coach, critique me for my growth while referencing my transcript not my evaluation data. Don't use headers or "**" for titles, dont use hyphens or dashes '—' in your response, just correct me and reference my transcript. Use \n \n for line breaks between paragraphs and also start with an encouraging remark relevant to my presentation with my name.
+            Tone: Talk to me with respect, like you believe in my future. Don’t use grammar corrections unless it really affects how I come across. Don’t use headers, dashes, or bold formatting. Use \n\n between paragraphs and begin with a positive comment based on how I showed up in my presentation.
 
             Evaluation data: {metrics_string}
+
             Transcript:
             {combined_feedback}
             """
+
+        else:
+            prompt = f"""
+                My name is {name}, and my career level is {role}.
+                You are my personal expert communication mentor/coach specializing in public speaking, storytelling, pitching, and presentations. Your role is to critique me for my growth, and guide me to become a more impactful professional speaker for my career development.
+
+                My goal with this presentation is: {goals}. Using my provided presentation evaluation data and speech, generate a structured JSON response with the following three components:
+
+                1. Strengths: Identify my most impactful specific strengths. Focus on concrete content choices, tone, delivery techniques, and audience engagement strategies. Use simple sentences, do not include transcript quotes here.
+
+                2. Areas for Improvement: Provide clear, actionable, and specific feedback on where I can improve. Emphasize my delivery habits, missed emotional beats, and structural weaknesses. Use simple sentences, do not include transcript quotes here.
+
+                3. General Feedback Summary: Craft a detailed, content-specific analysis of my presentation. Your summary must be grounded in specific parts of my speech. Include the following:
+                - Evaluate the effectiveness of my opening: Was it attention-grabbing, relevant, or emotionally engaging? Did I clearly set the tone or premise for the rest of the talk?
+                - Highlight specific trigger words or emotionally resonant phrases I used that effectively drove engagement, and explain how they influenced the audience. Include the actual phrases from the transcript.
+                - List any filler words I overused (e.g., "um", "like", "you know"). Quote a few instances where these occurred.
+                - Comment on how I used powerful or evocative language—did I evoke empathy, joy, urgency, or excitement? Did I show vulnerability or emotional relatability?
+                - Analyze my tone of voice, Was it confident, warm, authoritative, enthusiastic, or inconsistent? Note any tone shifts and how they impacted audience engagement. Back this up with quoted phrases that show tone variation.
+                - Reflect on whether my style or personal story helped make the talk more memorable.
+                - Was I persuasive enough, Did I inspire action, challenge assumptions, or shift perspectives? Highlight specific techniques like storytelling, analogies, or rhetorical questions.
+                - Evaluate the structure and flow of my talk. Were transitions smooth? Did I build toward a clear message or emotional climax? Point to exact sentences where this occurred.
+                - Clearly state whether my talk was effective — and if so, effective at what specifically (e.g., persuading the audience, building trust, sparking interest).
+                - If "AUDIENCE QUESTION" is in my transcript, evaluate how I answered the audience questions. If no "AUDIENCE QUESTION" is in my transcript dont mention anything about questions
+                - Reference my goal to {goals}. If I have no goals dont mention anything about goals.
+                - Provide an overall evaluation of how well I demonstrated mastery in storytelling, public speaking, or pitching. Include tailored suggestions for improvement based on the context and audience. Ground all observations in direct excerpts from the transcript. Quote exact sentences where possible.
+
+                Tone: speak to me personally but professionaly like a mentor coach, critique me for my growth while referencing my transcript not my evaluation data. Don't use headers or "**" for titles, dont use hyphens or dashes '—' in your response, just correct me and reference my transcript. Use \n \n for line breaks between paragraphs and also start with an encouraging remark relevant to my presentation with my name.
+
+                Evaluation data: {metrics_string}
+                Transcript:
+                {combined_feedback}
+                """
 
         try:
             print("Calling OpenAI for summary generation...")
@@ -1873,7 +1906,7 @@ class SessionReportView(APIView):
             # Save boolean gestures field (True if any positive gestures were recorded)
             session.gestures = total_true_gestures > 0  # True if sum > 0
 
-            metrics_string = f"Final Scores: volume score: {session.volume}, pitch variability score: {session.pitch_variability}, pace score: {session.pace}, pauses score: {session.pauses}, conviction score: {session.conviction}, clarity score: {session.clarity}, impact score: {session.impact}, brevity score: {session.brevity}, trigger response score: {session.trigger_response}, filler words score: {session.filler_words}, grammar score: {session.grammar}, posture score: {session.posture}, motion score: {session.motion}, transformative potential score: {session.transformative_potential}, gestures score: {session.gestures_score_for_body_language}"
+            metrics_string = f"Final Scores: volume score: {session.volume}, pitch variability score: {session.pitch_variability}, pace score: {session.pace}, pauses score: {session.pauses}, conviction score: {session.conviction}, clarity score: {session.clarity}, impact score: {session.impact}, brevity score: {session.brevity}, trigger response score: {session.trigger_response}, filler words score: {session.filler_words}, grammar score: {session.grammar}, transformative potential score: {session.transformative_potential}"
 
             # --- Generate Full Summary using OpenAI ---
             print("Generating full summary...")
