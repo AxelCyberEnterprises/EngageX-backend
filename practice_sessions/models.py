@@ -102,6 +102,8 @@ class EnterpriseSpecialtySession(models.Model):
     ROOKIE_TYPE_CHOICES = [
         ("media_training", "Media Training"),
         ("speaking", "Speaking"),
+        ("coach", "Coach"),
+        ("gm", "GM"),
     ]
     
     SPORT_TYPE_CHOICES = [
@@ -197,6 +199,10 @@ class PracticeSession(models.Model):
         ("board_room_1", "Board Room 1"),
         ("board_room_2", "Board Room 2"),
         ("pitch_studio", "pitch_studio"),
+        ("nba_room", "NBA Room"),
+        ("wnba_room", "WNBA Room"),
+        ("nfl_room", "NFL Room"),
+        ("mlb_room", "MLB Room"),
     ]
     virtual_environment = models.CharField(
         max_length=50,

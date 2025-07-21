@@ -5,6 +5,7 @@ import os
 import json
 import traceback
 import boto3
+from botocore.exceptions import ClientError
 import requests
 import asyncio
 from django.core.files import File
@@ -13,6 +14,11 @@ import tempfile
 import subprocess
 import platform
 import time
+# from aws_encryption_sdk import (
+#     EncryptionSDKClient,
+#     StrictAwsKmsMasterKeyProvider
+# )
+# from aws_encryption_sdk.identifiers import CommitmentPolicy
 
 
 from rest_framework import viewsets, status
@@ -458,6 +464,93 @@ class PracticeSessionViewSet(viewsets.ModelViewSet):
     serializer_class = PracticeSessionSerializer
     permission_classes = [IsAuthenticated]
     queryset = PracticeSession.objects.all() # Define at class level, though get_queryset overrides.
+    
+    # AWS KMS Configuration
+    AWS_KMS_KEY_ARN = getattr(settings, 'AWS_KMS_KEY_ARN', None)
+    
+    # def _get_kms_key_provider(self):
+    #     """Initialize and return a KMS key provider for encryption/decryption."""
+    #     if not self.AWS_KMS_KEY_ARN:
+    #         raise ValueError("AWS_KMS_KEY_ARN is not configured in settings")
+    #     return StrictAwsKmsMasterKeyProvider(key_ids=[self.AWS_KMS_KEY_ARN])
+    
+    # def _get_encryption_client(self):
+    #     """Initialize and return an AWS Encryption SDK client."""
+    #     return EncryptionSDKClient(commitment_policy=CommitmentPolicy.REQUIRE_ENCRYPT_REQUIRE_DECRYPT)
+    
+    # async def _encrypt_file(self, source_path, destination_path):
+    #     """Encrypt a file using AWS KMS.
+        
+    #     Args:
+    #         source_path: Path to the source file to encrypt
+    #         destination_path: Path where the encrypted file will be saved
+            
+    #     Returns:
+    #         dict: Encryption context used for decryption
+    #     """
+    #     encryption_context = {
+    #         'source_file': source_path,
+    #         'timestamp': datetime.utcnow().isoformat(),
+    #         'purpose': 'secure_storage'
+    #     }
+        
+    #     try:
+    #         client = self._get_encryption_client()
+    #         key_provider = self._get_kms_key_provider()
+            
+    #         # Encrypt the file
+    #         with open(source_path, 'rb') as pt_file, open(destination_path, 'wb') as ct_file:
+    #             with client.stream(
+    #                 mode='e',
+    #                 source=pt_file,
+    #                 key_provider=key_provider,
+    #                 encryption_context=encryption_context
+    #             ) as encryptor:
+    #                 for chunk in encryptor:
+    #                     ct_file.write(chunk)
+            
+    #         return {
+    #             'encryption_context': encryption_context,
+    #             'key_id': self.AWS_KMS_KEY_ARN
+    #         }
+            
+    #     except Exception as e:
+    #         logger.error(f"Error encrypting file {source_path}: {str(e)}")
+    #         raise
+    
+    # async def _decrypt_file(self, source_path, destination_path):
+    #     """Decrypt a file encrypted with AWS KMS.
+        
+    #     Args:
+    #         source_path: Path to the encrypted file
+    #         destination_path: Path where the decrypted file will be saved
+            
+    #     Returns:
+    #         dict: The encryption context from the encrypted file
+    #     """
+    #     try:
+    #         client = self._get_encryption_client()
+    #         key_provider = self._get_kms_key_provider()
+            
+    #         # Decrypt the file
+    #         with open(source_path, 'rb') as ct_file, open(destination_path, 'wb') as pt_file:
+    #             with client.stream(
+    #                 mode='d',
+    #                 source=ct_file,
+    #                 key_provider=key_provider
+    #             ) as decryptor:
+    #                 # Get the encryption context from the header
+    #                 encryption_context = decryptor.header.encryption_context
+                    
+    #                 # Write the decrypted data
+    #                 for chunk in decryptor:
+    #                     pt_file.write(chunk)
+            
+    #         return encryption_context
+            
+    #     except Exception as e:
+    #         logger.error(f"Error decrypting file {source_path}: {str(e)}")
+    #         raise
 
     def get_queryset(self):
         user = self.request.user
@@ -485,17 +578,119 @@ class PracticeSessionViewSet(viewsets.ModelViewSet):
         serializer.save(user=self.request.user)
 
     # Helper methods for S3 operations
-    async def _download_file_from_s3_async(self, s3_client, bucket_name, s3_key, local_path):
-        """Asynchronously downloads a file from S3 by running the blocking boto3 call in a thread."""
-        print(f"Downloading {s3_key} to {local_path}")
-        await asyncio.to_thread(s3_client.download_file, bucket_name, s3_key, local_path)
-        print(f"Finished downloading {s3_key}")
+    async def _download_file_from_s3_async(self, s3_client, bucket_name, s3_key, local_path, is_encrypted=True):
+        """Asynchronously downloads a file from S3 and decrypts it if needed.
+        
+        Args:
+            s3_client: Boto3 S3 client
+            bucket_name: Name of the S3 bucket
+            s3_key: S3 object key to download
+            local_path: Local path where the file will be saved
+            is_encrypted: Whether the file is encrypted and needs decryption
+        """
+        temp_download_path = f"{local_path}.encrypted"
+        
+        try:
+            # Download the file (encrypted or not)
+            print(f"Downloading {s3_key} to {temp_download_path if is_encrypted else local_path}")
+            await asyncio.to_thread(s3_client.download_file, bucket_name, s3_key, temp_download_path if is_encrypted else local_path)
+            print(f"Finished downloading {s3_key}")
+            
+            if is_encrypted:
+                # Get the metadata to check if the file was encrypted
+                try:
+                    head_response = await asyncio.to_thread(
+                        s3_client.head_object,
+                        Bucket=bucket_name,
+                        Key=s3_key
+                    )
+                    
+                    # Check if the file has encryption metadata
+                    if 'x-amz-meta-encryption-context' in head_response.get('Metadata', {}):
+                        print(f"Decrypting downloaded file: {temp_download_path} -> {local_path}")
+                        # Decrypt the file
+                        await self._decrypt_file(temp_download_path, local_path)
+                        print(f"Successfully decrypted to {local_path}")
+                    else:
+                        # No encryption metadata found, just move the file
+                        print(f"No encryption metadata found for {s3_key}, saving as is")
+                        os.rename(temp_download_path, local_path)
+                except ClientError as e:
+                    if e.response['Error']['Code'] == '404':
+                        print(f"Error: File {s3_key} not found in bucket {bucket_name}")
+                        raise FileNotFoundError(f"File {s3_key} not found in bucket {bucket_name}")
+                    print(f"Error getting metadata for {s3_key}: {str(e)}")
+                    # If we can't check metadata, assume it's not encrypted
+                    os.rename(temp_download_path, local_path)
+        except Exception as e:
+            print(f"Error during download/decrypt of {s3_key}: {str(e)}")
+            raise
+        finally:
+            # Clean up the temporary downloaded file if it exists
+            if is_encrypted and os.path.exists(temp_download_path):
+                try:
+                    os.remove(temp_download_path)
+                    print(f"Cleaned up temporary downloaded file: {temp_download_path}")
+                except Exception as e:
+                    print(f"Warning: Failed to clean up temporary file {temp_download_path}: {e}")
 
-    async def _upload_file_to_s3_async(self, s3_client, bucket_name, local_path, s3_key):
-        """Asynchronously uploads a file to S3 by running the blocking boto3 call in a thread."""
-        print(f"Uploading {local_path} to s3://{bucket_name}/{s3_key}")
-        await asyncio.to_thread(s3_client.upload_file, local_path, bucket_name, s3_key)
-        print(f"Finished uploading {s3_key}")
+    async def _upload_file_to_s3_async(self, s3_client, bucket_name, local_path, s3_key, encrypt_file=True):
+        """Asynchronously uploads a file to S3 by running the blocking boto3 call in a thread.
+        
+        Args:
+            s3_client: Boto3 S3 client
+            bucket_name: Name of the S3 bucket
+            local_path: Path to the local file to upload
+            s3_key: S3 object key where the file will be stored
+            encrypt_file: If True, encrypt the file before uploading
+        """
+        print(f"Preparing to upload {local_path} to s3://{bucket_name}/{s3_key}")
+        
+        upload_path = local_path
+        temp_encrypted_path = None
+        
+        try:
+            if encrypt_file:
+                # Create a temporary file for the encrypted content
+                temp_encrypted_path = f"{local_path}.encrypted"
+                print(f"Encrypting file before upload: {local_path} -> {temp_encrypted_path}")
+                
+                # Encrypt the file
+                encryption_result = await self._encrypt_file(local_path, temp_encrypted_path)
+                print(f"File encrypted successfully. Key ID: {encryption_result['key_id']}")
+                
+                # Use the encrypted file for upload
+                upload_path = temp_encrypted_path
+            
+            # Upload the file (encrypted or not)
+            print(f"Uploading {upload_path} to s3://{bucket_name}/{s3_key}")
+            await asyncio.to_thread(s3_client.upload_file, upload_path, bucket_name, s3_key)
+            print(f"Finished uploading {s3_key}")
+            
+            # If we encrypted, store the encryption context in S3 object metadata
+            if encrypt_file and temp_encrypted_path:
+                metadata = {
+                    'x-amz-meta-encryption-context': json.dumps(encryption_result['encryption_context']),
+                    'x-amz-meta-encryption-key-id': encryption_result['key_id']
+                }
+                await asyncio.to_thread(
+                    s3_client.copy_object,
+                    Bucket=bucket_name,
+                    Key=s3_key,
+                    CopySource={'Bucket': bucket_name, 'Key': s3_key},
+                    Metadata=metadata,
+                    MetadataDirective='REPLACE'
+                )
+                print(f"Added encryption metadata to {s3_key}")
+                
+        finally:
+            # Clean up the temporary encrypted file if it was created
+            if temp_encrypted_path and os.path.exists(temp_encrypted_path):
+                try:
+                    os.remove(temp_encrypted_path)
+                    print(f"Cleaned up temporary encrypted file: {temp_encrypted_path}")
+                except Exception as e:
+                    print(f"Warning: Failed to clean up temporary file {temp_encrypted_path}: {e}")
 
     def _delete_single_s3_object(self, s3_client_sync, bucket_name, s3_key):
         """Synchronously deletes a single S3 object. Intended to be called by ThreadPoolExecutor."""
@@ -572,7 +767,14 @@ class PracticeSessionViewSet(viewsets.ModelViewSet):
                         temp_file_paths.append(temp_input_path)
 
                         # Download video chunk from S3 (using async_to_sync for the async helper)
-                        async_to_sync(self._download_file_from_s3_async)(s3_client_sync, BUCKET_NAME, s3_key, temp_input_path)
+                        # Note: We assume chunks are stored encrypted, so we set is_encrypted=True
+                        async_to_sync(self._download_file_from_s3_async)(
+                            s3_client_sync, 
+                            BUCKET_NAME, 
+                            s3_key, 
+                            temp_input_path,
+                            is_encrypted=True  # Enable decryption of downloaded chunks
+                        )
                         input_files.append(temp_input_path)
                     except Exception as e:
                         print(f"ERROR: Error processing chunk {chunk.id} video_file {chunk.video_file}: {e}")
@@ -626,21 +828,39 @@ class PracticeSessionViewSet(viewsets.ModelViewSet):
                 return Response({'status': 'ffmpeg not found', 'error': 'Server configuration error: ffmpeg is not installed or accessible.'},
                                 status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-            # 3. Upload compiled video to S3
+            # 3. Upload compiled video to S3 with encryption
             print(f"Uploading compiled video to S3 for session {session.id}.")
             s3_key = f"{BASE_FOLDER}{session.user.id}/{session.id}/{compiled_video_filename}"
-            # Use async_to_sync for the async helper
-            async_to_sync(self._upload_file_to_s3_async)(s3_client_sync, BUCKET_NAME, compiled_video_path, s3_key)
-            print(f"Uploaded {compiled_video_path} to s3://{BUCKET_NAME}/{s3_key}")
+            
+            # Use async_to_sync for the async helper, with encryption enabled
+            async_to_sync(self._upload_file_to_s3_async)(
+                s3_client_sync, 
+                BUCKET_NAME, 
+                compiled_video_path, 
+                s3_key,
+                encrypt_file=True  # Enable encryption for the compiled video
+            )
+            print(f"Uploaded and encrypted {compiled_video_path} to s3://{BUCKET_NAME}/{s3_key}")
 
             # 4. Generate pre-signed URL (24 hours expiration)
             expiration_seconds = 24 * 3600
+            
+            # Add response-content-disposition to force download with a friendly filename
+            params = {
+                'Bucket': BUCKET_NAME, 
+                'Key': s3_key,
+                'ResponseContentDisposition': f'attachment; filename="{compiled_video_filename}"'
+            }
+            
             compiled_s3_url = s3_client_sync.generate_presigned_url(
                 ClientMethod='get_object',
-                Params={'Bucket': BUCKET_NAME, 'Key': s3_key},
+                Params=params,
                 ExpiresIn=expiration_seconds
             )
             print(f"Generated pre-signed URL for {s3_key}: {compiled_s3_url}")
+            
+            # Store the S3 key in the session for future reference
+            session.s3_video_key = s3_key
 
             # 5. Update PracticeSession with the pre-signed URL
             session.compiled_video_url = compiled_s3_url
@@ -795,32 +1015,72 @@ class PracticeSessionViewSet(viewsets.ModelViewSet):
     def compiled_video_status(self, request, pk=None):
         """
         Retrieves the compilation status and URL of the compiled video for a session.
+        Generates a new pre-signed URL for the encrypted video if needed.
         """
         session = self.get_object()
+
+        # Check if the user has permission to view this session
         if session.user != request.user and not (request.user.is_staff or request.user.is_superuser):
-            raise PermissionDenied("You do not have permission to view this session's status.")
+            raise PermissionDenied("You do not have permission to view this session's video.")
 
-        status_message = ""
-        is_compiled = False
-        compiled_video_url = session.compiled_video_url
+        # Check if the video has been compiled
+        if not hasattr(session, 's3_video_key') or not session.s3_video_key:
+            return Response({
+                'status': 'not_compiled',
+                'message': 'Video has not been compiled yet.'
+            }, status=status.HTTP_404_NOT_FOUND)
 
-        if compiled_video_url:
-            status_message = "Video compiled and available (URL may expire after 24 hours)."
-            is_compiled = True
-        elif session.duration is not None and session.duration.total_seconds() > 0:
-            status_message = "Video compilation in progress or pending."
-            is_compiled = False
-        else:
-            status_message = "No video data to compile or compilation not started."
-            is_compiled = False
-
-        response_data = {
-            "session_id": session.id,
-            "compiled_video_url": compiled_video_url,
-            "status_message": status_message,
-            "is_compiled": is_compiled
-        }
-        return Response(response_data)
+        try:
+            # Initialize S3 client
+            s3_client = boto3.client('s3', region_name=settings.AWS_S3_REGION_NAME)
+            
+            # Generate a new pre-signed URL with a 1-hour expiration
+            expiration_seconds = 3600  # 1 hour
+            
+            # Get the filename from the S3 key for the content disposition
+            filename = os.path.basename(session.s3_video_key)
+            
+            # Generate pre-signed URL with forced download and proper filename
+            video_url = s3_client.generate_presigned_url(
+                ClientMethod='get_object',
+                Params={
+                    'Bucket': BUCKET_NAME,
+                    'Key': session.s3_video_key,
+                    'ResponseContentDisposition': f'attachment; filename="{filename}"'
+                },
+                ExpiresIn=expiration_seconds
+            )
+            
+            # Update the session with the new URL (optional, you might want to skip this to always generate fresh URLs)
+            session.compiled_video_url = video_url
+            session.save(update_fields=['compiled_video_url'])
+            
+            return Response({
+                'status': 'completed',
+                'video_url': video_url,
+                'expires_in_seconds': expiration_seconds,
+                'message': 'Video is ready for viewing.'
+            })
+            
+        except ClientError as e:
+            error_code = e.response.get('Error', {}).get('Code')
+            if error_code == 'NoSuchKey':
+                return Response({
+                    'status': 'not_found',
+                    'message': 'The compiled video could not be found in storage.'
+                }, status=status.HTTP_404_NOT_FOUND)
+            logger.error(f"S3 ClientError generating pre-signed URL: {str(e)}")
+            return Response({
+                'status': 'error',
+                'message': 'Failed to generate video URL. Please try again later.'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            
+        except Exception as e:
+            logger.error(f"Error generating pre-signed URL: {str(e)}")
+            return Response({
+                'status': 'error',
+                'message': 'An unexpected error occurred. Please try again later.'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     @action(detail=False, methods=['get'], url_path='sessions-by-month')
     def sessions_by_month(self, request):
