@@ -107,15 +107,19 @@ class EnterpriseSpecialtySession(models.Model):
     ]
     
     SPORT_TYPE_CHOICES = [
-        ("basketball", "Basketball"),
-        ("football", "Football"),
-        ("swimming", "Swimming"),
-        ("table_tennis", "Table Tennis"),
-        ("boxing", "Boxing"),
-        ("tennis", "Tennis"),
-        ("hockey", "Hockey"),
-        ("soccer", "Soccer"),
-        ("baseball", "Baseball"),
+        # ("basketball", "Basketball"),
+        # ("football", "Football"),
+        # ("swimming", "Swimming"),
+        # ("table_tennis", "Table Tennis"),
+        # ("boxing", "Boxing"),
+        # ("tennis", "Tennis"),
+        # ("hockey", "Hockey"),
+        # ("soccer", "Soccer"),
+        # ("baseball", "Baseball"),
+        ("nfl", "NFL"),
+        ("nba", "NBA"),
+        ("wnba", "WNBA"),
+        ("mlb", "MLB"),
     ]
     
     session = models.OneToOneField(
