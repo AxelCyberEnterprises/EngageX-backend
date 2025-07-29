@@ -58,7 +58,7 @@ def send_plain_email(request):
 
 
 urlpatterns = [
-
+    
     # URL config for Swagger
     re_path(r'^swagger(?P<format>\.json|\.yaml)$', schema_view.without_ui(cache_timeout=0), name='schema-json'),
     path('swagger/', schema_view.with_ui('swagger', cache_timeout=0), name='schema-swagger-ui'),
@@ -70,6 +70,7 @@ urlpatterns = [
     path('users/', include('users.urls')),
     path('payments/', include('payments.urls')),
     path('sessions/', include('practice_sessions.urls')),
+    path('enterprise/', include('enterprise.urls')),
 
 ]
 

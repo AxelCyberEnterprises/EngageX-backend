@@ -29,6 +29,50 @@ SECRET_KEY = "django-insecure-wfl*mho^tyaghxhwx4p^2u8)yl#gw+^ub&(=!m#=!x3rrqo1og
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = False
 
+# Frontend domain for generating URLs in emails and other frontend links
+FRONTEND_DOMAIN = os.environ.get('FRONTEND_DOMAIN', 'http://localhost:3000')
+USE_HTTPS = os.environ.get('USE_HTTPS', False)
+
+# Email settings
+DEFAULT_FROM_EMAIL = os.environ.get('DEFAULT_FROM_EMAIL', 'noreply@engagexai.io')
+SERVER_EMAIL = DEFAULT_FROM_EMAIL
+FRONTEND_DOMAIN = os.environ.get('FRONTEND_DOMAIN', 'https://app.engagexai.io')  # Update with your frontend domain
+
+# AWS SES Configuration
+AWS_SES_REGION = os.environ.get('AWS_SES_REGION', 'us-west-1')  # Using us-west-1 as per test script
+AWS_ACCESS_KEY_ID = os.environ.get('AWS_ACCESS_KEY_ID')
+AWS_SECRET_ACCESS_KEY = os.environ.get('AWS_SECRET_ACCESS_KEY')
+
+# Email backend configuration
+if DEBUG:
+    # In debug mode, use console backend but still try to use SES if credentials are available
+    if AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY:
+        EMAIL_BACKEND = 'django_ses.SESBackend'
+        print("Using AWS SES backend in DEBUG mode")
+    else:
+        EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
+        print("Using console email backend in DEBUG mode")
+else:
+    # In production, always use SES
+    EMAIL_BACKEND = 'django_ses.SESBackend'
+    print("Using AWS SES backend in PRODUCTION mode")
+
+# AWS SES Configuration
+AWS_SES_CONFIG = {
+    'aws_access_key_id': AWS_ACCESS_KEY_ID,
+    'aws_secret_access_key': AWS_SECRET_ACCESS_KEY,
+    'region_name': AWS_SES_REGION,
+}
+
+# Optional: Verify email in SES (you need to verify this email in AWS SES first)
+AWS_SES_FROM_EMAIL = DEFAULT_FROM_EMAIL
+
+# Log AWS SES configuration
+print(f"AWS SES Configuration - Region: {AWS_SES_REGION}")
+print(f"AWS SES From Email: {DEFAULT_FROM_EMAIL}")
+print(f"AWS Access Key ID: {'*' * 8 + AWS_ACCESS_KEY_ID[-4:] if AWS_ACCESS_KEY_ID else 'Not set'}")
+print(f"AWS Secret Access Key: {'*' * 8 + AWS_SECRET_ACCESS_KEY[-4:] if AWS_SECRET_ACCESS_KEY else 'Not set'}")
+
 ALLOWED_HOSTS = [".elasticbeanstalk.com", "api.engagexai.io", "*"]
 
 # Application definition
@@ -48,6 +92,7 @@ INSTALLED_APPS = [
     "payments",
     "practice_sessions",
     "streaming",
+    "enterprise",
     # Apps for authentication
     "djoser",
     "rest_framework.authtoken",
@@ -191,24 +236,17 @@ if "RDS_HOSTNAME" in os.environ:
     DEEPGRAM_API_KEY = os.environ["DEEPGRAM_API_KEY"]
 
     EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
-    EMAIL_HOST = os.environ("EMAIL_HOST")
+    EMAIL_HOST = os.environ.get("EMAIL_HOST")
     EMAIL_PORT = 587
     EMAIL_USE_TLS = True
-    EMAIL_HOST_USER = os.environ("EMAIL_HOST_USER")
-    EMAIL_HOST_PASSWORD = os.environ("EMAIL_HOST_PASSWORD")
-    DEFAULT_FROM_EMAIL = os.environ("DEFAULT_FROM_EMAIL")
+    EMAIL_HOST_USER = os.environ.get("EMAIL_HOST_USER")
+    EMAIL_HOST_PASSWORD = os.environ.get("EMAIL_HOST_PASSWORD")
+    DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL")
 
-    AWS_ACCESS_KEY_ID = os.environ("AWS_ACCESS_KEY_ID")
-    AWS_SECRET_ACCESS_KEY = os.environ("AWS_SECRET_ACCESS_KEY")
-    AWS_SES_REGION = os.environ("AWS_SES_REGION", "us-west-1")
+    AWS_ACCESS_KEY_ID = os.environ.get("AWS_ACCESS_KEY_ID")
+    AWS_SECRET_ACCESS_KEY = os.environ.get("AWS_SECRET_ACCESS_KEY")
+    AWS_SES_REGION = os.environ.get("AWS_SES_REGION", "us-west-1")
 
-    # INTUIT_CLIENT_ID = os.environ('INTUIT_CLIENT_ID')
-    # INTUIT_CLIENT_SECRET = os.environ('INTUIT_CLIENT_SECRET')
-    # INTUIT_REDIRECT_URI = os.environ('NEW_INTUIT_REDIRECT_URI')
-    # INTUIT_ENVIRONMENT = 'production'
-    # INTUIT_WEBHOOK_VERIFIER_TOKEN = os.environ('INTUIT_VERIFIER_TOKEN')
-
-    # INTUIT_API_BASE_URL = 'https://quickbooks.api.intuit.com' if INTUIT_ENVIRONMENT == 'production' else 'https://sandbox-quickbooks.api.intuit.com'
 
 
 else:

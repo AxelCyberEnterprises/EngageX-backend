@@ -1,0 +1,12 @@
+Hello {{ user.first_name|default:user.email }},
+
+You have requested to log in to your {{ site_name }} account. Use the verification code below to sign in:
+
+Verification Code: {{ code }}
+
+This code will expire in {{ expiry_minutes }} minutes.
+
+If you didn't request this, please ignore this email or contact support.
+
+Best regards,
+The {{ site_name }} Team

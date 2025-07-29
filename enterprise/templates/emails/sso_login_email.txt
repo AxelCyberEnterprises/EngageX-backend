@@ -1,0 +1,12 @@
+Hello {{ user.first_name|default:user.email }},
+
+You have requested to log in to your account. Use the link below to sign in:
+
+{{ login_url }}
+
+This link will expire in {{ expiry_hours }} hours.
+
+If you didn't request this, please ignore this email or contact support.
+
+Best regards,
+The {{ site_name }} Team

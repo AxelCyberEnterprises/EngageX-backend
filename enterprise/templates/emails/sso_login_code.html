@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Your {{ site_name }} Login Code</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #333333;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .container {
+            border: 1px solid #e0e0e0;
+            border-radius: 5px;
+            padding: 30px;
+            margin-top: 20px;
+        }
+        .code {
+            font-size: 32px;
+            font-weight: bold;
+            letter-spacing: 5px;
+            text-align: center;
+            margin: 20px 0;
+            padding: 15px;
+            background-color: #f5f5f5;
+            border-radius: 5px;
+            display: inline-block;
+            min-width: 200px;
+        }
+        .footer {
+            margin-top: 30px;
+            font-size: 12px;
+            color: #777777;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>Hello {{ user.first_name|default:user.email }},</h2>
+        
+        <p>You have requested to log in to your {{ site_name }} account. Use the verification code below to sign in:</p>
+        
+        <div class="code">{{ code }}</div>
+        
+        <p>This code will expire in {{ expiry_minutes }} minutes.</p>
+        
+        <p>If you didn't request this, please ignore this email or contact support.</p>
+        
+        <p>Best regards,<br>The {{ site_name }} Team</p>
+    </div>
+    
+    <div class="footer">
+        <p>This is an automated message, please do not reply to this email.</p>
+    </div>
+</body>
+</html>

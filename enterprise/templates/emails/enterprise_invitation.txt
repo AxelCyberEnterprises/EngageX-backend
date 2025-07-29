@@ -1,0 +1,28 @@
+Hello {{ user.first_name|default:user.email }},
+
+Your account has been created for {{ enterprise.name }} on our platform.
+
+{% if has_password %}
+You can log in using the following credentials:
+
+Email: {{ user.email }}
+Password: {{ password }}
+
+For security reasons, we recommend changing your password after your first login.
+
+Please log in here: {{ login_url }}
+
+If you didn't request this account, please contact our support team immediately.
+
+Best regards,
+The {{ enterprise.name }} Team
+{% else %}
+Please log in using your existing credentials:
+
+{{ login_url }}
+
+If you've forgotten your password, you can reset it from the login page.
+
+Best regards,
+The {{ enterprise.name }} Team
+{% endif %}

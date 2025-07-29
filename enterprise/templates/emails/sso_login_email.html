@@ -1,0 +1,32 @@
+{% extends "emails/base.html" %}
+
+{% block content %}
+<p>Hello {{ user.first_name|default:user.email }},</p>
+
+<p>You have requested to log in to your account. Click the button below to sign in:</p>
+
+<table role="presentation" border="0" cellpadding="0" cellspacing="0" class="btn btn-primary">
+  <tbody>
+    <tr>
+      <td align="left">
+        <table role="presentation" border="0" cellpadding="0" cellspacing="0">
+          <tbody>
+            <tr>
+              <td> <a href="{{ login_url }}" target="_blank">Sign In</a> </td>
+            </tr>
+          </tbody>
+        </table>
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+<p>Or copy and paste this link into your browser:</p>
+<p><a href="{{ login_url }}" target="_blank">{{ login_url }}</a></p>
+
+<p>This link will expire in {{ expiry_hours }} hours.</p>
+
+<p>If you didn't request this, please ignore this email or contact support.</p>
+
+<p>Best regards,<br>The {{ site_name }} Team</p>
+{% endblock %}

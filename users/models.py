@@ -1,6 +1,6 @@
 from django.db import models
 from django.core.exceptions import ValidationError
-from django.contrib.auth.models import AbstractBaseUser, PermissionsMixin
+from django.contrib.auth.models import AbstractBaseUser, PermissionsMixin, BaseUserManager
 from .managers import CustomUserManager
 from django.conf import settings
 
@@ -17,6 +17,9 @@ from .storages_backends import (
     StaticVideosStorage,
 )
 
+from django.dispatch import receiver
+from django.db.models.signals import post_save
+
 
 def validate_hex_color(value):
     import re
@@ -28,21 +31,61 @@ def validate_hex_color(value):
 
 
 class CustomUser(AbstractBaseUser, PermissionsMixin):
+    class UserType(models.TextChoices):
+        STANDARD = 'standard', _('Standard User')
+        ROOKIE_ENTERPRISE = 'rookie_enterprise', _('Rookie Enterprise Dashboard')
+        GENERAL_ENTERPRISE = 'general_enterprise', _('General Enterprise Dashboard')
+    
     email = models.EmailField(unique=True)
     username = models.CharField(max_length=30, null=True, blank=True)
-    first_name = models.CharField(max_length=30, blank=True, null=True)  # Optional
-    last_name = models.CharField(max_length=30, blank=True, null=True)  # Optional
-    is_active = models.BooleanField(default=False)  # Set default to False
+    first_name = models.CharField(max_length=30, blank=True, null=True)
+    last_name = models.CharField(max_length=30, blank=True, null=True)
+    is_active = models.BooleanField(default=False)
     is_staff = models.BooleanField(default=False)
     date_joined = models.DateTimeField(auto_now_add=True)
-    is_verified = models.BooleanField(
-        default=False
-    )  # To track if the user has verified their email
-    verification_code = models.CharField(
-        max_length=6, blank=True, null=True
-    )  # To store the 6-digit code
-
-    has_logged_in = models.BooleanField(default=False, help_text="Tracks if the user has logged in at least once.")
+    is_verified = models.BooleanField(default=False)
+    verification_code = models.CharField(max_length=6, blank=True, null=True)
+    
+    # Enterprise user type
+    user_type = models.CharField(
+        max_length=20,
+        choices=UserType.choices,
+        default=UserType.STANDARD,
+        help_text=_('Designates the type of user.')
+    )
+    
+    # Login tracking
+    last_login_method = models.CharField(
+        max_length=20,
+        blank=True,
+        null=True,
+        choices=[
+            ('password', 'Password'),
+            ('email_link', 'Email Link'),
+        ],
+        help_text=_('Last login method used')
+    )
+    has_logged_in = models.BooleanField(
+        default=False,
+        help_text=_('Tracks if the user has logged in at least once.')
+    )
+    
+    # SSO/Invitation fields
+    sso_login_enabled = models.BooleanField(
+        default=False,
+        help_text=_('Whether the user can log in via email link (SSO)')
+    )
+    sso_login_code = models.CharField(
+        max_length=64,
+        blank=True,
+        null=True,
+        help_text=_('One-time code for email login')
+    )
+    sso_code_expires = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text=_('Expiration time for the SSO login code')
+    )
 
     objects = CustomUserManager()
 
@@ -51,6 +94,176 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
 
     def __str__(self):
         return self.email
+        
+    def is_enterprise_user(self):
+        """Check if the user is an enterprise user."""
+        print(f"\n=== Checking if user is enterprise ===")
+        print(f"User ID: {self.id}")
+        print(f"Email: {self.email}")
+        print(f"User type: {self.user_type}")
+        print(f"User type class: {type(self.user_type).__name__}")
+        
+        # Get the actual string values for comparison
+        user_type_str = str(self.user_type).lower()
+        rookie_enterprise = str(self.UserType.ROOKIE_ENTERPRISE).lower()
+        general_enterprise = str(self.UserType.GENERAL_ENTERPRISE).lower()
+        
+        print(f"Comparing user_type '{user_type_str}' with: {rookie_enterprise}, {general_enterprise}")
+        
+        # Check if the user_type matches either enterprise type (case-insensitive)
+        is_enterprise = user_type_str in [rookie_enterprise, general_enterprise]
+        print(f"Is enterprise user: {is_enterprise}")
+        
+        return is_enterprise
+        
+    def is_enterprise_admin(self):
+        """Check if the user is an enterprise admin."""
+        if not self.is_enterprise_user():
+            return False
+        return hasattr(self, 'enterprise_profile') and self.enterprise_profile.is_admin
+    
+    def get_enterprise(self):
+        """Get the enterprise this user belongs to, if any."""
+        if not self.is_enterprise_user():
+            return None
+        return getattr(self.enterprise_profile, 'enterprise', None)
+        
+    def generate_sso_code(self):
+        """Generate a one-time code for email login."""
+        import secrets
+        from django.utils import timezone
+        from datetime import timedelta
+        
+        self.sso_login_code = secrets.token_urlsafe(32)
+        self.sso_code_expires = timezone.now() + timedelta(hours=24)  # Code valid for 24 hours
+        self.save(update_fields=['sso_login_code', 'sso_code_expires'])
+        return self.sso_login_code
+        
+    def verify_sso_code(self, code):
+        """Verify if the provided SSO code is valid."""
+        from django.utils import timezone
+        
+        if not self.sso_login_enabled or not self.sso_login_code or not self.sso_code_expires:
+            return False
+            
+        if timezone.now() > self.sso_code_expires:
+            return False
+            
+        return secrets.compare_digest(self.sso_login_code, code)
+        
+    def send_sso_login_email(self, request=None):
+        """
+        Public method to send an SSO login email to the user.
+        
+        Returns:
+            bool: True if the email was sent successfully, False otherwise
+        """
+        print(f"\n=== SSO Login Email Requested ===")
+        print(f"User: {self.email} (ID: {self.id})")
+        print(f"SSO Enabled: {self.sso_login_enabled}")
+        print(f"User Type: {self.user_type}")
+        
+        if not self.sso_login_enabled:
+            print("SSO login is not enabled for this user")
+            return False
+            
+        if not self.is_active:
+            print("User account is not active")
+            return False
+            
+        print("Proceeding to send SSO login email...")
+        return self._send_sso_login_email(request)
+        
+    def verify_sso_code(self, code):
+        """
+        Verify if the provided SSO login code is valid.
+        
+        Args:
+            code (str): The 6-digit code to verify
+            
+        Returns:
+            bool: True if the code is valid and not expired, False otherwise
+        """
+        if not code or not self.sso_login_code or not self.sso_code_expires:
+            return False
+            
+        # Check if the code matches and is not expired
+        is_valid = (
+            code == self.sso_login_code and
+            timezone.now() < self.sso_code_expires
+        )
+        
+        print(f"\n=== Verifying SSO Code ===")
+        print(f"Provided code: {code}")
+        print(f"Stored code: {self.sso_login_code}")
+        print(f"Code expires at: {self.sso_code_expires}")
+        print(f"Current time: {timezone.now()}")
+        print(f"Code valid: {is_valid}")
+        
+        return is_valid
+        
+    def _send_sso_login_email(self, request=None):
+        """Send an email with a 6-digit login code to the user using the custom email utility."""
+        from django.template.loader import render_to_string
+        from django.conf import settings
+        import random
+        
+        print(f"\n=== Preparing SSO Login Email ===")
+        print(f"Recipient: {self.email}")
+        
+        try:
+            # Generate a 6-digit code
+            code = ''.join([str(random.randint(0, 9)) for _ in range(6)])
+            
+            # Save the code to the user model
+            self.sso_login_code = code
+            self.sso_code_expires = timezone.now() + timezone.timedelta(minutes=15)  # Code expires in 15 minutes
+            self.save(update_fields=['sso_login_code', 'sso_code_expires'])
+            
+            context = {
+                'user': self,
+                'code': code,
+                'expiry_minutes': 15,
+                'site_name': getattr(settings, 'SITE_NAME', 'EngageX'),
+            }
+            
+            print(f"SSO login code: {code}")
+            
+            subject = f'Your {getattr(settings, "SITE_NAME", "EngageX")} Login Code: {code}'
+            print(f"Email subject: {subject}")
+            
+            text_content = render_to_string('emails/sso_login_code.txt', context)
+            html_content = render_to_string('emails/sso_login_code.html', context)
+            
+            # Import here to avoid circular imports
+            from users.utils.email import send_email_via_ses
+            
+            print("Sending email via SES...")
+            result = send_email_via_ses(
+                subject=subject,
+                body=text_content,
+                to_emails=[self.email],
+                from_email=getattr(settings, 'DEFAULT_FROM_EMAIL', 'noreply@engagexai.io'),
+                html_body=html_content
+            )
+            
+            if result:
+                print("Email sent successfully!")
+                return True
+            else:
+                print("Failed to send email")
+                return False
+                
+        except Exception as e:
+            print(f"Error sending email: {str(e)}")
+            return False
+
+
+@receiver(post_save, sender=settings.AUTH_USER_MODEL)
+def create_user_profile(sender, instance, created, **kwargs):
+    """Create a user profile when a new user is created."""
+    if created:
+        UserProfile.objects.create(user=instance)
 
 
 class UserProfile(models.Model):

@@ -1,0 +1,34 @@
+{% extends "emails/base.html" %}
+
+{% block content %}
+<p>Hello {{ user.first_name|default:user.email }},</p>
+
+<p>You have been invited to join {{ enterprise.name }} on our platform.</p>
+
+<p>Please click the button below to set your password and access your account:</p>
+
+<table role="presentation" border="0" cellpadding="0" cellspacing="0" class="btn btn-primary">
+  <tbody>
+    <tr>
+      <td align="left">
+        <table role="presentation" border="0" cellpadding="0" cellspacing="0">
+          <tbody>
+            <tr>
+              <td> <a href="{{ protocol }}://{{ domain }}/auth/set-password/{{ uid }}/{{ token }}/" target="_blank">Set Your Password</a> </td>
+            </tr>
+          </tbody>
+        </table>
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+<p>If the button doesn't work, copy and paste this link into your browser:</p>
+<p>{{ protocol }}://{{ domain }}/auth/set-password/{{ uid }}/{{ token }}/</p>
+
+<p>This link will expire in 7 days.</p>
+
+<p>If you didn't request this, please ignore this email.</p>
+
+<p>Best regards,<br>The {{ enterprise.name }} Team</p>
+{% endblock %}
