@@ -7,6 +7,7 @@ from .admin_views import ManualUserUploadView
 router = DefaultRouter()
 router.register(r'enterprises', views.EnterpriseViewSet, basename='enterprise')
 router.register(r'enterprise-users', views.EnterpriseUserViewSet, basename='enterprise-user')
+router.register(r'enterprise-questions', views.EnterpriseQuestionViewSet, basename='enterprise-question')
 
 urlpatterns = [
     path('', include(router.urls)),

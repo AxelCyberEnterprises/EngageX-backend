@@ -1,25 +1,113 @@
 from django.contrib import admin
-from .models import Enterprise, EnterpriseUser
+from django.utils.translation import gettext_lazy as _
+from django import forms
+from django.core.exceptions import ValidationError
+from django.utils.html import format_html
+from .models import Enterprise, EnterpriseUser, EnterpriseQuestion
+
+class EnterpriseQuestionInline(admin.TabularInline):
+    model = EnterpriseQuestion
+    extra = 1
+    fields = ('question_text', 'vertical', 'is_active')
+    show_change_link = True
+    verbose_name_plural = 'Enterprise Questions'
+    
+    def get_formset(self, request, obj=None, **kwargs):
+        formset = super().get_formset(request, obj, **kwargs)
+        
+        class EnterpriseQuestionForm(formset.form):
+            def __init__(self, *args, **kwargs):
+                super().__init__(*args, **kwargs)
+                if obj:  # Only if we're editing an existing enterprise
+                    # Get available verticals for the enterprise
+                    available_verticals = obj.get_available_verticals()
+                    # Update the vertical choices
+                    self.fields['vertical'].choices = [
+                        (v.value, v.label) for v in available_verticals
+                    ]
+                    
+                    # If there's an existing instance, ensure its vertical is in the choices
+                    if self.instance and self.instance.pk:
+                        current_vertical = self.instance.vertical
+                        if not any(v.value == current_vertical for v in available_verticals):
+                            self.fields['vertical'].choices.append(
+                                (current_vertical, f"{current_vertical} (invalid for this enterprise type)")
+                            )
+        
+        formset.form = EnterpriseQuestionForm
+        return formset
 
 @admin.register(Enterprise)
 class EnterpriseAdmin(admin.ModelAdmin):
-    list_display = ('name', 'domain', 'is_active', 'created_at')
-    list_filter = ('is_active',)
+    list_display = ('name', 'domain', 'enterprise_type_display', 'is_active', 'created_at')
+    list_filter = ('is_active', 'enterprise_type')
     search_fields = ('name', 'domain')
-    readonly_fields = ('created_at', 'updated_at')
+    readonly_fields = ('created_at', 'updated_at', 'available_verticals_display')
+    list_editable = ('is_active',)
+    inlines = [EnterpriseQuestionInline]
+    
     fieldsets = (
         (None, {
-            'fields': ('name', 'domain', 'logo', 'is_active')
+            'fields': ('name', 'domain', 'enterprise_type', 'logo', 'is_active')
+        }),
+        ('Verticals', {
+            'fields': ('available_verticals_display',),
+            'classes': ('collapse', 'wide'),
+            'description': _('Available verticals based on enterprise type')
         }),
         ('Settings', {
             'fields': ('require_domain_match',),
-            'classes': ('collapse',)
+            'classes': ('collapse',),
+            'description': _('Enterprise authentication settings')
         }),
         ('Timestamps', {
             'fields': ('created_at', 'updated_at'),
             'classes': ('collapse',)
         }),
     )
+    
+    def get_readonly_fields(self, request, obj=None):
+        # Make enterprise_type read-only if there are existing questions
+        if obj and obj.questions.exists():
+            return self.readonly_fields + ('enterprise_type',)
+        return self.readonly_fields
+    
+    def save_formset(self, request, form, formset, change):
+        """Validate that questions' verticals are valid for the enterprise type"""
+        if formset.model == EnterpriseQuestion:
+            for form in formset.forms:
+                if form.cleaned_data and not form.cleaned_data.get('DELETE', False):
+                    vertical = form.cleaned_data.get('vertical')
+                    if vertical:
+                        available_verticals = [v.value for v in form.instance.enterprise.get_available_verticals()]
+                        if vertical not in available_verticals:
+                            form.add_error('vertical', 
+                                f"Vertical '{vertical}' is not available for this enterprise type"
+                            )
+                            raise ValidationError(
+                                f"Cannot save: One or more questions have invalid verticals for this enterprise type"
+                            )
+        super().save_formset(request, form, formset, change)
+    
+    def available_verticals_display(self, obj):
+        """Display available verticals in a more readable format"""
+        verticals = []
+        for vertical in obj.get_available_verticals():
+            verticals.append(f'<span class="badge" style="background: #4caf50; color: white; padding: 3px 6px; border-radius: 4px; font-size: 12px;">{vertical.label}</span>')
+        return format_html(' '.join(verticals))
+    available_verticals_display.short_description = _('Available Verticals')
+    available_verticals_display.allow_tags = True
+    
+    def enterprise_type_display(self, obj):
+        """Color code the enterprise type"""
+        color = '#4caf50' if obj.enterprise_type == 'sport' else '#2196f3'
+        return format_html(
+            '<span style="color: {}; font-weight: 500;">{}</span>',
+            color,
+            obj.get_enterprise_type_display()
+        )
+    enterprise_type_display.short_description = 'Type'
+    enterprise_type_display.admin_order_field = 'enterprise_type'
 
 @admin.register(EnterpriseUser)
 class EnterpriseUserAdmin(admin.ModelAdmin):
@@ -42,3 +130,110 @@ class EnterpriseUserAdmin(admin.ModelAdmin):
             'classes': ('collapse',)
         }),
     )
+
+
+@admin.register(EnterpriseQuestion)
+class EnterpriseQuestionAdmin(admin.ModelAdmin):
+    list_display = ('truncated_question', 'enterprise_link', 'vertical_badge', 'is_active', 'created_short')
+    list_filter = ('enterprise__enterprise_type', 'vertical', 'is_active', 'enterprise')
+    search_fields = ('question_text', 'enterprise__name')
+    list_editable = ('is_active',)
+    list_select_related = ('enterprise',)
+    readonly_fields = ('created_at', 'updated_at')
+    list_per_page = 25
+    
+    fieldsets = (
+        (None, {
+            'fields': ('enterprise', 'vertical', 'question_text', 'is_active')
+        }),
+        ('Timestamps', {
+            'fields': ('created_at', 'updated_at'),
+            'classes': ('collapse',)
+        }),
+    )
+    
+    def get_queryset(self, request):
+        return super().get_queryset(request).select_related('enterprise')
+    
+    def get_form(self, request, obj=None, **kwargs):
+        form = super().get_form(request, obj, **kwargs)
+        
+        # If we're adding a new question, we'll handle verticals in the form's __init__
+        if obj is None:
+            return form
+            
+        # For existing questions, limit vertical choices based on enterprise type
+        if obj and obj.enterprise:
+            available_verticals = obj.enterprise.get_available_verticals()
+            form.base_fields['vertical'].choices = [
+                (v.value, v.label) for v in available_verticals
+            ]
+            
+            # If the current vertical is not in available_verticals (due to type change), add it
+            if obj.vertical and not any(v.value == obj.vertical for v in available_verticals):
+                form.base_fields['vertical'].choices.append(
+                    (obj.vertical, f"{obj.vertical} (invalid for this enterprise type)")
+                )
+        
+        return form
+    
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        if db_field.name == 'enterprise':
+            # Order enterprises by name in the dropdown
+            kwargs['queryset'] = Enterprise.objects.order_by('name')
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
+    
+    def save_model(self, request, obj, form, change):
+        # Ensure the vertical is valid for the enterprise
+        if obj.enterprise and obj.vertical:
+            available_verticals = [v.value for v in obj.enterprise.get_available_verticals()]
+            if obj.vertical not in available_verticals:
+                raise ValidationError(
+                    f"Vertical '{obj.vertical}' is not available for this enterprise type"
+                )
+        super().save_model(request, obj, form, change)
+    
+    # Custom display methods for list view
+    def truncated_question(self, obj):
+        """Display a truncated version of the question text"""
+        max_length = 100
+        if len(obj.question_text) > max_length:
+            return f"{obj.question_text[:max_length]}..."
+        return obj.question_text
+    truncated_question.short_description = 'Question'
+    
+    def enterprise_link(self, obj):
+        """Display enterprise as a link to its admin page"""
+        url = f"/admin/enterprise/enterprise/{obj.enterprise.id}/change/"
+        return format_html('<a href="{}">{}</a>', url, obj.enterprise.name)
+    enterprise_link.short_description = 'Enterprise'
+    enterprise_link.admin_order_field = 'enterprise__name'
+    
+    def vertical_badge(self, obj):
+        """Display vertical as a colored badge"""
+        if not obj.vertical:
+            return "-"
+            
+        # Get the display value for the vertical
+        vertical_display = dict(Enterprise.Vertical.choices).get(obj.vertical, obj.vertical)
+        
+        # Check if this vertical is valid for the enterprise
+        is_valid = any(v.value == obj.vertical for v in obj.enterprise.get_available_verticals())
+        
+        color = '#4caf50' if is_valid else '#f44336'
+        title = "" if is_valid else " (invalid for this enterprise type)"
+        
+        return format_html(
+            '<span class="badge" style="background: {color}; color: white; padding: 3px 6px; border-radius: 4px; font-size: 12px;" title="{title}">{text}{title}</span>',
+            color=color,
+            title=title,
+            text=vertical_display
+        )
+    vertical_badge.short_description = 'Vertical'
+    vertical_badge.admin_order_field = 'vertical'
+    
+    def created_short(self, obj):
+        """Display a shorter version of the created timestamp"""
+        return obj.created_at.strftime('%Y-%m-%d')
+    created_short.short_description = 'Created'
+    created_short.admin_order_field = 'created_at'

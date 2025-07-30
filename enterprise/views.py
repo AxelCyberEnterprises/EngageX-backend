@@ -20,11 +20,12 @@ from django.utils.encoding import force_bytes
 from django.utils.http import urlsafe_base64_encode
 
 from users.utils.email import send_email_via_ses
-from .models import Enterprise, EnterpriseUser
+from .models import Enterprise, EnterpriseUser, EnterpriseQuestion
 from .serializers import (
     EnterpriseSerializer,
     EnterpriseUserSerializer,
-    BulkUserUploadSerializer
+    BulkUserUploadSerializer,
+    EnterpriseQuestionSerializer
 )
 
 # Get the logger for this file
@@ -41,6 +42,49 @@ class EnterpriseViewSet(viewsets.ModelViewSet):
     serializer_class = EnterpriseSerializer
     permission_classes = [IsAdminUser]
     parser_classes = [MultiPartParser, JSONParser]
+
+
+class EnterpriseQuestionViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for managing enterprise questions.
+    """
+    serializer_class = EnterpriseQuestionSerializer
+    permission_classes = [IsAdminUser]
+    
+    def get_queryset(self):
+        queryset = EnterpriseQuestion.objects.select_related('enterprise')
+        
+        # Filter by enterprise if specified
+        enterprise_id = self.request.query_params.get('enterprise_id')
+        if enterprise_id:
+            queryset = queryset.filter(enterprise_id=enterprise_id)
+            
+        # Filter by vertical if specified
+        vertical = self.request.query_params.get('vertical')
+        if vertical:
+            queryset = queryset.filter(vertical=vertical)
+            
+        # Filter by active status if specified
+        is_active = self.request.query_params.get('is_active')
+        if is_active is not None:
+            is_active = is_active.lower() in ('true', '1', 't')
+            queryset = queryset.filter(is_active=is_active)
+            
+        return queryset
+    
+    def perform_create(self, serializer):
+        """Set the enterprise and validate vertical."""
+        enterprise = serializer.validated_data['enterprise']
+        vertical = serializer.validated_data['vertical']
+        
+        # Validate that the vertical is allowed for this enterprise
+        available_verticals = [v[0] for v in enterprise.get_available_verticals()]
+        if vertical not in available_verticals:
+            raise ValidationError({
+                'vertical': f"Vertical '{vertical}' is not available for this enterprise type"
+            })
+            
+        serializer.save()
 
 
 class EnterpriseUserViewSet(viewsets.ModelViewSet):
