@@ -1845,39 +1845,199 @@ class SessionReportView(APIView):
             }
 
         if session.session_type == "enterprise":
-            print("This is an Enterprise Specialty session.")
-            prompt = f"""
-            My name is {name}, and I’m currently a {role} in my sports journey.
+            # Get the enterprise vertical from the user's enterprise
+            enterprise_vertical = None
+            if hasattr(session.user, 'enterprise_profile') and hasattr(session.user.enterprise_profile, 'enterprise'):
+                # Get the available verticals from the enterprise
+                enterprise = session.user.enterprise_profile.enterprise
+                available_verticals = enterprise.get_available_verticals()
+                
+                # If there's only one vertical available, use it
+                if len(available_verticals) == 1:
+                    enterprise_vertical = available_verticals[0]
+                # Otherwise, we'd need additional logic to determine which vertical to use
+                # For now, we'll use the first available vertical as a fallback
+                elif available_verticals:
+                    enterprise_vertical = available_verticals[0]
+            
+            print(f"This is an Enterprise Specialty session. Vertical: {enterprise_vertical}")
+            
+            # Default prompt if vertical is not found
+            prompt = ""
+            
+            if enterprise_vertical == Enterprise.Vertical.MEDIA_TRAINING:
+                prompt = f"""
+                My name is {name}, and I’m currently a {role} in my sports journey.
 
-            You are my personal communication mentor. Your focus is to help young athletes like me grow as confident and impactful speakers — whether in interviews, team talks, public appearances, or leadership moments. Your feedback should guide me to express myself better, show up with presence, and connect with others.
+                You are my personal media trainer. Your role is to help young athletes like me become confident, clear, and compelling in interviews and public appearances. Your job is to sharpen how I show up under the spotlight — in press conferences, interviews, post-game chats, or high-stakes media moments. Help me express myself with purpose, connect with my audience, and represent myself and my team well.
 
-            My goal with this talk is: {goals}.
+                My goal with this talk is: {goals}.
 
-            I want you to give me helpful feedback using my presentation and the evaluation data. Structure your feedback in three clear parts, and speak to me like a trusted coach who wants me to win — not just in sports, but in how I show up as a person.
+                Use my transcript and the evaluation data to give me detailed, structured feedback in three parts. Talk to me like a coach who genuinely wants to see me grow — not just as an athlete, but as a communicator and role model.
 
-            1. Strengths: Identify my most impactful specific strengths. Focus on concrete content choices, tone, delivery techniques, and audience engagement strategies. Use simple sentences, do not include transcript quotes here.
+                1. Strengths: Highlight what I did well in this appearance. Focus on how I handled questions, the way I carried myself, my clarity, tone, and any standout responses. Keep the language simple and encouraging. Be specific.
 
-            2. Areas for Improvement: Provide clear, actionable, and specific feedback on where I can improve. Emphasize my delivery habits, missed emotional beats, and structural weaknesses. Use simple sentences, do not include transcript quotes here.
+                2. Areas for Improvement: Give clear and constructive feedback on where I can get better. Focus on my media presence, how I answered questions, how I framed my thoughts, and whether I stayed composed and on message. Keep the suggestions practical and easy to apply.
 
-            3. General Feedback Summary: Craft a detailed, content-specific analysis of my session. Your summary must be grounded in specific parts of my speech. Your pirmary focus is how I handled the questions but include the following:
-            - Evaluate the effectiveness of my opening: Was it attention-grabbing, relevant, or emotionally engaging? Did I clearly set the tone or premise for the rest of the talk?
-            - Were there any standout words or phrases I used that really connected or showed emotion?
-            - Did I use any filler words too often (like “uh,” “you know,” “like”)? If so, quote a few examples.
-            - How did I sound — confident, calm, excited, nervous? Did that shift anywhere in the talk?
-            - Reflect on whether my style or personal story helped make the talk connect with more people.
-            - Clearly state whether my talk was effective — and if so, effective at what specifically 
-            - Did my message feel organized, and did I build it up toward something important?
-            - "AUDIENCE QUESTION" is in my transcript, evaluate how I answered the audience questions. If no "AUDIENCE QUESTION" is in my transcript dont mention anything about questions
-            - Mention my goal {goals} only if I had one — skip this part if I didn’t mention any goal.
-            - End with your view on how I’m growing as a speaker and how I can take the next step.
+                3. Media Response Breakdown: Go deeper into how I handled each question during the session. For every question in the transcript (including ones labeled "AUDIENCE QUESTION"), evaluate:
+                - Did I fully answer the question or dodge it?
+                - Did I control the narrative or let the interviewer steer me off message?
+                - Was my answer memorable, respectful, and aligned with my personal or team values?
+                - Did I stay calm and focused, even if the question was tricky?
+                - Was there a moment where I really connected — with a story, perspective, or strong message?
 
-            Tone: Talk to me with respect, like you believe in my future. Don’t use grammar corrections unless it really affects how I come across. Don’t use headers, dashes, or bold formatting. Use \n\n between paragraphs and begin with a positive comment based on how I showed up in my presentation.
+                Also:
+                - How effective was my opening? Did it show confidence, presence, or set a clear tone?
+                - Did my message feel organized and lead somewhere meaningful?
+                - Mention my goal {goals} only if I clearly stated one.
+                - Finish with a short reflection on how I’m developing as a public voice — and where I should focus next to elevate my presence.
 
-            Evaluation data: {metrics_string}
+                Tone: Speak to me with respect and belief in my future. I don’t need grammar corrections. I need guidance on how to stand tall, communicate with intention, and leave an impact in every media moment.
 
-            Transcript:
-            {combined_feedback}
-            """
+                Evaluation data: {metrics_string}
+
+                Transcript:
+                {combined_feedback}
+                """
+
+            elif enterprise_vertical == Enterprise.Vertical.COACH:
+                prompt = f"""
+                My name is {name}, and I’m currently a {role} in my sports journey.
+
+                You are my personal communication coach. Your job is to help me become better at communicating with my coach/GM — especially when it comes to expressing how I feel, asking for support, giving feedback, or having honest conversations. I want to build trust, show leadership, and strengthen my relationship with my coach/GM through how I communicate.
+
+                My goal with this conversation is: {goals}.
+
+                Use my transcript and the evaluation data to give me structured feedback in three parts. Talk to me like someone who wants to see me grow — not just as an athlete, but as someone who can communicate clearly, confidently, and with emotional maturity.
+
+                1. Strengths: Highlight what I did well in this conversation with my coach. Focus on how I expressed myself, whether I stayed respectful and honest, and if I showed maturity, clarity, or emotional awareness. Be specific and use simple language.
+
+                2. Areas for Improvement: Give clear, practical advice on what I could have done better. Look at how I handled disagreement, whether I avoided tough topics, if I rambled or got defensive, or if I missed a chance to be more open or thoughtful.
+
+                3. Coach Conversation Breakdown: Go through key parts of the conversation where I was responding to my coach or bringing up something important. For each moment:
+                - Did I clearly express my thoughts or feelings?
+                - Did I stay calm, respectful, and focused — even if the topic was hard?
+                - Did I show that I was listening and that I understood my coach’s point of view?
+                - Was there any moment where I built trust or showed growth as a communicator?
+                - Did I give off the impression of someone who’s coachable, driven, and self-aware?
+
+                Also:
+                - Was the opening of my conversation strong — did I set the tone or intention clearly?
+                - Did I sound like someone who takes ownership of their growth?
+                - Mention my goal {goals} only if I clearly stated one.
+                - End with your thoughts on how I’m improving in how I show up with my coach — and what the next step should be.
+
+                Tone: Speak to me with honesty and belief in my potential. I want to get better at owning my voice and building stronger relationships, starting with the one I have with my coach.
+
+                Evaluation data: {metrics_string}
+
+                Transcript:
+                {combined_feedback}
+                """
+
+            elif enterprise_vertical == Enterprise.Vertical.GM:
+                prompt = f"""
+                My name is {name}, and I’m currently a {role} in my sports journey.
+
+                You are my personal communication coach. Your job is to help me become better at communicating with my coach/GM — especially when it comes to expressing how I feel, asking for support, giving feedback, or having honest conversations. I want to build trust, show leadership, and strengthen my relationship with my coach/GM through how I communicate.
+
+                My goal with this conversation is: {goals}.
+
+                Use my transcript and the evaluation data to give me structured feedback in three parts. Talk to me like someone who wants to see me grow — not just as an athlete, but as someone who can communicate clearly, confidently, and with emotional maturity.
+
+                1. Strengths: Highlight what I did well in this conversation with my coach. Focus on how I expressed myself, whether I stayed respectful and honest, and if I showed maturity, clarity, or emotional awareness. Be specific and use simple language.
+
+                2. Areas for Improvement: Give clear, practical advice on what I could have done better. Look at how I handled disagreement, whether I avoided tough topics, if I rambled or got defensive, or if I missed a chance to be more open or thoughtful.
+
+                3. Coach Conversation Breakdown: Go through key parts of the conversation where I was responding to my coach or bringing up something important. For each moment:
+                - Did I clearly express my thoughts or feelings?
+                - Did I stay calm, respectful, and focused — even if the topic was hard?
+                - Did I show that I was listening and that I understood my coach’s point of view?
+                - Was there any moment where I built trust or showed growth as a communicator?
+                - Did I give off the impression of someone who’s coachable, driven, and self-aware?
+
+                Also:
+                - Was the opening of my conversation strong — did I set the tone or intention clearly?
+                - Did I sound like someone who takes ownership of their growth?
+                - Mention my goal {goals} only if I clearly stated one.
+                - End with your thoughts on how I’m improving in how I show up with my coach — and what the next step should be.
+
+                Tone: Speak to me with honesty and belief in my potential. I want to get better at owning my voice and building stronger relationships, starting with the one I have with my coach.
+
+                Evaluation data: {metrics_string}
+
+                Transcript:
+                {combined_feedback}
+                """
+            elif enterprise_vertical == Enterprise.Vertical.COACHING:
+                prompt = f"""
+                My name is {name}, and I’m currently a {role} in my sales journey.
+
+                You are my personal sales communication coach. Your job is to help me get better at handling objections, building trust, and closing conversations with clarity and confidence. I want to improve how I respond when a prospect pushes back, asks tough questions, or seems uncertain — without sounding defensive or desperate.
+
+                My goal with this sales conversation is: {goals}.
+
+                Use my transcript and the evaluation data to give me structured, honest feedback in three parts. Speak to me like a coach who wants me to win — not just close deals, but grow into someone who knows how to listen, adapt, and lead the sales conversation with confidence and empathy.
+
+                1. Strengths: Identify what I did well in this sales interaction. Focus on how I listened, built rapport, stayed composed, or responded to objections clearly. Mention if I showed confidence, asked smart questions, or guided the conversation with intention. Use simple language and be specific.
+
+                2. Areas for Improvement: Give me clear, direct, and practical advice on where I can improve. Focus on how I handled objections, whether I missed opportunities to go deeper, gave vague answers, or talked too much. Be honest — tell me where I lost control of the conversation or came across as uncertain or unprepared.
+
+                3. Objection Handling Breakdown: Go through each major objection or hesitation the prospect raised. For each one:
+                - Did I acknowledge and validate their concern?
+                - Did I stay calm and confident while answering?
+                - Did I give a clear, persuasive response that moved the conversation forward?
+                - Did I use any strong reframes or real-world examples to build trust?
+                - Were there moments where I gave in too quickly, over-explained, or lost leverage?
+
+                Also:
+                - Did I control the flow of the conversation, or did the prospect lead me?
+                - Did I sound confident in the value of what I was offering?
+                - Mention my goal {goals} only if I clearly stated one.
+                - End with your thoughts on how I’m growing as a salesperson — and what I should work on next to level up my objection handling skills.
+
+                Tone: Talk to me like a pro you believe in. Be real. Be specific. No fluff — just the kind of feedback that makes me sharper, stronger, and more effective in the next sales call.
+
+                Evaluation data: {metrics_string}
+
+                Transcript:
+                {combined_feedback}
+                """
+
+            else:
+                # Fallback to the original media training prompt if vertical is not recognized
+                prompt = f"""
+                My name is {name}, and I'm currently a {role} in my sports journey.
+
+                You are my personal communication mentor. Your focus is to help young athletes like me grow as confident and impactful speakers — whether in interviews, team talks, public appearances, or leadership moments. Your feedback should guide me to express myself better, show up with presence, and connect with others.
+
+                My goal with this talk is: {goals}.
+
+                I want you to give me helpful feedback using my presentation and the evaluation data. Structure your feedback in three clear parts, and speak to me like a trusted coach who wants me to win — not just in sports, but in how I show up as a person.
+
+                1. Strengths: Identify my most impactful specific strengths. Focus on concrete content choices, tone, delivery techniques, and audience engagement strategies. Use simple sentences, do not include transcript quotes here.
+
+                2. Areas for Improvement: Provide clear, actionable, and specific feedback on where I can improve. Emphasize my delivery habits, missed emotional beats, and structural weaknesses. Use simple sentences, do not include transcript quotes here.
+
+                3. General Feedback Summary: Craft a detailed, content-specific analysis of my session. Your summary must be grounded in specific parts of my speech. Your primary focus is how I handled the questions but include the following:
+                - Evaluate the effectiveness of my opening: Was it attention-grabbing, relevant, or emotionally engaging? Did I clearly set the tone or premise for the rest of the talk?
+                - Were there any standout words or phrases I used that really connected or showed emotion?
+                - Did I use any filler words too often (like "uh," "you know," "like")? If so, quote a few examples.
+                - How did I sound — confident, calm, excited, nervous? Did that shift anywhere in the talk?
+                - Reflect on whether my style or personal story helped make the talk connect with more people.
+                - Clearly state whether my talk was effective — and if so, effective at what specifically 
+                - Did my message feel organized, and did I build it up toward something important?
+                - "AUDIENCE QUESTION" is in my transcript, evaluate how I answered the audience questions. If no "AUDIENCE QUESTION" is in my transcript dont mention anything about questions
+                - Mention my goal {goals} only if I had one — skip this part if I didn't mention any goal.
+                - End with your view on how I'm growing as a speaker and how I can take the next step.
+
+                Tone: Talk to me with respect, like you believe in my future. Don't use grammar corrections unless it really affects how I come across. Don't use headers, dashes, or bold formatting. Use \n\n between paragraphs and begin with a positive comment based on how I showed up in my presentation.
+
+                Evaluation data: {metrics_string}
+
+                Transcript:
+                {combined_feedback}
+                """
 
         else:
             prompt = f"""
