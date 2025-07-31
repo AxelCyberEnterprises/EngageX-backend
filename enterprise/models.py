@@ -124,6 +124,12 @@ class EnterpriseQuestion(models.Model):
         help_text="Vertical this question is associated with"
     )
     question_text = models.TextField(help_text="The actual question text")
+    audio_url = models.URLField(
+        max_length=500,
+        blank=True,
+        null=True,
+        help_text="URL to the generated audio file in S3"
+    )
     is_active = models.BooleanField(
         default=True,
         help_text="Whether this question is active and can be used"
@@ -153,8 +159,10 @@ class EnterpriseQuestion(models.Model):
         super().clean()
         
         if self.enterprise and self.vertical:
+            available_verticals = self.enterprise.get_available_verticals()
+            
             # Check if vertical is allowed for this enterprise type
-            if self.vertical not in [v[0] for v in self.enterprise.get_available_verticals()]:
+            if self.vertical not in available_verticals:
                 raise ValidationError({
                     'vertical': f"Vertical '{self.vertical}' is not available for this enterprise type"
                 })

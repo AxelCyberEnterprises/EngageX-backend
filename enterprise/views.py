@@ -1,8 +1,100 @@
+# import csv
+# import io
+# import logging
+# import random
+# import string
+# from openpyxl import load_workbook
+# from django.conf import settings
+# from django.core.exceptions import ValidationError
+# from django.db import transaction, IntegrityError
+# from django.template.loader import render_to_string
+# from django.utils import timezone
+# from rest_framework import status, viewsets
+# from rest_framework.decorators import action
+# from rest_framework.permissions import IsAdminUser
+# from rest_framework.response import Response
+# from rest_framework.parsers import MultiPartParser, JSONParser
+# from django.contrib.auth import get_user_model
+# from django.contrib.auth.tokens import default_token_generator
+# from django.utils.encoding import force_bytes
+# from django.utils.http import urlsafe_base64_encode
+
+# from users.utils.email import send_email_via_ses
+# from .models import Enterprise, EnterpriseUser, EnterpriseQuestion
+# from .serializers import (
+#     EnterpriseSerializer,
+#     EnterpriseUserSerializer,
+#     BulkUserUploadSerializer,
+#     EnterpriseQuestionSerializer
+# )
+
+# # Get the logger for this file
+# logger = logging.getLogger(__name__)
+
+# User = get_user_model()
+# logger = logging.getLogger(__name__)
+
+# class EnterpriseViewSet(viewsets.ModelViewSet):
+#     """
+#     ViewSet for managing enterprises.
+#     """
+#     queryset = Enterprise.objects.all()
+#     serializer_class = EnterpriseSerializer
+#     permission_classes = [IsAdminUser]
+#     parser_classes = [MultiPartParser, JSONParser]
+
+
+# class EnterpriseQuestionViewSet(viewsets.ModelViewSet):
+#     """
+#     ViewSet for managing enterprise questions.
+#     """
+#     serializer_class = EnterpriseQuestionSerializer
+#     permission_classes = [IsAdminUser]
+    
+#     def get_queryset(self):
+#         queryset = EnterpriseQuestion.objects.select_related('enterprise')
+        
+#         # Filter by enterprise if specified
+#         enterprise_id = self.request.query_params.get('enterprise_id')
+#         if enterprise_id:
+#             queryset = queryset.filter(enterprise_id=enterprise_id)
+            
+#         # Filter by vertical if specified
+#         vertical = self.request.query_params.get('vertical')
+#         if vertical:
+#             queryset = queryset.filter(vertical=vertical)
+            
+#         # Filter by active status if specified
+#         is_active = self.request.query_params.get('is_active')
+#         if is_active is not None:
+#             is_active = is_active.lower() in ('true', '1', 't')
+#             queryset = queryset.filter(is_active=is_active)
+            
+#         return queryset
+    
+#     def perform_create(self, serializer):
+#         """Set the enterprise and validate vertical."""
+#         enterprise = serializer.validated_data['enterprise']
+#         vertical = serializer.validated_data['vertical']
+        
+#         # Validate that the vertical is allowed for this enterprise
+#         available_verticals = [v[0] for v in enterprise.get_available_verticals()]
+#         if vertical not in available_verticals:
+#             raise ValidationError({
+#                 'vertical': f"Vertical '{vertical}' is not available for this enterprise type"
+#             })
+            
+#         serializer.save()
+
 import csv
 import io
 import logging
 import random
 import string
+import uuid
+
+import boto3
+import openai
 from openpyxl import load_workbook
 from django.conf import settings
 from django.core.exceptions import ValidationError
@@ -28,11 +120,19 @@ from .serializers import (
     EnterpriseQuestionSerializer
 )
 
-# Get the logger for this file
+# Configure logger
 logger = logging.getLogger(__name__)
 
+# Initialize OpenAI and S3 client
+openai.api_key = settings.OPENAI_API_KEY
+s3_client = boto3.client(
+    's3',
+    aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
+    aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
+    region_name=getattr(settings, 'AWS_REGION', None)
+)
+
 User = get_user_model()
-logger = logging.getLogger(__name__)
 
 class EnterpriseViewSet(viewsets.ModelViewSet):
     """
@@ -43,48 +143,126 @@ class EnterpriseViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAdminUser]
     parser_classes = [MultiPartParser, JSONParser]
 
+import logging
+import os
+import uuid
+import boto3
+import openai
+from django.conf import settings
+
+logger = logging.getLogger(__name__)
+
+# Configure OpenAI client
+openai.api_key = settings.OPENAI_API_KEY
 
 class EnterpriseQuestionViewSet(viewsets.ModelViewSet):
     """
-    ViewSet for managing enterprise questions.
+    ViewSet for managing enterprise questions and pre-generating TTS audio.
     """
     serializer_class = EnterpriseQuestionSerializer
     permission_classes = [IsAdminUser]
     
+    @action(detail=False, methods=['get'])
+    def test_endpoint(self, request):
+        print("=== TEST ENDPOINT HIT ===")
+        return Response({
+            'status': 'success',
+            'message': 'Test endpoint is working!',
+            'available_verticals': [
+                {'value': 'media_training', 'label': 'Media Training'},
+                {'value': 'coach', 'label': 'Coach'},
+                {'value': 'gm', 'label': 'General Manager'}
+            ]
+        })
+
     def get_queryset(self):
         queryset = EnterpriseQuestion.objects.select_related('enterprise')
-        
-        # Filter by enterprise if specified
         enterprise_id = self.request.query_params.get('enterprise_id')
         if enterprise_id:
             queryset = queryset.filter(enterprise_id=enterprise_id)
-            
-        # Filter by vertical if specified
         vertical = self.request.query_params.get('vertical')
         if vertical:
             queryset = queryset.filter(vertical=vertical)
-            
-        # Filter by active status if specified
         is_active = self.request.query_params.get('is_active')
         if is_active is not None:
             is_active = is_active.lower() in ('true', '1', 't')
             queryset = queryset.filter(is_active=is_active)
-            
         return queryset
-    
+
     def perform_create(self, serializer):
-        """Set the enterprise and validate vertical."""
-        enterprise = serializer.validated_data['enterprise']
-        vertical = serializer.validated_data['vertical']
+        """
+        Save the question, generate TTS audio, upload to S3, and store the URL.
+        The model's clean() method will handle validation.
+        """
+        print("=== PROCESSING ENTERPRISE QUESTION ===")
         
-        # Validate that the vertical is allowed for this enterprise
-        available_verticals = [v[0] for v in enterprise.get_available_verticals()]
-        if vertical not in available_verticals:
-            raise ValidationError({
-                'vertical': f"Vertical '{vertical}' is not available for this enterprise type"
-            })
+        try:
+            # Save the question instance - this will trigger the model's clean() method
+            question = serializer.save()
+            print(f"[SUCCESS] Saved question ID: {question.id}")
+        except Exception as e:
+            print(f"[ERROR] Failed to save question: {str(e)}")
+            traceback.print_exc()
+            raise
+
+        # Generate TTS audio
+        try:
+            print(f"[AUDIO] Generating TTS for question: {question.id}")
+            print(f"[AUDIO] Question text: {question.question_text}")
             
-        serializer.save()
+            # Use OpenAI to generate speech
+            audio_resp = openai.audio.speech.create(
+                model="tts-1",
+                voice=getattr(settings, 'TTS_VOICE', 'alloy'),
+                input=question.question_text
+            )
+            
+            # Get the audio content
+            audio_bytes = audio_resp.content
+            print(f"[AUDIO] Successfully generated TTS")
+            
+        except Exception as e:
+            print(f"[ERROR] Failed to generate TTS: {str(e)}")
+            traceback.print_exc()
+            question.is_active = False
+            question.save(update_fields=['is_active'])
+            return
+
+        # Upload to S3 under the 'enterprise-questions' folder
+        try:
+            print("[S3] Starting S3 upload...")
+            
+            # Initialize S3 client with credentials from settings
+            s3_client = boto3.client(
+                's3',
+                aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
+                aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
+                region_name=settings.AWS_S3_REGION_NAME
+            )
+            
+            # Generate unique file name
+            file_name = f"{question.id}-{uuid.uuid4().hex}.mp3"
+            key = f"enterprise-questions/{question.enterprise.id}/{file_name}"
+            
+            # Upload to S3 without ACL (bucket has ACLs disabled)
+            s3_client.put_object(
+                Bucket=settings.AWS_STORAGE_BUCKET_NAME,
+                Key=key,
+                Body=audio_bytes,
+                ContentType='audio/mpeg'
+            )
+            
+            # Construct the public URL
+            region = settings.AWS_S3_REGION_NAME
+            audio_url = f"https://{settings.AWS_STORAGE_BUCKET_NAME}.s3.{region}.amazonaws.com/{key}"
+            print(f"[S3] File uploaded successfully: {audio_url}")
+
+            # Update question with audio URL and save
+            question.audio_url = audio_url
+            question.save(update_fields=['audio_url'])
+            question.save(update_fields=['audio_url'])
+        except Exception as e:
+            logger.error(f"Error uploading audio for question {question.id} to S3: {e}", exc_info=True)
 
 
 class EnterpriseUserViewSet(viewsets.ModelViewSet):
@@ -128,6 +306,7 @@ class EnterpriseUserViewSet(viewsets.ModelViewSet):
                 elif file.name.lower().endswith(('.xls', '.xlsx')):
                     users = self._process_excel(file, enterprise)
                 else:
+                    logger.error("Unsupported file format for bulk upload")
                     return Response(
                         {
                             'success': False,

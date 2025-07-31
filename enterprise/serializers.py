@@ -15,21 +15,18 @@ class EnterpriseSerializer(serializers.ModelSerializer):
         model = Enterprise
         fields = [
             'id', 'name', 'domain', 'enterprise_type', 'logo', 'is_active',
-            'sso_enabled', 'sso_metadata_url', 'sso_entity_id',
             'require_domain_match', 'available_verticals', 'created_at', 'updated_at'
         ]
         read_only_fields = ('id', 'created_at', 'updated_at', 'available_verticals')
         extra_kwargs = {
-            'logo': {'required': False, 'allow_null': True},
-            'sso_metadata_url': {'required': False, 'allow_blank': True, 'allow_null': True},
-            'sso_entity_id': {'required': False, 'allow_blank': True, 'allow_null': True},
+            'logo': {'required': False, 'allow_null': True}
         }
     
     def get_available_verticals(self, obj):
         """Return the list of available verticals for the enterprise."""
         return [{
-            'value': vertical[0],
-            'label': vertical[1]
+            'value': vertical,
+            'label': dict(Enterprise.Vertical.choices)[vertical]
         } for vertical in obj.get_available_verticals()]
 
     def validate_domain(self, value):
@@ -141,7 +138,7 @@ class EnterpriseQuestionSerializer(serializers.ModelSerializer):
         vertical = data.get('vertical')
         
         if enterprise and vertical:
-            available_verticals = [v[0] for v in enterprise.get_available_verticals()]
+            available_verticals = enterprise.get_available_verticals()
             if vertical not in available_verticals:
                 raise serializers.ValidationError({
                     'vertical': f"Vertical '{vertical}' is not available for this enterprise type"

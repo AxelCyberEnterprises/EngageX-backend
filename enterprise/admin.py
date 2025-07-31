@@ -113,23 +113,19 @@ class EnterpriseAdmin(admin.ModelAdmin):
 class EnterpriseUserAdmin(admin.ModelAdmin):
     list_display = ('user', 'enterprise', 'user_type', 'is_admin', 'created_at')
     list_filter = ('enterprise', 'user_type', 'is_admin')
-    search_fields = ('user__email', 'enterprise__name', 'department', 'position')
+    search_fields = ('user__email', 'enterprise__name')
     readonly_fields = ('created_at', 'updated_at')
     raw_id_fields = ('user',)
     
     fieldsets = (
-        (None, {
-            'fields': ('user', 'enterprise', 'user_type', 'is_admin')
-        }),
-        ('Additional Information', {
-            'fields': ('department', 'position'),
-            'classes': ('collapse',)
-        }),
-        ('Timestamps', {
-            'fields': ('created_at', 'updated_at'),
-            'classes': ('collapse',)
-        }),
-    )
+            (None, {
+                'fields': ('user', 'enterprise', 'user_type', 'is_admin')
+            }),
+            ('Timestamps', {
+                'fields': ('created_at', 'updated_at'),
+                'classes': ('collapse',)
+            }),
+        )
 
 
 @admin.register(EnterpriseQuestion)
