@@ -130,7 +130,7 @@ class EnterpriseUserAdmin(admin.ModelAdmin):
 
 @admin.register(EnterpriseQuestion)
 class EnterpriseQuestionAdmin(admin.ModelAdmin):
-    list_display = ('truncated_question', 'enterprise_link', 'vertical_badge', 'is_active', 'created_short')
+    list_display = ('truncated_question', 'enterprise_link', 'vertical_badge', 'audio_url_short', 'is_active', 'created_short')
     list_filter = ('enterprise__enterprise_type', 'vertical', 'is_active', 'enterprise')
     search_fields = ('question_text', 'enterprise__name')
     list_editable = ('is_active',)
@@ -140,7 +140,7 @@ class EnterpriseQuestionAdmin(admin.ModelAdmin):
     
     fieldsets = (
         (None, {
-            'fields': ('enterprise', 'vertical', 'question_text', 'is_active')
+            'fields': ('enterprise', 'vertical', 'question_text', 'audio_url', 'is_active')
         }),
         ('Timestamps', {
             'fields': ('created_at', 'updated_at'),
@@ -227,6 +227,17 @@ class EnterpriseQuestionAdmin(admin.ModelAdmin):
         )
     vertical_badge.short_description = 'Vertical'
     vertical_badge.admin_order_field = 'vertical'
+    
+    def audio_url_short(self, obj):
+        """Display a truncated version of the audio URL"""
+        if not obj.audio_url:
+            return "-"
+        return format_html(
+            '<a href="{}" target="_blank">View Audio</a>',
+            obj.audio_url
+        )
+    audio_url_short.short_description = 'Audio'
+    audio_url_short.allow_tags = True
     
     def created_short(self, obj):
         """Display a shorter version of the created timestamp"""

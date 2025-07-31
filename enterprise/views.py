@@ -244,7 +244,7 @@ class EnterpriseQuestionViewSet(viewsets.ModelViewSet):
             file_name = f"{question.id}-{uuid.uuid4().hex}.mp3"
             key = f"enterprise-questions/{question.enterprise.id}/{file_name}"
             
-            # Upload to S3 without ACL (bucket has ACLs disabled)
+            # Upload to S3 
             s3_client.put_object(
                 Bucket=settings.AWS_STORAGE_BUCKET_NAME,
                 Key=key,

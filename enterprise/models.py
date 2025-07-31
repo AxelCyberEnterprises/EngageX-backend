@@ -16,6 +16,8 @@ class Enterprise(models.Model):
         MEDIA_TRAINING = 'media_training', _('Media Training')
         COACH = 'coach', _('Coach')
         GM = 'gm', _('General Manager')
+        COACHING = 'coaching', _('Coaching')
+
     
     name = models.CharField(max_length=255, unique=True)
     domain = models.CharField(max_length=255, unique=True, help_text="Primary domain of the enterprise email")
@@ -48,7 +50,7 @@ class Enterprise(models.Model):
     def get_available_verticals(self):
         """Return the list of available verticals based on enterprise type"""
         if self.enterprise_type == self.EnterpriseType.GENERAL:
-            return [self.Vertical.COACH]
+            return [self.Vertical.COACHING]
         return [
             self.Vertical.MEDIA_TRAINING,
             self.Vertical.COACH,

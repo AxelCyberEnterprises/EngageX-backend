@@ -121,7 +121,7 @@ class EnterpriseQuestionSerializer(serializers.ModelSerializer):
         model = EnterpriseQuestion
         fields = [
             'id', 'enterprise', 'enterprise_name', 'vertical', 'vertical_display',
-            'question_text', 'is_active', 'created_at', 'updated_at'
+            'question_text', 'audio_url', 'is_active', 'created_at', 'updated_at'
         ]
         read_only_fields = ('id', 'created_at', 'updated_at')
         extra_kwargs = {
