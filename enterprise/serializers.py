@@ -56,7 +56,7 @@ class EnterpriseUserSerializer(serializers.ModelSerializer):
         model = EnterpriseUser
         fields = [
             'id', 'user', 'user_id', 'enterprise', 'enterprise_name',
-            'user_type', 'is_admin', 'department', 'position',
+            'user_type', 'is_admin',
             'created_at', 'updated_at'
         ]
         read_only_fields = ('id', 'created_at', 'updated_at')
