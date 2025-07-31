@@ -122,14 +122,16 @@ class SSOLoginVerifyView(APIView):
                 login(request, user)
             
             return Response({
-                'token': token.key,
-                'user': {
-                    'id': user.id,
+                'status': 'success',
+                'message': 'Login successful.',
+                'data': {
+                    'token': token.key,
+                    'user_id': user.id,
                     'email': user.email,
                     'first_name': user.first_name,
                     'last_name': user.last_name,
-                    'is_enterprise_user': user.is_enterprise_user(),
-                    'has_logged_in': user.has_logged_in,
+                    'is_admin': user.is_superuser,
+                    'first_login': not user.has_logged_in
                 }
             })
             
