@@ -129,6 +129,8 @@ class UserSerializer(serializers.ModelSerializer):
     purpose = serializers.ChoiceField(
         choices=UserProfile.PURPOSE_CHOICES, required=False, allow_null=True
     )
+    is_enterprise_user = serializers.SerializerMethodField()
+    user_type = serializers.SerializerMethodField()
 
     class Meta:
         model = CustomUser
@@ -141,6 +143,8 @@ class UserSerializer(serializers.ModelSerializer):
             "user_intent",
             "role",
             "purpose",
+            "is_enterprise_user",
+            "user_type",
         ]
         extra_kwargs = {
             "password": {"write_only": True, "required": True},
@@ -148,6 +152,16 @@ class UserSerializer(serializers.ModelSerializer):
             "first_name": {"required": False},
             "last_name": {"required": False},
         }
+
+    def get_is_enterprise_user(self, obj):
+        """Check if the user is an enterprise user."""
+        return hasattr(obj, 'enterprise_profile') and obj.enterprise_profile is not None
+
+    def get_user_type(self, obj):
+        """Get the user type if the user is an enterprise user."""
+        if hasattr(obj, 'enterprise_profile') and obj.enterprise_profile is not None:
+            return obj.enterprise_profile.user_type
+        return None
 
     def create(self, validated_data):
         user_intent = validated_data.pop("user_intent", None)
@@ -219,17 +233,29 @@ class UserProfileSerializer(serializers.ModelSerializer):
     first_name = serializers.CharField(source="user.first_name")
     last_name = serializers.CharField(source="user.last_name")
     email = serializers.EmailField(source="user.email")
+    is_enterprise_user = serializers.SerializerMethodField()
+    user_type = serializers.SerializerMethodField()
 
     class Meta:
         model = UserProfile
         exclude = ["user"]
-        read_only_fields = ["available_credits"]  # Ensure credits can't be modified directly
+        read_only_fields = ["available_credits", "is_enterprise_user", "user_type"]  # Ensure credits and enterprise fields can't be modified directly
         extra_kwargs = {
             "logo": {"required": False},
             "favicon": {"required": False},
             "primary_color": {"required": False},
             "secondary_color": {"required": False},
         }
+        
+    def get_is_enterprise_user(self, obj):
+        """Check if the user is an enterprise user."""
+        return hasattr(obj.user, 'enterprise_profile') and obj.user.enterprise_profile is not None
+    
+    def get_user_type(self, obj):
+        """Get the user type if the user is an enterprise user."""
+        if hasattr(obj.user, 'enterprise_profile') and obj.user.enterprise_profile is not None:
+            return obj.user.enterprise_profile.user_type
+        return None
 
     def create(self, validated_data):
         print(validated_data)

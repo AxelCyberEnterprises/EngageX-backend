@@ -136,15 +136,20 @@ User = get_user_model()
 class UserCreateViewSet(viewsets.ModelViewSet):
     """
     Handles user creation with email verification.
+    By default, all actions require authentication except for user creation.
     """
-
     serializer_class = UserSerializer
     queryset = CustomUser.objects.all()
+    permission_classes = [IsAuthenticated]  # Default permission for all actions
 
     def get_permissions(self):
+        """
+        Override to allow unauthenticated access to the create action only.
+        All other actions require authentication.
+        """
         if self.action == "create":
             return [AllowAny()]
-        return [IsAuthenticated()]
+        return super().get_permissions()
 
     def create(self, request, *args, **kwargs):
         try:
@@ -611,11 +616,19 @@ class UserProfileViewSet(viewsets.ModelViewSet):
         ):  # Check if userprofile exists before accessing it
             if user.user_profile.is_admin():
                 # Admins can see everything
-                return UserProfile.objects.all()
+                return UserProfile.objects.select_related(
+                    'user',
+                    'user__enterprise_profile',
+                    'user__enterprise_profile__enterprise'
+                ).all()
 
             elif user.user_profile.is_user():
-                print(UserProfile.objects.filter(user=user))
-                return UserProfile.objects.filter(user=user)
+                # Regular users can only see their own profile
+                return UserProfile.objects.select_related(
+                    'user',
+                    'user__enterprise_profile',
+                    'user__enterprise_profile__enterprise'
+                ).filter(user=user)
 
         # Default: Return an empty queryset for non-admin, non-presenter, non-coach and users without userprofile
         return UserProfile.objects.none()

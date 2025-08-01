@@ -555,14 +555,19 @@ class EnterpriseUserViewSet(viewsets.ModelViewSet):
                 
                 # Create or update enterprise user
                 try:
+                    # Create a copy of user_data to avoid modifying the original
+                    user_data_copy = user_data.copy()
+                    
+                    # Explicitly remove department and position fields if they exist
+                    user_data_copy.pop('department', None)
+                    user_data_copy.pop('position', None)
+                    
                     enterprise_user, eu_created = EnterpriseUser.objects.update_or_create(
                         user=user,
                         enterprise=enterprise,
                         defaults={
                             'user_type': user_type,
-                            'is_admin': is_admin,
-                            'department': str(user_data.get('department', ''))[:100],  # Limit to 100 chars
-                            'position': str(user_data.get('position', ''))[:100]      # Limit to 100 chars
+                            'is_admin': is_admin
                         }
                     )
                 except IntegrityError as e:
