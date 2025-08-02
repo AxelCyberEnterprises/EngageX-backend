@@ -11,7 +11,7 @@
 # from django.utils import timezone
 # from rest_framework import status, viewsets
 # from rest_framework.decorators import action
-# from rest_framework.permissions import IsAdminUser
+# from rest_framework.permissions import IsAdminUser, IsAuthenticated
 # from rest_framework.response import Response
 # from rest_framework.parsers import MultiPartParser, JSONParser
 # from django.contrib.auth import get_user_model
@@ -103,7 +103,7 @@ from django.template.loader import render_to_string
 from django.utils import timezone
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
-from rest_framework.permissions import IsAdminUser
+from rest_framework.permissions import IsAdminUser, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.parsers import MultiPartParser, JSONParser
 from django.contrib.auth import get_user_model
