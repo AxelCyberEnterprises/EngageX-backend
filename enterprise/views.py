@@ -158,9 +158,20 @@ openai.api_key = settings.OPENAI_API_KEY
 class EnterpriseQuestionViewSet(viewsets.ModelViewSet):
     """
     ViewSet for managing enterprise questions and pre-generating TTS audio.
+    - GET operations are allowed for any authenticated user
+    - Other operations (POST, PUT, PATCH, DELETE) require admin privileges
     """
     serializer_class = EnterpriseQuestionSerializer
-    permission_classes = [IsAdminUser]
+    
+    def get_permissions(self):
+        """
+        Instantiates and returns the list of permissions that this view requires.
+        """
+        if self.action in ['list', 'retrieve', 'test_endpoint']:
+            permission_classes = [IsAuthenticated]
+        else:
+            permission_classes = [IsAdminUser]
+        return [permission() for permission in permission_classes]
     
     @action(detail=False, methods=['get'])
     def test_endpoint(self, request):
