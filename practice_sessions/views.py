@@ -3,6 +3,7 @@ import concurrent.futures
 import openai
 import os
 import json
+from enterprise.models import Enterprise
 import traceback
 import boto3
 from botocore.exceptions import ClientError
