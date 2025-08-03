@@ -93,19 +93,63 @@ import random
 import string
 import uuid
 
-import boto3
+#         # Upload to S3 under the 'enterprise-questions' folder
+#         try:
+#             print("[S3] Starting S3 upload...")
+            
+#             # Initialize S3 client with credentials from settings
+#             s3_client = boto3.client(
+#                 's3',
+#                 aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
+#                 aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
+#                 region_name=settings.AWS_S3_REGION_NAME
+#             )
+            
+#             # Generate unique file name
+#             file_name = f"{question.id}-{uuid.uuid4().hex}.mp3"
+#             key = f"enterprise-questions/{question.enterprise.id}/{file_name}"
+            
+#             # Upload to S3 
+#             s3_client.put_object(
+#                 Bucket=settings.AWS_STORAGE_BUCKET_NAME,
+#                 Key=key,
+#                 Body=audio_bytes,
+#                 ContentType='audio/mpeg'
+#             )
+            
+#             # Construct the public URL
+#             region = settings.AWS_S3_REGION_NAME
+#             audio_url = f"https://{settings.AWS_STORAGE_BUCKET_NAME}.s3.{region}.amazonaws.com/{key}"
+#             print(f"[S3] File uploaded successfully: {audio_url}")
+
+#             # Update question with audio URL and save
+#             question.audio_url = audio_url
+#             question.save(update_fields=['audio_url'])
+#             question.save(update_fields=['audio_url'])
+#         except Exception as e:
+#             logger.error(f"Error uploading audio for question {question.id} to S3: {e}", exc_info=True)
+
+
 import openai
 from openpyxl import load_workbook
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import transaction, IntegrityError
-from django.template.loader import render_to_string
-from django.utils import timezone
-from rest_framework import status, viewsets
-from rest_framework.decorators import action
-from rest_framework.permissions import IsAdminUser, IsAuthenticated
+import os
+import uuid
+import boto3
+import traceback
+import logging
+from rest_framework import viewsets
 from rest_framework.response import Response
+from rest_framework.permissions import IsAuthenticated, IsAdminUser
+from rest_framework.decorators import action
 from rest_framework.parsers import MultiPartParser, JSONParser
+from django.conf import settings
+import openai
+
+# Import the utility function for voice selection
+from .utils import get_voice_for_question
 from django.contrib.auth import get_user_model
 from django.contrib.auth.tokens import default_token_generator
 from django.utils.encoding import force_bytes
@@ -221,10 +265,30 @@ class EnterpriseQuestionViewSet(viewsets.ModelViewSet):
             print(f"[AUDIO] Generating TTS for question: {question.id}")
             print(f"[AUDIO] Question text: {question.question_text}")
             
-            # Use OpenAI to generate speech
+            # Determine the appropriate voice based on rookie type and sport type
+            # Get the enterprise user making the request (if available)
+            request_user = getattr(self.request, 'user', None)
+            rookie_type = None
+            sport_type = None
+            
+            # Try to get the rookie type and sport type from the request data
+            if hasattr(request_user, 'enterprise_profile'):
+                rookie_type = getattr(request_user.enterprise_profile, 'rookie_type', None)
+                sport_type = getattr(request_user.enterprise_profile, 'sport_type', None)
+            
+            # If not found in user profile, try to get from request data
+            if not rookie_type and hasattr(self, 'request') and hasattr(self.request, 'data'):
+                rookie_type = self.request.data.get('rookie_type')
+                sport_type = self.request.data.get('sport_type')
+            
+            # Get the appropriate voice
+            voice = get_voice_for_question(rookie_type, sport_type)
+            print(f"[TTS] Using voice: {voice} (rookie_type: {rookie_type}, sport_type: {sport_type})")
+            
+            # Use OpenAI to generate speech with the selected voice
             audio_resp = openai.audio.speech.create(
                 model="tts-1",
-                voice=getattr(settings, 'TTS_VOICE', 'alloy'),
+                voice=voice,
                 input=question.question_text
             )
             
