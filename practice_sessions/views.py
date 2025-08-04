@@ -2101,6 +2101,8 @@ class SessionReportView(APIView):
 
             refined_summary = completion.choices[0].message.content
             print(f"OpenAI raw response: {refined_summary}")
+            # Replace hyphens with commas in the response
+            refined_summary = refined_summary.replace('-', ',')
             parsed_summary = json.loads(refined_summary)
             print(f"Parsed summary: {parsed_summary}")
             return parsed_summary
