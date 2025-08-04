@@ -11,8 +11,8 @@ def get_voice_for_question(rookie_type, sport_type=None):
     Returns:
         str: The voice ID to use for TTS
     """
-    # Default voice (from settings or fallback)
-    default_voice = getattr(settings, 'TTS_VOICE', 'alloy')
+    # Default voice (from settings or fallback to 'echo')
+    default_voice = getattr(settings, 'TTS_VOICE', 'echo')
     
     # If no rookie type is provided, return the default voice
     if not rookie_type:
