@@ -1515,11 +1515,19 @@ class SessionDashboardView(APIView):
                 "public": "Public Speaking",
                 "presentation": "Presentation",
                 "enterprise": "Enterprise Specialty",
-                "coaching": "Coaching"
             }
 
             if latest_session:
-                latest_session_dict["session_type"] = session_type_map.get(latest_session.session_type, "")
+                # Get the base session type
+                session_type = session_type_map.get(latest_session.session_type, "")
+                
+                # If it's an enterprise session, get the specific type (like 'coaching')
+                if latest_session.session_type == 'enterprise' and hasattr(latest_session, 'enterprise_settings'):
+                    enterprise_type = latest_session.enterprise_settings.rookie_type
+                    if enterprise_type:
+                        session_type = f"{session_type} - {enterprise_type.title()}"
+                
+                latest_session_dict["session_type"] = session_type
                 latest_session_dict["session_score"] = latest_session.impact
             else:
                 latest_session_dict["session_type"] = ""
