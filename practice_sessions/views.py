@@ -1511,9 +1511,11 @@ class SessionDashboardView(APIView):
                 "audience_engagement",
             ]
             session_type_map = {
-                "presentation": "Presentation",
                 "pitch": "Pitch Practice",
-                "public": "Public Speaking"
+                "public": "Public Speaking",
+                "presentation": "Presentation",
+                "enterprise": "Enterprise Specialty",
+                "coaching": "Coaching"
             }
 
             if latest_session:
