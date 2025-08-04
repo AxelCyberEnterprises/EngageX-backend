@@ -425,13 +425,13 @@ class UserProfile(models.Model):
     )
     primary_color = models.CharField(
         max_length=7,
-        default="#000000",
+        default="#262b3a",
         validators=[validate_hex_color],
         help_text="Primary brand color in hex format (e.g., #RRGGBB)",
     )
     secondary_color = models.CharField(
         max_length=7,
-        default="#000000",
+        default="#10161e",
         validators=[validate_hex_color],
         help_text="Secondary brand color in hex format (e.g., #RRGGBB)",
     )
