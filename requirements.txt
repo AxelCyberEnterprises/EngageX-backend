@@ -37,13 +37,13 @@ deprecation==2.1.0
 distro==1.9.0
 Django==5.2
 django-cors-headers==4.7.0
-django-ses==0.27.0
 django-storages==1.14.6
 djangorestframework==3.16.0
 djangorestframework_simplejwt==5.5.0
 djoser==2.3.1
 drf-yasg==1.21.10
 enum-compat==0.0.3
+et_xmlfile==2.0.0
 flatbuffers==25.2.10
 fonttools==4.57.0
 frozenlist==1.6.0
