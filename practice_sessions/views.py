@@ -1890,7 +1890,8 @@ class SessionReportView(APIView):
 
                 2. Areas for Improvement: Give clear and constructive feedback on where I can get better. Focus on my media presence, how I answered questions, how I framed my thoughts, and whether I stayed composed and on message. Keep the suggestions practical and easy to apply.
 
-                3.  General Feedback Summary: Craft a detailed, content-specific analysis of my session. Your summary must be grounded in specific parts of my speech. Go deeper into how I handled each question during the session. For every question in the transcript (including ones labeled "AUDIENCE QUESTION"). Your primary focus is how I handled the questions but include the following:                - Did I fully answer the question or dodge it?
+                3.  General Feedback Summary: Craft a detailed, content-specific analysis of my session. Your summary must be grounded in specific parts of my speech. Go deeper into how I handled each question during the session and list the questions by bullet points. For every question in the transcript (including ones labeled "AUDIENCE QUESTION"). Your primary focus is how I handled the questions but include the following:
+                - Did I fully answer the question or dodge it?
                 - Did I control the narrative or let the interviewer steer me off message?
                 - Was my answer memorable, respectful, and aligned with my personal or team values?
                 - Did I stay calm and focused, even if the question was tricky?
@@ -1902,7 +1903,7 @@ class SessionReportView(APIView):
                 - Mention my goal {goals} only if I clearly stated one.
                 - Finish with a short reflection on how I’m developing as a public voice — and where I should focus next to elevate my presence.
 
-                Tone: Speak to me with respect and belief in my future. I need guidance on how to stand tall, communicate with intention, and leave an impact in every media moment.
+                Tone: Speak to me with respect and belief in my future. I need guidance on how to stand tall, communicate with intention, and leave an impact in every media moment. Start by calling me by name "{name}, as a media journalist...".
 
                 Evaluation data: {metrics_string}
 
@@ -1924,7 +1925,7 @@ class SessionReportView(APIView):
 
                 2. Areas for Improvement: Give clear, practical advice on what I could have done better. Look at how I handled disagreement, whether I avoided tough topics, if I rambled or got defensive, or if I missed a chance to be more open or thoughtful.
 
-                3.  General Feedback Summary: Craft a detailed, content-specific analysis of my session. Your summary must be grounded in specific parts of my speech. Go deeper into how I handled each question during the session. For every question in the transcript (including ones labeled "AUDIENCE QUESTION"). Your primary focus is how I handled the questions but include the following:
+                3.  General Feedback Summary: Craft a detailed, content-specific analysis of my session. Your summary must be grounded in specific parts of my speech. Go deeper into how I handled each question during the session and list the questions by bullet points. For every question in the transcript (including ones labeled "AUDIENCE QUESTION"). Your primary focus is how I handled the questions but include the following:
                 - Did I clearly express my thoughts or feelings?
                 - Did I stay calm, respectful, and focused even if the topic was hard?
                 - Did I show that I was listening and that I understood my coach’s point of view?
@@ -1936,7 +1937,7 @@ class SessionReportView(APIView):
                 - Mention my goal {goals} only if I clearly stated one.
                 - End with your thoughts on how I’m improving in how I show up with my coach — and what the next step should be.
 
-                Tone: Speak to me with honesty and belief in my potential. I want to get better at owning my voice and building stronger relationships, starting with the one I have with my coach.
+                Tone: Speak to me with honesty and belief in my potential. I want to get better at owning my voice and building stronger relationships, starting with the one I have with my coach. Start by calling me by name "{name}, as your coach...".
 
                 Evaluation data: {metrics_string}
 
@@ -1954,23 +1955,23 @@ class SessionReportView(APIView):
 
                 Use my transcript and the evaluation data to give me structured feedback in three parts. Talk to me like someone who wants to see me grow — not just as an athlete, but as someone who can communicate clearly, confidently, and with emotional maturity.
 
-                1. Strengths: Highlight what I did well in this conversation with my coach. Focus on how I expressed myself, whether I stayed respectful and honest, and if I showed maturity, clarity, or emotional awareness. Be specific and use simple language.
+                1. Strengths: Highlight what I did well in this conversation with my team GM. Focus on how I expressed myself, whether I stayed respectful and honest, and if I showed maturity, clarity, or emotional awareness. Be specific and use simple language.
 
                 2. Areas for Improvement: Give clear, practical advice on what I could have done better. Look at how I handled disagreement, whether I avoided tough topics, if I rambled or got defensive, or if I missed a chance to be more open or thoughtful.
 
-                3.  General Feedback Summary: Craft a detailed, content-specific analysis of my session. Your summary must be grounded in specific parts of my speech. Go deeper into how I handled each question during the session. For every question in the transcript (including ones labeled "AUDIENCE QUESTION"). Your primary focus is how I handled the questions but include the following:
+                3.  General Feedback Summary: Craft a detailed, content-specific analysis of my session. Your summary must be grounded in specific parts of my speech. Go deeper into how I handled each question during the session and list the questions by bullet points. For every question in the transcript (including ones labeled "AUDIENCE QUESTION"). Your primary focus is how I handled the questions but include the following:
                 - Did I clearly express my thoughts or feelings?
                 - Did I stay calm, respectful, and focused — even if the topic was hard?
-                - Did I show that I was listening and that I understood my coach’s point of view?
+                - Did I show that I was listening and that I understood my GM's point of view?
                 - Was there any moment where I built trust or showed growth as a communicator?
                 - Did I give off the impression of someone who’s coachable, driven, and self-aware?
 
                 Also:
                 - Did I sound like someone who takes ownership of their growth?
                 - Mention my goal {goals} only if I clearly stated one.
-                - End with your thoughts on how I’m improving in how I show up with my coach — and what the next step should be.
+                - End with your thoughts on how I’m improving in how I show up with my GM — and what the next step should be.
 
-                Tone: Speak to me with honesty and belief in my potential. I want to get better at owning my voice and building stronger relationships, starting with the one I have with my coach.
+                Tone: Speak to me with honesty and belief in my potential. I want to get better at owning my voice and building stronger relationships, starting with the one I have with my GM. Start by calling me by name "{name}, as the GM for this team...".
 
                 Evaluation data: {metrics_string}
 
@@ -1991,7 +1992,7 @@ class SessionReportView(APIView):
 
                 2. Areas for Improvement: Give me clear, direct, and practical advice on where I can improve. Focus on how I handled objections, whether I missed opportunities to go deeper, gave vague answers, or talked too much. Be honest — tell me where I lost control of the conversation or came across as uncertain or unprepared.
 
-                3. Objection Handling Breakdown: Go through each major objection or hesitation the prospect raised. For each one:
+                3.  General Feedback Summary: Craft a detailed, content-specific analysis of my session. Your summary must be grounded in specific parts of my speech. Go deeper into how I handled each question during the session and list the questions by bullet points. For every question in the transcript (including ones labeled "AUDIENCE QUESTION"). Your primary focus is how I handled the questions but include the following:
                 - Did I acknowledge and validate their concern?
                 - Did I stay calm and confident while answering?
                 - Did I give a clear, persuasive response that moved the conversation forward?
