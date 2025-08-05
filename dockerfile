@@ -29,8 +29,6 @@ RUN python manage.py collectstatic --noinput && echo "Static files collected"
 # RUN groupadd --system $GROUP && useradd --system --gid $GROUP --home-dir /app $USER \
 #     && chown -R $USER:$GROUP /app
 
-# Switch to non-root user
-USER $USER
 
 # Expose port
 EXPOSE $PORT
