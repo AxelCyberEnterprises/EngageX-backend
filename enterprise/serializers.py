@@ -116,19 +116,26 @@ class EnterpriseQuestionSerializer(serializers.ModelSerializer):
         source='get_vertical_display',
         read_only=True
     )
+    sport_type_display = serializers.SerializerMethodField()
 
     class Meta:
         model = EnterpriseQuestion
         fields = [
             'id', 'enterprise', 'enterprise_name', 'vertical', 'vertical_display',
-            'question_text', 'audio_url', 'is_active', 'created_at', 'updated_at'
+            'sport_type', 'sport_type_display', 'question_text', 'audio_url', 
+            'is_active', 'created_at', 'updated_at'
         ]
         read_only_fields = ('id', 'created_at', 'updated_at')
         extra_kwargs = {
             'enterprise': {'required': True},
             'vertical': {'required': True},
-            'question_text': {'required': True}
+            'question_text': {'required': True},
+            'sport_type': {'required': False}
         }
+    
+    def get_sport_type_display(self, obj):
+        """Get the display value for sport_type"""
+        return dict(EnterpriseQuestion._meta.get_field('sport_type').choices).get(obj.sport_type) if obj.sport_type else None
 
     def validate(self, data):
         """

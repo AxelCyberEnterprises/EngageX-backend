@@ -73,9 +73,14 @@
 #         return queryset
     
 #     def perform_create(self, serializer):
-#         """Set the enterprise and validate vertical."""
+#         """Set the enterprise and validate vertical and sport_type."""
 #         enterprise = serializer.validated_data['enterprise']
 #         vertical = serializer.validated_data['vertical']
+        
+#         # Get sport_type from request data if provided
+#         sport_type = self.request.data.get('sport_type')
+#         if not sport_type and 'enterprise_settings' in self.request.data and isinstance(self.request.data['enterprise_settings'], dict):
+#             sport_type = self.request.data['enterprise_settings'].get('sport_type')
         
 #         # Validate that the vertical is allowed for this enterprise
 #         available_verticals = [v[0] for v in enterprise.get_available_verticals()]
@@ -83,8 +88,18 @@
 #             raise ValidationError({
 #                 'vertical': f"Vertical '{vertical}' is not available for this enterprise type"
 #             })
-            
-#         serializer.save()
+        
+#         # Save the question with sport_type if provided
+#         if sport_type:
+#             # Validate sport_type is one of the allowed choices
+#             valid_sport_types = dict(EnterpriseQuestion._meta.get_field('sport_type').choices).keys()
+#             if sport_type not in valid_sport_types:
+#                 raise ValidationError({
+#                     'sport_type': f"Invalid sport_type. Must be one of: {', '.join(valid_sport_types)}"
+#                 })
+#             serializer.save(sport_type=sport_type)
+#         else:
+#             serializer.save()
 
 import csv
 import io
@@ -252,8 +267,24 @@ class EnterpriseQuestionViewSet(viewsets.ModelViewSet):
         print("=== PROCESSING ENTERPRISE QUESTION ===")
         
         try:
-            # Save the question instance - this will trigger the model's clean() method
-            question = serializer.save()
+            # Get sport_type from request data if provided
+            sport_type = None
+            if 'sport_type' in self.request.data:
+                sport_type = self.request.data['sport_type']
+            elif 'enterprise_settings' in self.request.data and isinstance(self.request.data['enterprise_settings'], dict):
+                sport_type = self.request.data['enterprise_settings'].get('sport_type')
+            
+            # Validate sport_type if provided
+            if sport_type:
+                valid_sport_types = dict(EnterpriseQuestion._meta.get_field('sport_type').choices).keys()
+                if sport_type not in valid_sport_types:
+                    raise ValidationError({
+                        'sport_type': f"Invalid sport_type. Must be one of: {', '.join(valid_sport_types)}"
+                    })
+                print(f"[DEBUG] Saving with sport_type: {sport_type}")
+            
+            # Save the question with sport_type if provided
+            question = serializer.save(sport_type=sport_type)
             print(f"[SUCCESS] Saved question ID: {question.id}")
         except Exception as e:
             print(f"[ERROR] Failed to save question: {str(e)}")
@@ -272,14 +303,37 @@ class EnterpriseQuestionViewSet(viewsets.ModelViewSet):
             sport_type = None
             
             # Try to get the rookie type and sport type from the request data
+            print(f"[DEBUG] Request data: {self.request.data}")
+            
+            # Check if enterprise_settings exists in request data
+            enterprise_settings = self.request.data.get('enterprise_settings', {})
+            print(f"[DEBUG] Enterprise settings from request: {enterprise_settings}")
+            
+            # Try to get from user's enterprise profile first
             if hasattr(request_user, 'enterprise_profile'):
                 rookie_type = getattr(request_user.enterprise_profile, 'rookie_type', None)
                 sport_type = getattr(request_user.enterprise_profile, 'sport_type', None)
+                print(f"[DEBUG] Got from user profile - rookie_type: {rookie_type}, sport_type: {sport_type}")
             
             # If not found in user profile, try to get from request data
-            if not rookie_type and hasattr(self, 'request') and hasattr(self.request, 'data'):
-                rookie_type = self.request.data.get('rookie_type')
-                sport_type = self.request.data.get('sport_type')
+            if not rookie_type:
+                # Try to get from enterprise_settings first
+                if enterprise_settings and isinstance(enterprise_settings, dict):
+                    if not rookie_type:
+                        rookie_type = enterprise_settings.get('rookie_type')
+                    if not sport_type:
+                        sport_type = enterprise_settings.get('sport_type')
+                    print(f"[DEBUG] Got from enterprise_settings - rookie_type: {rookie_type}, sport_type: {sport_type}")
+                
+                # Fall back to top-level request data
+                if not rookie_type:
+                    rookie_type = self.request.data.get('vertical')  # Using vertical as rookie_type
+                if not sport_type:
+                    sport_type = self.request.data.get('sport_type')
+                print(f"[DEBUG] Got from top-level request - rookie_type: {rookie_type}, sport_type: {sport_type}")
+            
+            # Log final values before voice selection
+            print(f"[DEBUG] Final values - rookie_type: {rookie_type}, sport_type: {sport_type}")
             
             # Get the appropriate voice
             voice = get_voice_for_question(rookie_type, sport_type)

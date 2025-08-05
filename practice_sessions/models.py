@@ -160,7 +160,7 @@ class PracticeSession(models.Model):
         ("pitch", "Pitch Practice"),
         ("public", "Public Speaking"),
         ("presentation", "Presentation"),
-        ("enterprise", "Enterprise Specialty"),
+        ("enterprise", "Rookie"),
     ]
     # The user who created this session.
     user = models.ForeignKey(

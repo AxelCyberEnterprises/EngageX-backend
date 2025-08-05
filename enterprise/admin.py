@@ -130,8 +130,8 @@ class EnterpriseUserAdmin(admin.ModelAdmin):
 
 @admin.register(EnterpriseQuestion)
 class EnterpriseQuestionAdmin(admin.ModelAdmin):
-    list_display = ('truncated_question', 'enterprise_link', 'vertical_badge', 'audio_url_short', 'is_active', 'created_short')
-    list_filter = ('enterprise__enterprise_type', 'vertical', 'is_active', 'enterprise')
+    list_display = ('truncated_question', 'enterprise_link', 'vertical_badge', 'sport_type_badge', 'audio_url_short', 'is_active', 'created_short')
+    list_filter = ('enterprise__enterprise_type', 'vertical', 'sport_type', 'is_active', 'enterprise')
     search_fields = ('question_text', 'enterprise__name')
     list_editable = ('is_active',)
     list_select_related = ('enterprise',)
@@ -227,6 +227,31 @@ class EnterpriseQuestionAdmin(admin.ModelAdmin):
         )
     vertical_badge.short_description = 'Vertical'
     vertical_badge.admin_order_field = 'vertical'
+    
+    def sport_type_badge(self, obj):
+        """Display sport type as a colored badge"""
+        if not obj.sport_type:
+            return "-"
+            
+        # Get the display value for the sport type
+        sport_type_display = dict(EnterpriseQuestion._meta.get_field('sport_type').choices).get(obj.sport_type, obj.sport_type)
+        
+        # Choose a color based on sport type
+        sport_colors = {
+            'nfl': '#013369',  # NFL blue
+            'nba': '#1D428A',  # NBA blue
+            'wnba': '#FFCD34', # WNBA yellow
+            'mlb': '#002D62'   # MLB navy blue
+        }
+        color = sport_colors.get(obj.sport_type, '#757575')  # Default gray
+        
+        return format_html(
+            '<span class="badge" style="background: {color}; color: white; padding: 3px 6px; border-radius: 4px; font-size: 12px;">{text}</span>',
+            color=color,
+            text=sport_type_display.upper()
+        )
+    sport_type_badge.short_description = 'Sport Type'
+    sport_type_badge.admin_order_field = 'sport_type'
     
     def audio_url_short(self, obj):
         """Display a truncated version of the audio URL"""

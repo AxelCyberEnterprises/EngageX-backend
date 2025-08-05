@@ -126,6 +126,18 @@ class EnterpriseQuestion(models.Model):
         help_text="Vertical this question is associated with"
     )
     question_text = models.TextField(help_text="The actual question text")
+    sport_type = models.CharField(
+        max_length=10,
+        choices=[
+            ('nfl', 'NFL'),
+            ('nba', 'NBA'),
+            ('wnba', 'WNBA'),
+            ('mlb', 'MLB')
+        ],
+        blank=True,
+        null=True,
+        help_text="Sport type this question is associated with (if applicable)"
+    )
     audio_url = models.URLField(
         max_length=500,
         blank=True,
