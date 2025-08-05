@@ -1890,20 +1890,19 @@ class SessionReportView(APIView):
 
                 2. Areas for Improvement: Give clear and constructive feedback on where I can get better. Focus on my media presence, how I answered questions, how I framed my thoughts, and whether I stayed composed and on message. Keep the suggestions practical and easy to apply.
 
-                3. Media Response Breakdown: Go deeper into how I handled each question during the session. For every question in the transcript (including ones labeled "AUDIENCE QUESTION"), evaluate:
-                - Did I fully answer the question or dodge it?
+                3.  General Feedback Summary: Craft a detailed, content-specific analysis of my session. Your summary must be grounded in specific parts of my speech. Go deeper into how I handled each question during the session. For every question in the transcript (including ones labeled "AUDIENCE QUESTION"). Your primary focus is how I handled the questions but include the following:                - Did I fully answer the question or dodge it?
                 - Did I control the narrative or let the interviewer steer me off message?
                 - Was my answer memorable, respectful, and aligned with my personal or team values?
                 - Did I stay calm and focused, even if the question was tricky?
                 - Was there a moment where I really connected — with a story, perspective, or strong message?
 
                 Also:
-                - How effective was my opening? Did it show confidence, presence, or set a clear tone?
+                - Did it show confidence, presence, or set a clear tone?
                 - Did my message feel organized and lead somewhere meaningful?
                 - Mention my goal {goals} only if I clearly stated one.
                 - Finish with a short reflection on how I’m developing as a public voice — and where I should focus next to elevate my presence.
 
-                Tone: Speak to me with respect and belief in my future. I don’t need grammar corrections. I need guidance on how to stand tall, communicate with intention, and leave an impact in every media moment.
+                Tone: Speak to me with respect and belief in my future. I need guidance on how to stand tall, communicate with intention, and leave an impact in every media moment.
 
                 Evaluation data: {metrics_string}
 
@@ -1925,15 +1924,14 @@ class SessionReportView(APIView):
 
                 2. Areas for Improvement: Give clear, practical advice on what I could have done better. Look at how I handled disagreement, whether I avoided tough topics, if I rambled or got defensive, or if I missed a chance to be more open or thoughtful.
 
-                3. Coach Conversation Breakdown: Go through key parts of the conversation where I was responding to my coach or bringing up something important. For each moment:
+                3.  General Feedback Summary: Craft a detailed, content-specific analysis of my session. Your summary must be grounded in specific parts of my speech. Go deeper into how I handled each question during the session. For every question in the transcript (including ones labeled "AUDIENCE QUESTION"). Your primary focus is how I handled the questions but include the following:
                 - Did I clearly express my thoughts or feelings?
-                - Did I stay calm, respectful, and focused — even if the topic was hard?
+                - Did I stay calm, respectful, and focused even if the topic was hard?
                 - Did I show that I was listening and that I understood my coach’s point of view?
                 - Was there any moment where I built trust or showed growth as a communicator?
                 - Did I give off the impression of someone who’s coachable, driven, and self-aware?
 
                 Also:
-                - Was the opening of my conversation strong — did I set the tone or intention clearly?
                 - Did I sound like someone who takes ownership of their growth?
                 - Mention my goal {goals} only if I clearly stated one.
                 - End with your thoughts on how I’m improving in how I show up with my coach — and what the next step should be.
@@ -1960,7 +1958,7 @@ class SessionReportView(APIView):
 
                 2. Areas for Improvement: Give clear, practical advice on what I could have done better. Look at how I handled disagreement, whether I avoided tough topics, if I rambled or got defensive, or if I missed a chance to be more open or thoughtful.
 
-                3. Coach Conversation Breakdown: Go through key parts of the conversation where I was responding to my coach or bringing up something important. For each moment:
+                3.  General Feedback Summary: Craft a detailed, content-specific analysis of my session. Your summary must be grounded in specific parts of my speech. Go deeper into how I handled each question during the session. For every question in the transcript (including ones labeled "AUDIENCE QUESTION"). Your primary focus is how I handled the questions but include the following:
                 - Did I clearly express my thoughts or feelings?
                 - Did I stay calm, respectful, and focused — even if the topic was hard?
                 - Did I show that I was listening and that I understood my coach’s point of view?
@@ -1968,7 +1966,6 @@ class SessionReportView(APIView):
                 - Did I give off the impression of someone who’s coachable, driven, and self-aware?
 
                 Also:
-                - Was the opening of my conversation strong — did I set the tone or intention clearly?
                 - Did I sound like someone who takes ownership of their growth?
                 - Mention my goal {goals} only if I clearly stated one.
                 - End with your thoughts on how I’m improving in how I show up with my coach — and what the next step should be.
@@ -2112,7 +2109,7 @@ class SessionReportView(APIView):
             refined_summary = completion.choices[0].message.content
             print(f"OpenAI raw response: {refined_summary}")
             # Replace hyphens with commas in the response
-            refined_summary = refined_summary.replace('-', ',')
+            refined_summary = refined_summary.replace('-', ',').replace('—', ',')
             parsed_summary = json.loads(refined_summary)
             print(f"Parsed summary: {parsed_summary}")
             return parsed_summary
