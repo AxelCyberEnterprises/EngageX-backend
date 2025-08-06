@@ -1890,7 +1890,7 @@ class SessionReportView(APIView):
 
                 2. Areas for Improvement: Give clear and constructive feedback on where I can get better. Focus on my media presence, how I answered questions, how I framed my thoughts, and whether I stayed composed and on message. Keep the suggestions practical and easy to apply.
 
-                3.  General Feedback Summary: Craft a detailed, content-specific analysis of my session. Your summary must be grounded in specific parts of my speech. Go deeper into how I handled each question during the session and list the questions by bullet points. For every question in the transcript (including ones labeled "AUDIENCE QUESTION"). Your primary focus is how I handled the questions but include the following:
+                3.  General Feedback Summary: Craft a detailed, content-specific analysis of my session. Your summary must be grounded in specific parts of my speech. Go deeper into how I handled each question during the session and list the questions by bullet points('-'). For every question in the transcript (including ones labeled "AUDIENCE QUESTION"). Your primary focus is how I handled the questions but include the following:
                 - Did I fully answer the question or dodge it?
                 - Did I control the narrative or let the interviewer steer me off message?
                 - Was my answer memorable, respectful, and aligned with my personal or team values?
@@ -1925,7 +1925,7 @@ class SessionReportView(APIView):
 
                 2. Areas for Improvement: Give clear, practical advice on what I could have done better. Look at how I handled disagreement, whether I avoided tough topics, if I rambled or got defensive, or if I missed a chance to be more open or thoughtful.
 
-                3.  General Feedback Summary: Craft a detailed, content-specific analysis of my session. Your summary must be grounded in specific parts of my speech. Go deeper into how I handled each question during the session and list the questions by bullet points. For every question in the transcript (including ones labeled "AUDIENCE QUESTION"). Your primary focus is how I handled the questions but include the following:
+                3.  General Feedback Summary: Craft a detailed, content-specific analysis of my session. Your summary must be grounded in specific parts of my speech. Go deeper into how I handled each question during the session and list the questions by bullet points('-'). For every question in the transcript (including ones labeled "AUDIENCE QUESTION"). Your primary focus is how I handled the questions but include the following:
                 - Did I clearly express my thoughts or feelings?
                 - Did I stay calm, respectful, and focused even if the topic was hard?
                 - Did I show that I was listening and that I understood my coach’s point of view?
@@ -1959,7 +1959,7 @@ class SessionReportView(APIView):
 
                 2. Areas for Improvement: Give clear, practical advice on what I could have done better. Look at how I handled disagreement, whether I avoided tough topics, if I rambled or got defensive, or if I missed a chance to be more open or thoughtful.
 
-                3.  General Feedback Summary: Craft a detailed, content-specific analysis of my session. Your summary must be grounded in specific parts of my speech. Go deeper into how I handled each question during the session and list the questions by bullet points. For every question in the transcript (including ones labeled "AUDIENCE QUESTION"). Your primary focus is how I handled the questions but include the following:
+                3.  General Feedback Summary: Craft a detailed, content-specific analysis of my session. Your summary must be grounded in specific parts of my speech. Go deeper into how I handled each question during the session and list the questions by bullet points('-'). For every question in the transcript (including ones labeled "AUDIENCE QUESTION"). Your primary focus is how I handled the questions but include the following:
                 - Did I clearly express my thoughts or feelings?
                 - Did I stay calm, respectful, and focused — even if the topic was hard?
                 - Did I show that I was listening and that I understood my GM's point of view?
@@ -1992,7 +1992,7 @@ class SessionReportView(APIView):
 
                 2. Areas for Improvement: Give me clear, direct, and practical advice on where I can improve. Focus on how I handled objections, whether I missed opportunities to go deeper, gave vague answers, or talked too much. Be honest — tell me where I lost control of the conversation or came across as uncertain or unprepared.
 
-                3.  General Feedback Summary: Craft a detailed, content-specific analysis of my session. Your summary must be grounded in specific parts of my speech. Go deeper into how I handled each question during the session and list the questions by bullet points. For every question in the transcript (including ones labeled "AUDIENCE QUESTION"). Your primary focus is how I handled the questions but include the following:
+                3.  General Feedback Summary: Craft a detailed, content-specific analysis of my session. Your summary must be grounded in specific parts of my speech. Go deeper into how I handled each question during the session and list the questions by bullet points('-'). For every question in the transcript (including ones labeled "AUDIENCE QUESTION"). Your primary focus is how I handled the questions but include the following:
                 - Did I acknowledge and validate their concern?
                 - Did I stay calm and confident while answering?
                 - Did I give a clear, persuasive response that moved the conversation forward?
@@ -2110,7 +2110,7 @@ class SessionReportView(APIView):
             refined_summary = completion.choices[0].message.content
             print(f"OpenAI raw response: {refined_summary}")
             # Replace hyphens with commas in the response
-            refined_summary = refined_summary.replace('-', ',').replace('—', ',')
+            refined_summary = refined_summary.replace('—', ',')
             parsed_summary = json.loads(refined_summary)
             print(f"Parsed summary: {parsed_summary}")
             return parsed_summary
