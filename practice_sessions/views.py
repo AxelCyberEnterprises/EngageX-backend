@@ -21,6 +21,14 @@ import time
 # )
 # from aws_encryption_sdk.identifiers import CommitmentPolicy
 
+from django.db import connection
+from .models import PracticeSession, SessionChunk
+import tempfile
+import os
+import subprocess
+from urllib.parse import urlparse
+import traceback
+
 
 from rest_framework import viewsets, status
 from rest_framework.permissions import IsAuthenticated
@@ -579,63 +587,33 @@ class PracticeSessionViewSet(viewsets.ModelViewSet):
         serializer.save(user=self.request.user)
 
     # Helper methods for S3 operations
-    async def _download_file_from_s3_async(self, s3_client, bucket_name, s3_key, local_path, is_encrypted=True):
-        """Asynchronously downloads a file from S3 and decrypts it if needed.
+    async def _download_file_from_s3_async(self, s3_client, bucket_name, s3_key, local_path, is_encrypted=False):
+        """Asynchronously downloads a file from S3.
         
         Args:
             s3_client: Boto3 S3 client
             bucket_name: Name of the S3 bucket
             s3_key: S3 object key to download
             local_path: Local path where the file will be saved
-            is_encrypted: Whether the file is encrypted and needs decryption
+            is_encrypted: Kept for backward compatibility, no longer used
         """
-        temp_download_path = f"{local_path}.encrypted"
-        
         try:
-            # Download the file (encrypted or not)
-            print(f"Downloading {s3_key} to {temp_download_path if is_encrypted else local_path}")
-            await asyncio.to_thread(s3_client.download_file, bucket_name, s3_key, temp_download_path if is_encrypted else local_path)
+            # Download the file directly to the target path
+            print(f"Downloading {s3_key} to {local_path}")
+            await asyncio.to_thread(s3_client.download_file, bucket_name, s3_key, local_path)
             print(f"Finished downloading {s3_key}")
             
-            if is_encrypted:
-                # Get the metadata to check if the file was encrypted
-                try:
-                    head_response = await asyncio.to_thread(
-                        s3_client.head_object,
-                        Bucket=bucket_name,
-                        Key=s3_key
-                    )
-                    
-                    # Check if the file has encryption metadata
-                    if 'x-amz-meta-encryption-context' in head_response.get('Metadata', {}):
-                        print(f"Decrypting downloaded file: {temp_download_path} -> {local_path}")
-                        # Decrypt the file
-                        await self._decrypt_file(temp_download_path, local_path)
-                        print(f"Successfully decrypted to {local_path}")
-                    else:
-                        # No encryption metadata found, just move the file
-                        print(f"No encryption metadata found for {s3_key}, saving as is")
-                        os.rename(temp_download_path, local_path)
-                except ClientError as e:
-                    if e.response['Error']['Code'] == '404':
-                        print(f"Error: File {s3_key} not found in bucket {bucket_name}")
-                        raise FileNotFoundError(f"File {s3_key} not found in bucket {bucket_name}")
-                    print(f"Error getting metadata for {s3_key}: {str(e)}")
-                    # If we can't check metadata, assume it's not encrypted
-                    os.rename(temp_download_path, local_path)
-        except Exception as e:
-            print(f"Error during download/decrypt of {s3_key}: {str(e)}")
+        except ClientError as e:
+            if e.response['Error']['Code'] == '404':
+                print(f"Error: File {s3_key} not found in bucket {bucket_name}")
+                raise FileNotFoundError(f"File {s3_key} not found in bucket {bucket_name}")
+            print(f"Error downloading {s3_key}: {str(e)}")
             raise
-        finally:
-            # Clean up the temporary downloaded file if it exists
-            if is_encrypted and os.path.exists(temp_download_path):
-                try:
-                    os.remove(temp_download_path)
-                    print(f"Cleaned up temporary downloaded file: {temp_download_path}")
-                except Exception as e:
-                    print(f"Warning: Failed to clean up temporary file {temp_download_path}: {e}")
+        except Exception as e:
+            print(f"Error during download of {s3_key}: {str(e)}")
+            raise
 
-    async def _upload_file_to_s3_async(self, s3_client, bucket_name, local_path, s3_key, encrypt_file=True):
+    async def _upload_file_to_s3_async(self, s3_client, bucket_name, local_path, s3_key, encrypt_file=False):
         """Asynchronously uploads a file to S3 by running the blocking boto3 call in a thread.
         
         Args:
@@ -643,57 +621,21 @@ class PracticeSessionViewSet(viewsets.ModelViewSet):
             bucket_name: Name of the S3 bucket
             local_path: Path to the local file to upload
             s3_key: S3 object key where the file will be stored
-            encrypt_file: If True, encrypt the file before uploading
+            encrypt_file: Kept for backward compatibility, no longer used
         """
         print(f"Preparing to upload {local_path} to s3://{bucket_name}/{s3_key}")
         
-        upload_path = local_path
-        temp_encrypted_path = None
-        
         try:
-            if encrypt_file:
-                # Create a temporary file for the encrypted content
-                temp_encrypted_path = f"{local_path}.encrypted"
-                print(f"Encrypting file before upload: {local_path} -> {temp_encrypted_path}")
-                
-                # Encrypt the file
-                encryption_result = await self._encrypt_file(local_path, temp_encrypted_path)
-                print(f"File encrypted successfully. Key ID: {encryption_result['key_id']}")
-                
-                # Use the encrypted file for upload
-                upload_path = temp_encrypted_path
-            
-            # Upload the file (encrypted or not)
-            print(f"Uploading {upload_path} to s3://{bucket_name}/{s3_key}")
-            await asyncio.to_thread(s3_client.upload_file, upload_path, bucket_name, s3_key)
+            # Upload the file directly without encryption
+            print(f"Uploading {local_path} to s3://{bucket_name}/{s3_key}")
+            await asyncio.to_thread(s3_client.upload_file, local_path, bucket_name, s3_key)
             print(f"Finished uploading {s3_key}")
             
-            # If we encrypted, store the encryption context in S3 object metadata
-            if encrypt_file and temp_encrypted_path:
-                metadata = {
-                    'x-amz-meta-encryption-context': json.dumps(encryption_result['encryption_context']),
-                    'x-amz-meta-encryption-key-id': encryption_result['key_id']
-                }
-                await asyncio.to_thread(
-                    s3_client.copy_object,
-                    Bucket=bucket_name,
-                    Key=s3_key,
-                    CopySource={'Bucket': bucket_name, 'Key': s3_key},
-                    Metadata=metadata,
-                    MetadataDirective='REPLACE'
-                )
-                print(f"Added encryption metadata to {s3_key}")
-                
-        finally:
-            # Clean up the temporary encrypted file if it was created
-            if temp_encrypted_path and os.path.exists(temp_encrypted_path):
-                try:
-                    os.remove(temp_encrypted_path)
-                    print(f"Cleaned up temporary encrypted file: {temp_encrypted_path}")
-                except Exception as e:
-                    print(f"Warning: Failed to clean up temporary file {temp_encrypted_path}: {e}")
+        except Exception as e:
+            print(f"Error uploading {local_path} to s3://{bucket_name}/{s3_key}: {str(e)}")
+            raise
 
-    def _delete_single_s3_object(self, s3_client_sync, bucket_name, s3_key):
+    def _delete_single_s3_object(self, bucket_name, s3_key):
         """Synchronously deletes a single S3 object. Intended to be called by ThreadPoolExecutor."""
         try:
             s3_client_sync.delete_object(Bucket=bucket_name, Key=s3_key)
@@ -718,181 +660,274 @@ class PracticeSessionViewSet(viewsets.ModelViewSet):
             chunk.save(update_fields=['video_file'])
         print(f"Media URLs for session {session.id} cleared in database.")
 
-    @action(detail=True, methods=['post'], url_path='queue-video-compilation')
-    def start_compilation(self, request, pk=None):
+    @action(detail=True, methods=['post'], url_path='compile-video')
+    def compile_video(self, request, pk=None):
         """
-        Initiates the video compilation process for a session.
-        Downloads chunks from S3, compiles using FFmpeg, uploads compiled video to S3,
-        and updates the session with the new video URL.
-        Uses asynchronous helpers for S3 operations to avoid blocking.
+        Compiles the video for a specific session and returns the compiled video URL.
+        This runs synchronously and returns the result immediately.
         """
-        session = None # Initialize session to None for finally block
-        temp_file_paths = [] # Initialize here to ensure it's available for finally
+        session = self.get_object()
+        
+        # Check permissions
+        if session.user != request.user and not (request.user.is_staff or request.user.is_superuser):
+            return Response(
+                {"error": "You do not have permission to compile this session's video."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
         try:
-            # self.get_object() is a synchronous ORM call in ModelViewSet
-            session = self.get_object()
+            # Call the compilation function directly (synchronously)
+            result = self._compile_video_async(session.id)
+            
+            if result and 'error' in result:
+                return Response(
+                    {"error": result['error']},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
+                
+            # Refresh the session to get the updated video URL
+            session.refresh_from_db()
+            
+            if not session.compiled_video_url:
+                raise Exception("Video compilation completed but no URL was generated.")
+                
+            return Response(
+                {
+                    "status": "completed",
+                    "message": "Video compilation completed successfully.",
+                    "session_id": session.id,
+                    "video_url": session.compiled_video_url
+                },
+                status=status.HTTP_200_OK
+            )
+            
+        except Exception as e:
+            return Response(
+                {"error": f"Video compilation failed: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
-            if session.user != request.user:
-                raise PermissionDenied("You do not have permission to compile this session's video.")
-
+    def _compile_video_async(self, session_id):
+        """
+        Background task to handle the video compilation process.
+        This runs in a separate thread to avoid blocking the request/response cycle.
+        """
+        # Get a fresh database connection for this thread
+        connection.close()
+        
+        session = None
+        temp_file_paths = []
+        
+        try:
+            # Get the session with related chunks
+            session = (
+                PracticeSession.objects
+                .select_related('user')
+                .prefetch_related('chunks')
+                .get(id=session_id)
+            )
+            
+            print(f"Starting video compilation for session {session_id} in background...")
+            
+            # Initialize S3 client
+            s3_client = boto3.client('s3', region_name=settings.AWS_S3_REGION_NAME)
+            
             if not BUCKET_NAME:
-                print("ERROR: S3 BUCKET_NAME is not configured in settings.")
-                return Response({'status': 'Failed to start compilation', 'error': 'S3 bucket name is not configured.'},
-                                status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-            s3_client_sync = boto3.client("s3", region_name=settings.AWS_S3_REGION_NAME)
-
-            print(f"Starting immediate video compilation for session {session.id} by user {session.user.id}")
-
-            # 1. Fetch chunk URLs
-            # Using sync_to_async to run the synchronous ORM query in an async-safe manner
-            # Convert to list immediately to avoid re-fetching or iterator issues later
-            chunks = async_to_sync(sync_to_async(list))(session.chunks.all().order_by('chunk_number'))
+                raise Exception("S3 BUCKET_NAME is not configured in settings.")
             
+            # 1. Fetch and download video chunks
+            chunks = list(session.chunks.all().order_by('chunk_number'))
             if not chunks:
-                return Response({'status': 'No video chunks found for compilation'}, status=status.HTTP_400_BAD_REQUEST)
-
-            input_files = []
-            # We are in a synchronous ViewSet, so direct await calls are not possible here.
-            # We use async_to_sync to bridge to our async helper methods which use asyncio.to_thread.
-            for chunk in chunks:
-                if chunk.video_file:
-                    try:
-                        parsed_url = urlparse(chunk.video_file)
-                        s3_key = parsed_url.path.lstrip('/')
-                        if not s3_key:
-                            print(f"WARNING: Invalid S3 key derived from chunk video_file: {chunk.video_file}")
-                            continue
-
-                        temp_input_path = os.path.join(tempfile.gettempdir(), f"chunk_{chunk.id}_{os.path.basename(s3_key)}")
-                        temp_file_paths.append(temp_input_path)
-
-                        # Download video chunk from S3 (using async_to_sync for the async helper)
-                        # Note: We assume chunks are stored encrypted, so we set is_encrypted=True
-                        async_to_sync(self._download_file_from_s3_async)(
-                            s3_client_sync, 
-                            BUCKET_NAME, 
-                            s3_key, 
-                            temp_input_path,
-                            is_encrypted=True  # Enable decryption of downloaded chunks
-                        )
-                        input_files.append(temp_input_path)
-                    except Exception as e:
-                        print(f"ERROR: Error processing chunk {chunk.id} video_file {chunk.video_file}: {e}")
-                        traceback.print_exc()
-                        return Response({'status': 'Failed to process video chunks', 'error': str(e)},
-                                        status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-                else:
-                    print(f"WARNING: Chunk {chunk.id} has no video_file. Skipping.")
-
-            if not input_files:
-                return Response({'status': 'No valid video files found to compile'}, status=status.HTTP_400_BAD_REQUEST)
-
-            # Create a file list for ffmpeg concat demuxer
-            file_list_path = os.path.join(tempfile.gettempdir(), f"ffmpeg_file_list_{session.id}.txt")
-            temp_file_paths.append(file_list_path)
-
-            with open(file_list_path, 'w') as f:
-                for f_path in input_files:
-                    f.write(f"file '{f_path}'\n")
-
-            compiled_video_filename = f"compiled_session_{session.id}.mp4"
-            compiled_video_path = os.path.join(tempfile.gettempdir(), compiled_video_filename)
-            temp_file_paths.append(compiled_video_path)
-
-            # 2. Compile video using ffmpeg concat demuxer
-            print(f"Compiling video to {compiled_video_path}")
-            ffmpeg_command = [
+                raise Exception("No video chunks found for compilation")
+                
+            # Download all chunks first and collect their paths
+            temp_file_paths = []
+            chunk_paths = []  # Store paths of downloaded chunks
+            
+            for chunk in sorted(chunks, key=lambda x: x.chunk_number):
+                try:
+                    chunk_path = os.path.join(tempfile.gettempdir(), f'chunk_{chunk.id}_{session_id}_{chunk.chunk_number}_media.webm')
+                    print(f"Downloading chunk {chunk.id} to {chunk_path}")
+                    
+                    # Download the chunk from S3 - using sync download since we're in a sync context
+                    if not chunk.video_file:
+                        print(f"Skipping chunk {chunk.id} - no video file associated")
+                        continue
+                        
+                    # Extract the S3 key from the video_file URL
+                    parsed_url = urlparse(chunk.video_file)
+                    s3_key = parsed_url.path.lstrip('/')
+                    print(f"Downloading from S3 - Bucket: {BUCKET_NAME}, Key: {s3_key}, Local: {chunk_path}")
+                    
+                    # Ensure the directory exists
+                    os.makedirs(os.path.dirname(chunk_path), exist_ok=True)
+                    
+                    # Download the file
+                    s3_client.download_file(BUCKET_NAME, s3_key, chunk_path)
+                    
+                    # Verify the file was downloaded
+                    if not os.path.exists(chunk_path):
+                        raise Exception(f"Failed to download chunk {chunk.id} - file not found after download")
+                        
+                    # Add to our tracking lists
+                    temp_file_paths.append(chunk_path)
+                    chunk_paths.append(chunk_path)
+                    print(f"Downloaded chunk {chunk.id} to {chunk_path} (Size: {os.path.getsize(chunk_path) / (1024 * 1024):.2f} MB)")
+                    
+                except Exception as e:
+                    print(f"ERROR: Error processing chunk {chunk.id}: {e}")
+                    traceback.print_exc()
+                    raise Exception(f"Failed to process video chunk {chunk.id}: {str(e)}")
+            
+            if not chunk_paths:
+                raise Exception("No valid video chunks found for compilation")
+                    
+            # 2. Prepare the output file path
+            compiled_video_filename = f"compiled_{session.id}.mp4"
+            output_path = os.path.join(tempfile.gettempdir(), compiled_video_filename)
+            temp_file_paths.append(output_path)  # Add output file to cleanup list
+            
+            # 3. Build the FFmpeg command with concat filter for better compatibility
+            ffmpeg_cmd = [
                 'ffmpeg',
-                '-y',  # Overwrite output files without asking
-                '-f', 'concat',  # Concatenate demuxer
-                '-safe', '0',  # Allow unsafe file paths (for tempfile paths)
-                '-i', file_list_path,  # Input file list
-                '-c:v', 'libx264', # Re-encode video to H.264
-                '-preset', 'medium', # Encoding speed vs. compression efficiency tradeoff
-                '-crf', '23', # Constant Rate Factor for quality (lower is higher quality)
-                '-c:a', 'copy', # Copy audio stream without re-encoding
-                '-pix_fmt', 'yuv420p', # Ensure common pixel format for broad compatibility
-                compiled_video_path # Output compiled video file
+                '-y',  # Overwrite output file if it exists
+                '-loglevel', 'info',  # More detailed logging
             ]
+            
+            # Add each chunk as an input
+            for chunk_path in chunk_paths:
+                ffmpeg_cmd.extend(['-i', chunk_path])
+            
+            # Build the filter complex string
+            filter_complex = ""
+            for i in range(len(chunk_paths)):
+                filter_complex += f"[{i}:v:0][{i}:a:0]"
+            filter_complex += f"concat=n={len(chunk_paths)}:v=1:a=1[outv][outa]"
+            
+            # Add output options
+            ffmpeg_cmd.extend([
+                '-filter_complex', filter_complex,
+                '-map', '[outv]',
+                '-map', '[outa]',
+                '-c:v', 'libx264',  # H.264 video codec
+                '-preset', 'medium',
+                '-crf', '23',
+                '-pix_fmt', 'yuv420p',
+                '-c:a', 'aac',  # AAC audio codec
+                '-b:a', '128k',
+                '-movflags', '+faststart',  # For streaming
+                output_path
+            ])
+            
+            # 4. Run FFmpeg to concatenate and re-encode the video
             try:
-                # subprocess.run is blocking, consider offloading if this action were async
-                process = subprocess.run(ffmpeg_command, check=True, capture_output=True, text=True)
-                print(f"FFmpeg compilation stdout: {process.stdout}")
-                print(f"FFmpeg compilation stderr: {process.stderr}")
+                print(f"Running FFmpeg command: {' '.join(ffmpeg_cmd)}")
+                result = subprocess.run(
+                    ffmpeg_cmd,
+                    check=True,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True
+                )
+                print(f"FFmpeg output: {result.stdout}")
+                if result.stderr:
+                    print(f"FFmpeg warnings: {result.stderr}")
+                    
+                # Verify the output file was created
+                if not os.path.exists(output_path):
+                    raise Exception("FFmpeg did not produce an output file")
+                    
+                print(f"Successfully created compiled video: {output_path} (Size: {os.path.getsize(output_path) / (1024 * 1024):.2f} MB)")
+                
             except subprocess.CalledProcessError as e:
-                print(f"ERROR: FFmpeg compilation failed: {e.stderr}")
-                return Response({'status': 'Video compilation failed', 'error': e.stderr},
-                                status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-            except FileNotFoundError:
-                print("ERROR: ffmpeg command not found. Please ensure ffmpeg is installed and in your PATH.")
-                return Response({'status': 'ffmpeg not found', 'error': 'Server configuration error: ffmpeg is not installed or accessible.'},
-                                status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-            # 3. Upload compiled video to S3 with encryption
-            print(f"Uploading compiled video to S3 for session {session.id}.")
+                error_msg = f"FFmpeg error: {e.stderr if e.stderr else 'No stderr'}"
+                print(error_msg)
+                self._cleanup_temp_files(temp_file_paths)
+                raise Exception(f"Video compilation failed: {error_msg}")
+                
+            except Exception as e:
+                self._cleanup_temp_files(temp_file_paths)
+                raise Exception(f"Video processing failed: {str(e)}")
+            
+            # 5. Upload compiled video to S3
             s3_key = f"{BASE_FOLDER}{session.user.id}/{session.id}/{compiled_video_filename}"
+            print(f"Uploading compiled video to s3://{BUCKET_NAME}/{s3_key}")
             
-            # Use async_to_sync for the async helper, with encryption enabled
-            async_to_sync(self._upload_file_to_s3_async)(
-                s3_client_sync, 
-                BUCKET_NAME, 
-                compiled_video_path, 
-                s3_key,
-                encrypt_file=True  # Enable encryption for the compiled video
-            )
-            print(f"Uploaded and encrypted {compiled_video_path} to s3://{BUCKET_NAME}/{s3_key}")
-
-            # 4. Generate pre-signed URL (24 hours expiration)
-            expiration_seconds = 24 * 3600
-            
-            # Add response-content-disposition to force download with a friendly filename
-            params = {
-                'Bucket': BUCKET_NAME, 
-                'Key': s3_key,
-                'ResponseContentDisposition': f'attachment; filename="{compiled_video_filename}"'
-            }
-            
-            compiled_s3_url = s3_client_sync.generate_presigned_url(
-                ClientMethod='get_object',
-                Params=params,
-                ExpiresIn=expiration_seconds
-            )
-            print(f"Generated pre-signed URL for {s3_key}: {compiled_s3_url}")
-            
-            # Store the S3 key in the session for future reference
-            session.s3_video_key = s3_key
-
-            # 5. Update PracticeSession with the pre-signed URL
-            session.compiled_video_url = compiled_s3_url
-            # Use sync_to_async to save the session asynchronously
-            async_to_sync(sync_to_async(session.save))(update_fields=['compiled_video_url'])
-            print(f"Session {session.id} updated with compiled video URL.")
-
-            return Response({'status': 'Compilation complete', 'session_id': session.id, 'compiled_video_url': compiled_s3_url},
-                            status=status.HTTP_200_OK)
-
-        except PermissionDenied as e:
-            return Response({'status': 'Permission Denied', 'error': str(e)},
-                            status=status.HTTP_403_FORBIDDEN)
+            try:
+                with open(output_path, 'rb') as video_file:
+                    s3_client.upload_fileobj(
+                        video_file,
+                        BUCKET_NAME,
+                        s3_key,
+                        ExtraArgs={
+                            'ContentType': 'video/mp4'
+                        }
+                    )
+                print(f"Successfully uploaded compiled video to S3")
+                
+                # Generate pre-signed URL (24 hours expiration)
+                expiration_seconds = 24 * 3600
+                
+                # Add response-content-disposition to force download with a friendly filename
+                # Note: The bucket is configured with bucket owner enforced settings
+                # so we don't need to set ACLs
+                params = {
+                    'Bucket': BUCKET_NAME, 
+                    'Key': s3_key,
+                    'ResponseContentDisposition': f'attachment; filename="{compiled_video_filename}"'
+                }
+                
+                # Generate pre-signed URL
+                compiled_s3_url = s3_client.generate_presigned_url(
+                    ClientMethod='get_object',
+                    Params=params,
+                    ExpiresIn=expiration_seconds
+                )
+                print(f"Generated pre-signed URL for {s3_key}")
+                
+                # Update PracticeSession with the pre-signed URL and S3 key
+                session.compiled_video_url = compiled_s3_url
+                session.save(update_fields=['compiled_video_url'])
+                print(f"Session {session.id} updated with compiled video URL.")
+                
+                # Note: We're not storing the s3_key separately since it can be derived from the compiled_video_url
+                # and we want to avoid adding new fields to the model
+                
+                return {
+                    'status': 'success',
+                    'message': 'Video compilation completed successfully',
+                    'session_id': session.id,
+                    'video_url': compiled_s3_url,
+                    'expires_in_seconds': expiration_seconds,
+                    's3_key': s3_key
+                }
+                
+            except Exception as e:
+                error_msg = f"Failed to upload compiled video to S3: {str(e)}"
+                print(error_msg)
+                raise Exception(error_msg)
+                
         except Exception as e:
             error_message = f"An unexpected error occurred during video compilation: {str(e)}"
             if session:
                 error_message = f"An unexpected error occurred during video compilation for session {session.id}: {str(e)}"
             print(f"ERROR: {error_message}")
             traceback.print_exc()
-            return Response({'status': 'Failed to complete compilation', 'error': error_message},
-                            status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            raise Exception(f"Video compilation failed: {str(e)}")
+            
         finally:
+            # Clean up temporary files
             if temp_file_paths:
                 print(f"Cleaning up temporary files for session {session.id if session else 'unknown'}.")
                 for file_path in temp_file_paths:
-                    if os.path.exists(file_path):
+                    if file_path and os.path.exists(file_path):
                         try:
                             os.remove(file_path)
                             print(f"Removed temporary file: {file_path}")
                         except OSError as e:
                             print(f"WARNING: Error removing temporary file {file_path}: {e}")
+                        except Exception as e:
+                            print(f"WARNING: Unexpected error cleaning up {file_path}: {e}")
 
     @action(detail=True, methods=['delete'], url_path='delete-session-media', permission_classes=[IsAuthenticated])
     def delete_session_media(self, request, pk=None):
@@ -1016,7 +1051,7 @@ class PracticeSessionViewSet(viewsets.ModelViewSet):
     def compiled_video_status(self, request, pk=None):
         """
         Retrieves the compilation status and URL of the compiled video for a session.
-        Generates a new pre-signed URL for the encrypted video if needed.
+        Generates a new pre-signed URL for the video.
         """
         session = self.get_object()
 
@@ -1024,21 +1059,23 @@ class PracticeSessionViewSet(viewsets.ModelViewSet):
         if session.user != request.user and not (request.user.is_staff or request.user.is_superuser):
             raise PermissionDenied("You do not have permission to view this session's video.")
 
-        # Check if the video has been compiled
-        if not hasattr(session, 's3_video_key') or not session.s3_video_key:
-            return Response({
-                'status': 'not_compiled',
-                'message': 'Video has not been compiled yet.'
-            }, status=status.HTTP_404_NOT_FOUND)
-
         try:
             # Initialize S3 client
             s3_client = boto3.client('s3', region_name=settings.AWS_S3_REGION_NAME)
             
+            # Verify the file exists in S3
+            try:
+                s3_client.head_object(Bucket=BUCKET_NAME, Key=session.s3_video_key)
+            except ClientError as e:
+                if e.response['Error']['Code'] == '404':
+                    return Response({
+                        'status': 'not_found',
+                        'message': 'The compiled video could not be found in storage.'
+                    }, status=status.HTTP_404_NOT_FOUND)
+                raise
+            
             # Generate a new pre-signed URL with a 1-hour expiration
             expiration_seconds = 3600  # 1 hour
-            
-            # Get the filename from the S3 key for the content disposition
             filename = os.path.basename(session.s3_video_key)
             
             # Generate pre-signed URL with forced download and proper filename
@@ -1052,7 +1089,7 @@ class PracticeSessionViewSet(viewsets.ModelViewSet):
                 ExpiresIn=expiration_seconds
             )
             
-            # Update the session with the new URL (optional, you might want to skip this to always generate fresh URLs)
+            # Update the session with the new URL
             session.compiled_video_url = video_url
             session.save(update_fields=['compiled_video_url'])
             
@@ -1060,24 +1097,19 @@ class PracticeSessionViewSet(viewsets.ModelViewSet):
                 'status': 'completed',
                 'video_url': video_url,
                 'expires_in_seconds': expiration_seconds,
-                'message': 'Video is ready for viewing.'
+                'message': 'Video is ready for download.'
             })
             
         except ClientError as e:
-            error_code = e.response.get('Error', {}).get('Code')
-            if error_code == 'NoSuchKey':
-                return Response({
-                    'status': 'not_found',
-                    'message': 'The compiled video could not be found in storage.'
-                }, status=status.HTTP_404_NOT_FOUND)
-            logger.error(f"S3 ClientError generating pre-signed URL: {str(e)}")
+            logger.error(f"S3 ClientError: {str(e)}")
             return Response({
                 'status': 'error',
                 'message': 'Failed to generate video URL. Please try again later.'
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
             
         except Exception as e:
-            logger.error(f"Error generating pre-signed URL: {str(e)}")
+            logger.error(f"Unexpected error: {str(e)}")
+
             return Response({
                 'status': 'error',
                 'message': 'An unexpected error occurred. Please try again later.'
@@ -1432,38 +1464,100 @@ class SessionDashboardView(APIView):
                     "percentage_difference": percentage_diff,
                 })
 
-            # Sessions over time
+            # Sessions over time with enterprise details
             sessions_over_time = (
                 filtered_sessions.extra(select={"day": "date(date)"})
-                .values("day")
+                .values("day", "session_type")
                 .annotate(
-                    session_type=Case(
+                    session_type_display=Case(
                         When(session_type="pitch", then=Value("Pitch Practice")),
                         When(session_type="public", then=Value("Public Speaking")),
                         When(session_type="presentation", then=Value("Presentation")),
+                        When(session_type="enterprise", then=Value("Enterprise")),
                         output_field=CharField(),
                     ),
                     count=Count("id"),
                 )
                 .order_by("day")
             )
+            
+            # Convert to list of dicts with additional enterprise info
+            sessions_over_time_data = []
+            for entry in sessions_over_time:
+                entry_data = dict(entry)
+                
+                # If this is an enterprise session, add more details
+                if entry['session_type'] == 'enterprise':
+                    # Get all enterprise sessions for this day and session type
+                    enterprise_sessions = filtered_sessions.filter(
+                        date__date=entry['day'],
+                        session_type='enterprise'
+                    ).select_related('enterprise_settings')
+                    
+                    # Group by enterprise type and count
+                    enterprise_counts = enterprise_sessions.values(
+                        'enterprise_settings__enterprise_type'
+                    ).annotate(
+                        count=Count('id')
+                    )
+                    
+                    # Add enterprise breakdown to the entry
+                    entry_data['enterprise_breakdown'] = [
+                        {
+                            'enterprise_type': item['enterprise_settings__enterprise_type'],
+                            'enterprise_type_display': dict(EnterpriseSpecialtySession.ENTERPRISE_TYPE_CHOICES).get(
+                                item['enterprise_settings__enterprise_type'], 
+                                item['enterprise_settings__enterprise_type']
+                            ),
+                            'count': item['count']
+                        }
+                        for item in enterprise_counts
+                    ]
+                
+                sessions_over_time_data.append(entry_data)
 
-            # Recent sessions
+            # Recent sessions with enterprise information
             recent_sessions = (
                 sessions.annotate(
                     session_type_display=Case(
                         When(session_type="pitch", then=Value("Pitch Practice")),
                         When(session_type="public", then=Value("Public Speaking")),
                         When(session_type="presentation", then=Value("Presentation")),
+                        When(session_type="enterprise", then=Value("Enterprise")),
                         output_field=CharField(),
                     ),
                     formatted_duration=Cast("duration", output_field=CharField()),
                 )
+                .prefetch_related('enterprise_settings')
                 .order_by("-date")[:5]
-                .values(
-                    "id", "session_name", "session_type_display", "date", "formatted_duration",
-                )
             )
+            
+            # Convert to list of dicts with enterprise info
+            recent_sessions_data = []
+            for session in recent_sessions:
+                session_data = {
+                    "id": session.id,
+                    "session_name": session.session_name,
+                    "session_type": session.session_type,
+                    "session_type_display": session.session_type_display,
+                    "date": session.date,
+                    "formatted_duration": session.formatted_duration,
+                }
+                
+                # Add enterprise info if this is an enterprise session
+                if hasattr(session, 'enterprise_settings'):
+                    enterprise_settings = session.enterprise_settings
+                    if enterprise_settings:
+                        session_data.update({
+                            "enterprise_type": enterprise_settings.enterprise_type,
+                            "enterprise_type_display": enterprise_settings.get_enterprise_type_display(),
+                            "rookie_type": enterprise_settings.rookie_type,
+                            "rookie_type_display": enterprise_settings.get_rookie_type_display() if enterprise_settings.rookie_type else None,
+                            "sport_type": enterprise_settings.sport_type,
+                            "sport_type_display": enterprise_settings.get_sport_type_display() if enterprise_settings.sport_type else None,
+                        })
+                
+                recent_sessions_data.append(session_data)
 
             # User growth and activity
             today_new_users_count = User.objects.filter(date_joined__date=today).count()
@@ -1478,8 +1572,8 @@ class SessionDashboardView(APIView):
             # Final Data
             data = {
                 "session_breakdown": list(breakdown_with_difference),
-                "sessions_over_time": list(sessions_over_time),
-                "recent_sessions": list(recent_sessions),
+                "sessions_over_time": sessions_over_time_data,
+                "recent_sessions": recent_sessions_data,
                 "today_new_users_count": today_new_users_count,
                 "user_growth_percentage_difference": user_growth_percentage_difference,
                 "active_users_count": active_users_count,
