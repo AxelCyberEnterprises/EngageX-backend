@@ -23,7 +23,7 @@ def get_voice_for_question(rookie_type, sport_type=None):
     
     # GM rookie type always uses female voice
     if rookie_type == 'gm':
-        return 'nova'  # Female voice
+        return 'sage'  # Female voice
         
     # For coach rookie type, check the sport type
     if rookie_type == 'coach' and sport_type:
@@ -33,7 +33,7 @@ def get_voice_for_question(rookie_type, sport_type=None):
             return 'onyx'  # Male voice
         # Female voice for WNBA
         elif sport_type == 'wnba':
-            return 'coral'  # Female voice
+            return 'sage'  # Female voice
     
     # Default case - return the default voice from settings
     return default_voice
