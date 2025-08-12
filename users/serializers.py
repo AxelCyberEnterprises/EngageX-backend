@@ -1,19 +1,23 @@
 from django.contrib.auth import authenticate
 from rest_framework import serializers
 from .models import UserProfile, CustomUser, UserAssignment
-
-from djoser.serializers import TokenCreateSerializer
-from rest_framework.authtoken.models import Token
+from .authentication import ExpiringToken
 from rest_framework.exceptions import ValidationError
+from djoser.serializers import TokenCreateSerializer
+from .authentication import ExpiringToken
 
 
-class CustomTokenCreateSerializer(TokenCreateSerializer):
+class CustomTokenCreateSerializer(serializers.Serializer):
+    email = serializers.EmailField(required=True)
+    password = serializers.CharField(required=True, style={'input_type': 'password'})
+    remember_me = serializers.BooleanField(default=False, required=False)
+
     def validate(self, attrs):
         email = attrs.get("email")
         password = attrs.get("password")
+        remember_me = attrs.get("remember_me", False)
+        
         print(f"Authentication attempt for email: {email}")
-
-        # Log the password length for debugging purposes (do not log the actual password)
         print(
             f"Password length: {len(password) if password else 'No password provided'}"
         )
@@ -26,43 +30,39 @@ class CustomTokenCreateSerializer(TokenCreateSerializer):
             print("Authentication failed: No user found or incorrect password.")
             raise ValidationError(
                 {
-                    "message": "Invalid credentials.",
-                    "email": [
-                        "No user found with this email address or password is incorrect."
-                    ],
+                    "message": "Login failed. Please check your credentials and try again.",
                 }
             )
 
-        # Check if the user is inactive
+        # Check if the user's email is verified
+        if not user.is_verified:
+            print(f"Login failed: User {email} is not verified.")
+            raise ValidationError(
+                {
+                    "message": "Please verify your email before logging in.",
+                    "detail": ["Email not verified"],
+                }
+            )
+
+        # Check if the user is active
         if not user.is_active:
-            print("Authentication failed: User account is inactive.")
+            print(f"Login failed: User {email} is not active.")
             raise ValidationError(
                 {
-                    "message": "Account inactive.",
-                    "email": [
-                        "Your account has not been verified. Please check your email for the verification link."
-                    ],
+                    "message": "This account has been deactivated. Please contact support.",
+                    "detail": ["Account is not active"],
                 }
             )
 
-        print("Authentication succeeded. User ID:", user.id)
+        print(f"User {email} authenticated successfully.")
 
-        # Create or get the existing auth token for the user
-        token, created = Token.objects.get_or_create(user=user)
-        print(token)
-
-        # Ensure the token has a user associated
-        if not user or token.user is None:
-            print("Token creation failed. User is not associated with the token.")
-            raise ValidationError(
-                {
-                    "message": "Token generation failed.",
-                    "detail": ["Token could not be created. Please try again."],
-                }
-            )
-
-        print("Token generated:", token.key)
-        return {"auth_token": token.key}
+        # Create or update token with expiration
+        token = ExpiringToken.create_token(user, remember_me=remember_me)
+        print(f"Token generated: {token.key} (expires: {token.expires_at or 'Never'})")
+        
+        attrs['user'] = user
+        attrs['token'] = token
+        return attrs
 
 
 # class UserSerializer(serializers.ModelSerializer):
