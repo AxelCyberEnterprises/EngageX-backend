@@ -86,6 +86,23 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
         blank=True,
         help_text=_('Expiration time for the SSO login code')
     )
+    
+    # 2FA OTP fields
+    otp_code = models.CharField(
+        max_length=6,
+        blank=True,
+        null=True,
+        help_text=_('One-time password for 2FA')
+    )
+    otp_created_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text=_('When the OTP was created')
+    )
+    otp_verified = models.BooleanField(
+        default=False,
+        help_text=_('Whether the current OTP has been verified')
+    )
 
     objects = CustomUserManager()
 
@@ -198,10 +215,106 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
         print(f"Stored code: {self.sso_login_code}")
         print(f"Code expires at: {self.sso_code_expires}")
         print(f"Current time: {timezone.now()}")
-        print(f"Code valid: {is_valid}")
+        print(f"Is valid: {is_valid}")
         
+        # Clear the code after verification attempt
+        if is_valid:
+            self.sso_login_code = None
+            self.sso_code_expires = None
+            self.save(update_fields=['sso_login_code', 'sso_code_expires'])
+            
         return is_valid
         
+    def generate_otp(self):
+        """
+        Generate a new 6-digit OTP and save it with timestamp.
+        
+        Returns:
+            str: The generated OTP code
+        """
+        import random
+        from django.utils import timezone
+        
+        self.otp_code = f"{random.randint(0, 999999):06d}"  # 6-digit code with leading zeros
+        self.otp_created_at = timezone.now()
+        self.otp_verified = False
+        self.save(update_fields=['otp_code', 'otp_created_at', 'otp_verified'])
+        return self.otp_code
+        
+    def verify_otp(self, code):
+        """
+        Verify if the provided OTP code is valid.
+        
+        Args:
+            code (str): The OTP code to verify
+            
+        Returns:
+            bool: True if the OTP is valid and not expired, False otherwise
+        """
+        from django.utils import timezone
+        from datetime import timedelta
+        
+        if not code or not self.otp_code or not self.otp_created_at:
+            return False
+            
+        # OTP expires after 10 minutes
+        expiry_time = self.otp_created_at + timedelta(minutes=10)
+        is_valid = (
+            code == self.otp_code and
+            timezone.now() < expiry_time and
+            not self.otp_verified
+        )
+        
+        # If valid, mark as verified
+        if is_valid:
+            self.otp_verified = True
+            self.save(update_fields=['otp_verified'])
+            
+        return is_valid
+        
+    def send_otp_email(self):
+        """
+        Send the OTP code to the user's email.
+        
+        Returns:
+            bool: True if email was sent successfully, False otherwise
+        """
+        from .utils.email import send_email_via_ses
+        from django.conf import settings
+        
+        # Generate a new OTP if one doesn't exist or is expired
+        if not self.otp_code or not self.otp_created_at or \
+           self.otp_created_at < (timezone.now() - timezone.timedelta(minutes=10)):
+            self.generate_otp()
+            
+        subject = "Your Login Verification Code"
+        message = f"""
+        Your verification code is: {self.otp_code}
+        
+        This code will expire in 10 minutes.
+        
+        If you didn't request this code, please ignore this email.
+        """
+        
+        html_message = f"""
+        <h2>Your Verification Code</h2>
+        <p>Your verification code is: <strong>{self.otp_code}</strong></p>
+        <p>This code will expire in 10 minutes.</p>
+        <p>If you didn't request this code, please ignore this email.</p>
+        """
+        
+        try:
+            send_email_via_ses(
+                subject=subject,
+                body=message,
+                to_emails=[self.email],
+                html_body=html_message
+            )
+            return True
+        except Exception as e:
+            print(f"Failed to send OTP email: {str(e)}")
+            return False
+            
     def _send_sso_login_email(self, request=None):
         """Send an email with a 6-digit login code to the user using the custom email utility."""
         from django.template.loader import render_to_string

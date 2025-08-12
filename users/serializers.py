@@ -320,6 +320,22 @@ class ChangePasswordSerializer(serializers.Serializer):
         user.save()
 
 
+class OTPSerializer(serializers.Serializer):
+    """Serializer for OTP verification."""
+    email = serializers.EmailField(required=True)
+    otp_code = serializers.CharField(max_length=6, min_length=6, required=True)
+    
+    def validate_otp_code(self, value):
+        if not value.isdigit() or len(value) != 6:
+            raise serializers.ValidationError("OTP must be a 6-digit number.")
+        return value
+
+
+class ResendOTPSerializer(serializers.Serializer):
+    """Serializer for requesting a new OTP."""
+    email = serializers.EmailField(required=True)
+
+
 class UserAssignmentSerializer(serializers.ModelSerializer):
     admin_email = serializers.EmailField(source="admin.email", read_only=True)
     user_email = serializers.EmailField(source="user.email", read_only=True)

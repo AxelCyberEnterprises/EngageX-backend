@@ -27,6 +27,8 @@ from .serializers import (
     PasswordResetRequestSerializer,
     PasswordResetConfirmSerializer,
     ContactUsSerializer,
+    OTPSerializer,
+    ResendOTPSerializer,
 )
 from .models import UserProfile, CustomUser, UserAssignment
 from .permissions import IsAdmin
@@ -307,13 +309,106 @@ class VerifyEmailView(APIView):
             return Response(response_data, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
+class VerifyOTPView(APIView):
+    """
+    Verify the OTP and return an auth token if valid.
+    Rate limited to 5 attempts per 15 minutes per IP address.
+    """
+    permission_classes = [AllowAny]
+    serializer_class = OTPSerializer
+    throttle_scope = 'verify_otp'
+
+    @swagger_auto_schema(
+        operation_description="Verify OTP for 2FA",
+        request_body=OTPSerializer,
+        responses={
+            200: "OTP verified successfully. Returns auth token.",
+            400: "Invalid OTP or OTP expired.",
+            404: "User not found.",
+            429: "Too many attempts. Please try again later.",
+        },
+    )
+    def post(self, request, *args, **kwargs):
+        # Get client IP for rate limiting
+        x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
+        if x_forwarded_for:
+            ip = x_forwarded_for.split(',')[0]
+        else:
+            ip = request.META.get('REMOTE_ADDR')
+            
+        # Log the attempt for rate limiting
+        cache_key = f'otp_verify_attempts_{ip}'
+        attempts = cache.get(cache_key, 0)
+        
+        if attempts >= 5:  # 5 attempts allowed
+            return Response(
+                {"status": "error", "message": "Too many attempts. Please try again later."},
+                status=status.HTTP_429_TOO_MANY_REQUESTS,
+            )
+            
+        # Increment attempt counter (expires in 15 minutes)
+        cache.set(cache_key, attempts + 1, 900)  # 15 minutes = 900 seconds
+
+        serializer = self.serializer_class(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        email = serializer.validated_data["email"]
+        otp = serializer.validated_data["otp"]
+
+        try:
+            user = User.objects.get(email=email, is_active=True)
+        except User.DoesNotExist:
+            return Response(
+                {"status": "error", "message": "User not found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        # Verify OTP
+        if not user.verify_otp(otp):
+            return Response(
+                {"status": "error", "message": "Invalid or expired OTP."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Clear the OTP after successful verification
+        user.clear_otp()
+        
+        # Reset rate limiting on successful verification
+        cache.delete(cache_key)
+
+        # Generate or get the auth token
+        token, created = Token.objects.get_or_create(user=user)
+
+        return Response(
+            {
+                "status": "success",
+                "message": "OTP verified successfully.",
+                "data": {"token": token.key},
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
 class CustomTokenCreateView(TokenCreateView):
     """
-    Logs user in and provides authentication Token that would be used for other endpoints requiring authentication
+    Handles user login with 2FA (Two-Factor Authentication) flow.
+    After successful password verification, sends an OTP to the user's email.
+    The user must verify the OTP to complete the login.
     """
 
     serializer_class = CustomTokenCreateSerializer
+    permission_classes = [AllowAny]
 
+    @swagger_auto_schema(
+        operation_description="Login with email and password to initiate 2FA flow",
+        request_body=CustomTokenCreateSerializer,
+        responses={
+            200: "OTP sent successfully",
+            400: "Invalid input data",
+            401: "Invalid credentials or inactive account",
+            404: "User not found",
+        },
+    )
     def post(self, request, *args, **kwargs):
         # Log the incoming request for debugging
         print("Login attempt with data:", request.data)
@@ -333,54 +428,122 @@ class CustomTokenCreateView(TokenCreateView):
             }
             return Response(response_data, status=status.HTTP_400_BAD_REQUEST)
 
-        serializer = self.get_serializer(data=request.data)
-
         try:
             # Attempt to retrieve user by email
             user = CustomUser.objects.get(email=email)
-            # Check incoorect password
+            
+            # Check if the provided password is correct
             if not user.check_password(password):
                 return Response(
-                    {"status": "fail", "detail": "Incorrect password."},
+                    {"status": "fail", "message": "Incorrect email or password"},
                     status=status.HTTP_401_UNAUTHORIZED,
                 )
 
+            # Check if the user account is active
             if not user.is_active:
                 return Response(
-                    {"status": "fail", "detail": "User not verified "},
+                    {"status": "fail", "message": "Account not verified or inactive"},
                     status=status.HTTP_401_UNAUTHORIZED,
                 )
 
-            # Validate and create the token using the custom serializer
-            serializer.is_valid(raise_exception=True)
-            token = serializer.validated_data["auth_token"]
+            # Generate and send OTP to user's email
+            if not user.send_otp_email():
+                return Response(
+                    {"status": "error", "message": "Failed to send OTP. Please try again later."},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                )
 
-            # First login logic
+            # Check if this is the first login
             first_login = not user.has_logged_in
-            if first_login:
-                user.has_logged_in = True
-                user.save(update_fields=["has_logged_in"])
-
+            
             response_data = {
                 "status": "success",
-                "message": "Login successful.",
+                "message": "OTP has been sent to your email. Please verify to complete login.",
                 "data": {
-                    "token": token,
-                    "user_id": user.id,
                     "email": email,
-                    "first_name": user.first_name,
-                    "last_name": user.last_name,
-                    "is_admin": user.is_superuser,
                     "first_login": first_login,
+                    "otp_required": True,
                 },
             }
             return Response(response_data, status=status.HTTP_200_OK)
 
-        except CustomUser.DoesNotExist as e:
+        except CustomUser.DoesNotExist:
             return Response(
-                {"status": "fail", "detail": "No User associated with this email"},
+                {"status": "fail", "message": "No account found with this email"},
                 status=status.HTTP_404_NOT_FOUND,
             )
+
+
+class ResendOTPView(APIView):
+    """
+    Resend OTP to the user's email.
+    Rate limited to 3 resend attempts per 15 minutes per email.
+    """
+    permission_classes = [AllowAny]
+    serializer_class = ResendOTPSerializer
+    throttle_scope = 'resend_otp'
+
+    @swagger_auto_schema(
+        operation_description="Resend OTP for 2FA",
+        request_body=ResendOTPSerializer,
+        responses={
+            200: "OTP has been resent successfully.",
+            400: "Invalid email or user not found.",
+            429: "Too many resend attempts. Please try again later.",
+        },
+    )
+    def post(self, request, *args, **kwargs):
+        serializer = self.serializer_class(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        email = serializer.validated_data["email"]
+        
+        # Check rate limiting for this email
+        resend_cache_key = f'otp_resend_attempts_{email}'
+        resend_attempts = cache.get(resend_cache_key, 0)
+        
+        if resend_attempts >= 3:  # 3 resend attempts allowed
+            return Response(
+                {"status": "error", "message": "Too many resend attempts. Please try again later."},
+                status=status.HTTP_429_TOO_MANY_REQUESTS,
+            )
+            
+        # Increment resend counter (expires in 15 minutes)
+        cache.set(resend_cache_key, resend_attempts + 1, 900)  # 15 minutes = 900 seconds
+
+        try:
+            user = User.objects.get(email=email, is_active=True)
+        except User.DoesNotExist:
+            return Response(
+                {"status": "error", "message": "User not found or inactive."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        # Generate and send new OTP
+        otp = user.generate_otp()
+        
+        # Send OTP via email
+        subject = "Your New Verification Code"
+        message = f"Your new verification code is: {otp}\n\nThis code will expire in 10 minutes."
+        try:
+            send_email_via_ses(subject, message, [user.email])
+        except Exception as e:
+            logger.error(f"Failed to send OTP email to {user.email}: {str(e)}")
+            return Response(
+                {
+                    "status": "error",
+                    "message": "Failed to send OTP. Please try again later.",
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+        return Response(
+            {
+                "status": "success",
+                "message": "A new OTP has been sent to your email address.",
+            },
+            status=status.HTTP_200_OK,
+        )
 
 
 class PasswordResetRequestView(APIView):
