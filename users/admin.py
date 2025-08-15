@@ -1,8 +1,9 @@
 from django.contrib import admin
 from django.contrib.auth.models import User
-from .models import UserProfile, CustomUser, UserAssignment
+from .models import UserProfile, CustomUser, UserAssignment, ExpiringToken
 from django.contrib.auth.admin import UserAdmin as DefaultUserAdmin
 from django import forms
+from django.utils import timezone
 
 
 # Define a custom form for user creation and change
@@ -78,4 +79,20 @@ class UserAssignmentAdmin(admin.ModelAdmin):
     # list_filter = ('admin__userprofile__role', 'user__userprofile__role')
 
 
+class ExpiringTokenAdmin(admin.ModelAdmin):
+    list_display = ('key', 'user', 'created', 'expires_at', 'is_expired')
+    fields = ('user', 'key', 'expires_at')
+    readonly_fields = ('created', 'key')
+    list_filter = ('expires_at',)
+    search_fields = ('user__username', 'user__email', 'key')
+    
+    def is_expired(self, obj):
+        if not obj.expires_at:
+            return "Never"
+        return obj.is_expired
+    is_expired.boolean = True
+    is_expired.short_description = 'Expired?'
+
+
+admin.site.register(ExpiringToken, ExpiringTokenAdmin)
 admin.site.register(UserAssignment, UserAssignmentAdmin)

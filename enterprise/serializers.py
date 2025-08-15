@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
-from .models import Enterprise, EnterpriseUser, EnterpriseQuestion
+from .models import Enterprise, EnterpriseUser, EnterpriseQuestion, TrainingGoal
 from users.serializers import UserSerializer
 
 User = get_user_model()
@@ -14,10 +14,11 @@ class EnterpriseSerializer(serializers.ModelSerializer):
     class Meta:
         model = Enterprise
         fields = [
-            'id', 'name', 'domain', 'enterprise_type', 'logo', 'is_active',
-            'require_domain_match', 'available_verticals', 'created_at', 'updated_at'
+            'id', 'name', 'domain', 'enterprise_type', 'logo', 
+            'is_active', 'require_domain_match', 'one_on_one_coaching_link',
+            'accessible_verticals', 'available_verticals', 'created_at', 'updated_at'
         ]
-        read_only_fields = ('id', 'created_at', 'updated_at', 'available_verticals')
+        read_only_fields = ['id', 'created_at', 'updated_at']
         extra_kwargs = {
             'logo': {'required': False, 'allow_null': True}
         }
@@ -152,3 +153,81 @@ class EnterpriseQuestionSerializer(serializers.ModelSerializer):
                 })
         
         return data
+
+
+class TrainingGoalSerializer(serializers.ModelSerializer):
+    """
+    Serializer for the TrainingGoal model.
+    Handles validation and serialization of training goals.
+    """
+    progress_percent = serializers.SerializerMethodField()
+    is_completed = serializers.SerializerMethodField()
+    room_display = serializers.CharField(source='get_room_display', read_only=True)
+    
+    class Meta:
+        model = TrainingGoal
+        fields = [
+            'id', 'enterprise', 'room', 'room_display', 'target_sessions', 
+            'completed_sessions', 'progress_percent', 'is_completed',
+            'due_date', 'is_active', 'created_at', 'updated_at'
+        ]
+        read_only_fields = ('id', 'created_at', 'updated_at', 'progress_percent', 'is_completed')
+    
+    def get_progress_percent(self, obj):
+        """Calculate and return the progress percentage."""
+        return obj.progress_percent
+    
+    def get_is_completed(self, obj):
+        """Return whether the goal is completed."""
+        return obj.is_completed
+    
+    def validate(self, data):
+        """
+        Validate the training goal data.
+        - Ensure room type is allowed for the enterprise type
+        - Ensure only one active goal per room per enterprise
+        """
+        enterprise = data.get('enterprise') or self.instance.enterprise if self.instance else None
+        room = data.get('room') or (self.instance.room if self.instance else None)
+        is_active = data.get('is_active', True if not self.instance else self.instance.is_active)
+        
+        if enterprise and room and is_active:
+            # Check for existing active goal for this room in the enterprise
+            existing = TrainingGoal.objects.filter(
+                enterprise=enterprise,
+                room=room,
+                is_active=True
+            )
+            
+            if self.instance:
+                existing = existing.exclude(pk=self.instance.pk)
+            
+            if existing.exists():
+                raise serializers.ValidationError({
+                    'room': f"There is already an active goal for {dict(TrainingGoal.RoomType.choices).get(room, room)}"
+                })
+            
+            # Validate room type against enterprise type
+            if (enterprise.enterprise_type == Enterprise.EnterpriseType.GENERAL and 
+                room not in [
+                    TrainingGoal.RoomType.COACHING.value, 
+                    TrainingGoal.RoomType.PRESENTATION.value,
+                    TrainingGoal.RoomType.PITCH.value, 
+                    TrainingGoal.RoomType.PUBLIC_SPEAKING.value,
+                    TrainingGoal.RoomType.MEDIA_TRAINING.value
+                ]):
+                raise serializers.ValidationError({
+                    'room': f"Room type '{dict(TrainingGoal.RoomType.choices).get(room, room)}' is not allowed for general enterprises"
+                })
+        
+        return data
+
+
+class TrainingGoalOptionsSerializer(serializers.Serializer):
+    """
+    Serializer for training goal options.
+    Used to list available room types for creating/updating goals.
+    """
+    id = serializers.CharField()
+    name = serializers.CharField()
+    enterprise_types = serializers.ListField(child=serializers.CharField())

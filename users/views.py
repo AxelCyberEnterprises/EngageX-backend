@@ -353,7 +353,7 @@ class VerifyOTPView(APIView):
         serializer.is_valid(raise_exception=True)
 
         email = serializer.validated_data["email"]
-        otp = serializer.validated_data["otp"]
+        otp = serializer.validated_data["otp_code"]
 
         try:
             user = User.objects.get(email=email, is_active=True)

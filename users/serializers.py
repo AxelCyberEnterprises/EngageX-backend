@@ -325,7 +325,7 @@ class OTPSerializer(serializers.Serializer):
     email = serializers.EmailField(required=True)
     otp_code = serializers.CharField(max_length=6, min_length=6, required=True)
     
-    def validate_otp_code(self, value):
+    def validate_otp(self, value):
         if not value.isdigit() or len(value) != 6:
             raise serializers.ValidationError("OTP must be a 6-digit number.")
         return value
