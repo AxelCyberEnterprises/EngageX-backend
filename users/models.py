@@ -1,11 +1,12 @@
 from django.db import models
 from django.core.exceptions import ValidationError
 from django.contrib.auth.models import AbstractBaseUser, PermissionsMixin, BaseUserManager
+from rest_framework.authtoken.models import Token
 from .managers import CustomUserManager
 from django.conf import settings
 
 from django.utils import timezone
-from datetime import date
+from datetime import date, timedelta
 
 from django.core.validators import FileExtensionValidator
 from django.utils.translation import gettext_lazy as _
@@ -16,6 +17,52 @@ from .storages_backends import (
     UserVideosStorage,
     StaticVideosStorage,
 )
+
+
+class ExpiringToken(Token):
+    """
+    Extends the default Token model to add an expiration time.
+    """
+    expires_at = models.DateTimeField(null=True, blank=True)
+
+    @property
+    def is_expired(self):
+        """Check if token is expired."""
+        if not self.expires_at:
+            return False
+        return timezone.now() > self.expires_at
+
+    @classmethod
+    def create_token(cls, user, remember_me=False):
+        """Create a new token with optional expiration.
+        
+        Args:
+            user: The user this token belongs to
+            remember_me: If True, token expires in 30 days. If False, expires in 3 days.
+        """
+        # Delete existing tokens for this user
+        cls.objects.filter(user=user).delete()
+        
+        # Default to 3 days expiration
+        expires_at = timezone.now() + timedelta(days=3)
+        if remember_me:
+            # If remember_me is True, extend to 30 days
+            expires_at = timezone.now() + timedelta(days=30)
+        
+        return cls.objects.create(
+            user=user,
+            expires_at=expires_at
+        )
+    
+    def clear_otp(self):
+        """
+        Clear the OTP code and related fields after successful verification.
+        """
+        self.otp_code = None
+        self.otp_created_at = None
+        self.otp_verified = True
+        self.save(update_fields=['otp_code', 'otp_created_at', 'otp_verified'])
+
 
 from django.dispatch import receiver
 from django.db.models.signals import post_save
@@ -190,6 +237,15 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
             
         print("Proceeding to send SSO login email...")
         return self._send_sso_login_email(request)
+        
+    def clear_otp(self):
+        """
+        Clear the OTP code and related fields after successful verification.
+        """
+        self.otp_code = None
+        self.otp_created_at = None
+        self.otp_verified = True
+        self.save(update_fields=['otp_code', 'otp_created_at', 'otp_verified'])
         
     def verify_sso_code(self, code):
         """

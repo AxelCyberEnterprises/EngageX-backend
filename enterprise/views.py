@@ -1,182 +1,39 @@
-# import csv
-# import io
-# import logging
-# import random
-# import string
-# from openpyxl import load_workbook
-# from django.conf import settings
-# from django.core.exceptions import ValidationError
-# from django.db import transaction, IntegrityError
-# from django.template.loader import render_to_string
-# from django.utils import timezone
-# from rest_framework import status, viewsets
-# from rest_framework.decorators import action
-# from rest_framework.permissions import IsAdminUser, IsAuthenticated
-# from rest_framework.response import Response
-# from rest_framework.parsers import MultiPartParser, JSONParser
-# from django.contrib.auth import get_user_model
-# from django.contrib.auth.tokens import default_token_generator
-# from django.utils.encoding import force_bytes
-# from django.utils.http import urlsafe_base64_encode
-
-# from users.utils.email import send_email_via_ses
-# from .models import Enterprise, EnterpriseUser, EnterpriseQuestion
-# from .serializers import (
-#     EnterpriseSerializer,
-#     EnterpriseUserSerializer,
-#     BulkUserUploadSerializer,
-#     EnterpriseQuestionSerializer
-# )
-
-# # Get the logger for this file
-# logger = logging.getLogger(__name__)
-
-# User = get_user_model()
-# logger = logging.getLogger(__name__)
-
-# class EnterpriseViewSet(viewsets.ModelViewSet):
-#     """
-#     ViewSet for managing enterprises.
-#     """
-#     queryset = Enterprise.objects.all()
-#     serializer_class = EnterpriseSerializer
-#     permission_classes = [IsAdminUser]
-#     parser_classes = [MultiPartParser, JSONParser]
-
-
-# class EnterpriseQuestionViewSet(viewsets.ModelViewSet):
-#     """
-#     ViewSet for managing enterprise questions.
-#     """
-#     serializer_class = EnterpriseQuestionSerializer
-#     permission_classes = [IsAdminUser]
-    
-#     def get_queryset(self):
-#         queryset = EnterpriseQuestion.objects.select_related('enterprise')
-        
-#         # Filter by enterprise if specified
-#         enterprise_id = self.request.query_params.get('enterprise_id')
-#         if enterprise_id:
-#             queryset = queryset.filter(enterprise_id=enterprise_id)
-            
-#         # Filter by vertical if specified
-#         vertical = self.request.query_params.get('vertical')
-#         if vertical:
-#             queryset = queryset.filter(vertical=vertical)
-            
-#         # Filter by active status if specified
-#         is_active = self.request.query_params.get('is_active')
-#         if is_active is not None:
-#             is_active = is_active.lower() in ('true', '1', 't')
-#             queryset = queryset.filter(is_active=is_active)
-            
-#         return queryset
-    
-#     def perform_create(self, serializer):
-#         """Set the enterprise and validate vertical and sport_type."""
-#         enterprise = serializer.validated_data['enterprise']
-#         vertical = serializer.validated_data['vertical']
-        
-#         # Get sport_type from request data if provided
-#         sport_type = self.request.data.get('sport_type')
-#         if not sport_type and 'enterprise_settings' in self.request.data and isinstance(self.request.data['enterprise_settings'], dict):
-#             sport_type = self.request.data['enterprise_settings'].get('sport_type')
-        
-#         # Validate that the vertical is allowed for this enterprise
-#         available_verticals = [v[0] for v in enterprise.get_available_verticals()]
-#         if vertical not in available_verticals:
-#             raise ValidationError({
-#                 'vertical': f"Vertical '{vertical}' is not available for this enterprise type"
-#             })
-        
-#         # Save the question with sport_type if provided
-#         if sport_type:
-#             # Validate sport_type is one of the allowed choices
-#             valid_sport_types = dict(EnterpriseQuestion._meta.get_field('sport_type').choices).keys()
-#             if sport_type not in valid_sport_types:
-#                 raise ValidationError({
-#                     'sport_type': f"Invalid sport_type. Must be one of: {', '.join(valid_sport_types)}"
-#                 })
-#             serializer.save(sport_type=sport_type)
-#         else:
-#             serializer.save()
-
 import csv
 import io
 import logging
 import random
 import string
 import uuid
-
-#         # Upload to S3 under the 'enterprise-questions' folder
-#         try:
-#             print("[S3] Starting S3 upload...")
-            
-#             # Initialize S3 client with credentials from settings
-#             s3_client = boto3.client(
-#                 's3',
-#                 aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
-#                 aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
-#                 region_name=settings.AWS_S3_REGION_NAME
-#             )
-            
-#             # Generate unique file name
-#             file_name = f"{question.id}-{uuid.uuid4().hex}.mp3"
-#             key = f"enterprise-questions/{question.enterprise.id}/{file_name}"
-            
-#             # Upload to S3 
-#             s3_client.put_object(
-#                 Bucket=settings.AWS_STORAGE_BUCKET_NAME,
-#                 Key=key,
-#                 Body=audio_bytes,
-#                 ContentType='audio/mpeg'
-#             )
-            
-#             # Construct the public URL
-#             region = settings.AWS_S3_REGION_NAME
-#             audio_url = f"https://{settings.AWS_STORAGE_BUCKET_NAME}.s3.{region}.amazonaws.com/{key}"
-#             print(f"[S3] File uploaded successfully: {audio_url}")
-
-#             # Update question with audio URL and save
-#             question.audio_url = audio_url
-#             question.save(update_fields=['audio_url'])
-#             question.save(update_fields=['audio_url'])
-#         except Exception as e:
-#             logger.error(f"Error uploading audio for question {question.id} to S3: {e}", exc_info=True)
-
-
 import openai
 from openpyxl import load_workbook
 from django.conf import settings
 from django.core.exceptions import ValidationError
-from django.db import transaction, IntegrityError
+from django.db import transaction, IntegrityError, models
+from django.db.models import Count, Sum, F, Q
 import os
-import uuid
 import boto3
 import traceback
-import logging
+from datetime import datetime, timedelta
+
 from rest_framework import viewsets, status
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, IsAdminUser
 from rest_framework.decorators import action
 from rest_framework.parsers import MultiPartParser, JSONParser
 from django.conf import settings
-import openai
 
 # Import the utility function for voice selection
 from .utils import get_voice_for_question
 from django.contrib.auth import get_user_model
-from django.contrib.auth.tokens import default_token_generator
-from django.utils.encoding import force_bytes
-from django.utils.http import urlsafe_base64_encode
-
 from users.utils.email import send_email_via_ses
-from .models import Enterprise, EnterpriseUser, EnterpriseQuestion
+from .models import Enterprise, EnterpriseUser, EnterpriseQuestion, TrainingGoal
 from .serializers import (
     EnterpriseSerializer,
     EnterpriseUserSerializer,
     BulkUserUploadSerializer,
-    EnterpriseQuestionSerializer
+    EnterpriseQuestionSerializer,
+    TrainingGoalSerializer,
+    TrainingGoalOptionsSerializer
 )
 
 # Configure logger
@@ -199,20 +56,647 @@ class EnterpriseViewSet(viewsets.ModelViewSet):
     """
     queryset = Enterprise.objects.all()
     serializer_class = EnterpriseSerializer
-    permission_classes = [IsAdminUser]
+    permission_classes = [IsAuthenticated]
     parser_classes = [MultiPartParser, JSONParser]
+    
+    def get_permissions(self):
+        """
+        Instantiates and returns the list of permissions that this view requires.
+        - Superusers and staff users can perform all actions
+        - Regular users can only perform safe actions (GET, HEAD, OPTIONS)
+        """
+        # Allow all actions for superusers and staff users
+        if self.request.user.is_superuser or self.request.user.is_staff or self.request.user.is_admin:
+            return [IsAuthenticated()]
+            
+        # For regular users, only allow safe methods
+        if self.action in ['create', 'update', 'partial_update', 'destroy']:
+            self.permission_classes = [IsAdminUser]
+        else:
+            self.permission_classes = [IsAuthenticated]
+        return super().get_permissions()
+    
+    @action(detail=True, methods=['get'], url_path='overview-stats')
+    def overview_stats(self, request, pk=None):
+        """
+        Get overview statistics for an enterprise.
+        Returns:
+            Response: JSON containing statistics like total members, credits left, etc.
+        """
+        enterprise = self.get_object()
+        
+        # Get total members
+        total_members = enterprise.users.count()
+        
+        # Get credits left (placeholder - implement your credit logic)
+        # This assumes you have a Credit model with a 'balance' field
+        try:
+            from payments.models import Credit
+            credits_left = Credit.objects.filter(
+                enterprise=enterprise
+            ).aggregate(total=Sum('balance'))['total'] or 0
+        except ImportError:
+            credits_left = 0
+        
+        # Check if coaching is activated
+        one_on_one_coaching_activated = bool(enterprise.one_on_one_coaching_link)
+        
+        # Calculate goals completion percent (placeholder)
+        # This assumes you have a TrainingGoal model with 'target' and 'completed' fields
+        try:
+            from .models import TrainingGoal
+            goals = TrainingGoal.objects.filter(enterprise=enterprise)
+            total_goals = goals.count()
+            if total_goals > 0:
+                completed_goals = goals.filter(completed=True).count()
+                goals_completion_percent = int((completed_goals / total_goals) * 100)
+            else:
+                goals_completion_percent = 0
+        except (ImportError, AttributeError):
+            goals_completion_percent = 0
+        
+        return Response({
+            'total_members': total_members,
+            'credits_left': credits_left,
+            'one_on_one_coaching_activated': one_on_one_coaching_activated,
+            'goals_completion_percent': goals_completion_percent
+        })
+        
+    @action(detail=True, methods=['get'], url_path='credits/summary')
+    def credits_summary(self, request, pk=None):
+        """
+        Get credits summary for the enterprise.
+        Returns total credits and usage statistics.
+        """
+        enterprise = self.get_object()
+        
+        try:
+            from payments.models import Credit, CreditTransaction
+            
+            # Get current balance
+            credits = Credit.objects.filter(enterprise=enterprise).first()
+            if not credits:
+                return Response({
+                    'total_credits': 0,
+                    'credits_used': 0,
+                    'credits_remaining': 0,
+                    'transactions': []
+                })
+            
+            # Get recent transactions
+            transactions = CreditTransaction.objects.filter(
+                enterprise=enterprise
+            ).order_by('-created_at')[:10]  # Last 10 transactions
+            
+            transaction_data = [{
+                'id': t.id,
+                'amount': t.amount,
+                'transaction_type': t.get_transaction_type_display(),
+                'description': t.description,
+                'created_at': t.created_at
+            } for t in transactions]
+            
+            return Response({
+                'total_credits': credits.total_credits,
+                'credits_used': credits.credits_used,
+                'credits_remaining': credits.balance,
+                'transactions': transaction_data
+            })
+            
+        except ImportError:
+            return Response(
+                {'error': 'Credits module not found'},
+                status=status.HTTP_501_NOT_IMPLEMENTED
+            )
+    
+    @action(detail=True, methods=['post'], url_path='credits/add')
+    def add_credits(self, request, pk=None):
+        """
+        Add credits to the enterprise.
+        Expected payload:
+        {
+            "amount": 100,
+            "reason": "Monthly subscription"
+        }
+        """
+        enterprise = self.get_object()
+        amount = request.data.get('amount')
+        reason = request.data.get('reason', 'Admin credit addition')
+        
+        if not amount or not isinstance(amount, (int, float)) or amount <= 0:
+            return Response(
+                {'error': 'A positive amount is required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+            
+        try:
+            from payments.models import Credit, CreditTransaction
+            
+            with transaction.atomic():
+                # Get or create credit record
+                credit, created = Credit.objects.get_or_create(
+                    enterprise=enterprise,
+                    defaults={'total_credits': 0, 'credits_used': 0}
+                )
+                
+                # Update credit balance
+                credit.total_credits += amount
+                credit.save()
+                
+                # Record transaction
+                CreditTransaction.objects.create(
+                    enterprise=enterprise,
+                    amount=amount,
+                    transaction_type='add_to_enterprise',
+                    description=reason,
+                    created_by=request.user
+                )
+                
+                return Response({
+                    'message': f'Successfully added {amount} credits',
+                    'new_balance': credit.balance
+                })
+                
+        except ImportError:
+            return Response(
+                {'error': 'Credits module not found'},
+                status=status.HTTP_501_NOT_IMPLEMENTED
+            )
+    
+    @action(detail=True, methods=['get', 'put'], url_path='coaching-settings')
+    def coaching_settings(self, request, pk=None):
+        """
+        GET: Get current coaching settings
+        PUT: Update coaching settings
+        Expected payload for PUT:
+        {
+            "one_on_one_coaching_link": "https://calendly.com/..."
+        }
+        """
+        enterprise = self.get_object()
+        
+        if request.method == 'GET':
+            return Response({
+                'one_on_one_coaching_link': enterprise.one_on_one_coaching_link,
+                'one_on_one_coaching_activated': bool(enterprise.one_on_one_coaching_link)
+            })
+            
+        elif request.method == 'PUT':
+            one_on_one_coaching_link = request.data.get('one_on_one_coaching_link')
+            
+            if not one_on_one_coaching_link:
+                return Response(
+                    {'error': 'one_on_one_coaching_link is required'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+                
+            enterprise.one_on_one_coaching_link = one_on_one_coaching_link
+            enterprise.save()
+            
+            return Response({
+                'message': 'Coaching settings updated successfully',
+                'one_on_one_coaching_link': enterprise.one_on_one_coaching_link,
+                'one_on_one_coaching_activated': True
+            })
+    
+    @action(detail=False, methods=['get'])
+    def verticals(self, request):
+        """
+        List all available verticals across all enterprise types.
+        Frontend can filter based on enterprise_type if needed.
+        """
+        from .models import Enterprise
+        
+        verticals = []
+        for choice in Enterprise.Vertical.choices:
+            verticals.append({
+                'id': choice[0],
+                'name': choice[1],
+                'enterprise_types': [
+                    'sport' if choice[0] in ['media_training', 'coach', 'gm'] else 'general'
+                ]
+            })
+        
+        return Response(verticals)
+    
+    @action(detail=True, methods=['get'], url_path='verticals')
+    def enterprise_verticals(self, request, pk=None):
+        """
+        Get currently enabled verticals for this enterprise.
+        Returns list of vertical IDs from Enterprise.accessible_verticals.
+        """
+        enterprise = self.get_object()
+        
+        try:
+            from payments.models import Credit, CreditTransaction
+            
+            # Get current balance
+            credits = Credit.objects.filter(enterprise=enterprise).first()
+            if not credits:
+                return Response({
+                    'total_credits': 0,
+                    'credits_used': 0,
+                    'credits_remaining': 0,
+                    'transactions': []
+                })
+            
+            # Get recent transactions
+            transactions = CreditTransaction.objects.filter(
+                enterprise=enterprise
+            ).order_by('-created_at')[:10]  # Get 10 most recent transactions
+            
+            transaction_data = [{
+                'id': str(t.id),
+                'amount': float(t.amount),
+                'type': t.get_transaction_type_display(),
+                'description': t.description,
+                'date': t.created_at.isoformat(),
+                'balance_after': float(t.balance_after)
+            } for t in transactions]
+            
+            return Response({
+                'total_credits': credits.total_credits,
+                'credits_used': credits.credits_used,
+                'credits_remaining': credits.balance,
+                'transactions': transaction_data
+            })
+            
+        except ImportError:
+            return Response(
+                {'error': 'Credits module not found'},
+                status=status.HTTP_501_NOT_IMPLEMENTED
+            )
+    
+    @action(detail=True, methods=['post'], url_path='credits/add')
+    def add_credits(self, request, pk=None):
+        """
+        Add credits to the enterprise.
+        Expected payload:
+        {
+            "amount": 100,
+            "reason": "Monthly subscription"
+        }
+        """
+        enterprise = self.get_object()
+        amount = request.data.get('amount')
+        reason = request.data.get('reason', 'Admin credit addition')
+        
+        if not amount or not isinstance(amount, (int, float)) or amount <= 0:
+            return Response(
+                {'error': 'A positive amount is required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+            
+        try:
+            from payments.models import Credit, CreditTransaction
+            
+            with transaction.atomic():
+                # Get or create credit record
+                credit, created = Credit.objects.get_or_create(
+                    enterprise=enterprise,
+                    defaults={'total_credits': 0, 'credits_used': 0}
+                )
+                
+                # Update credit balance
+                credit.total_credits += amount
+                credit.save()
+                
+                # Record transaction
+                CreditTransaction.objects.create(
+                    enterprise=enterprise,
+                    amount=amount,
+                    transaction_type='add_to_enterprise',
+                    description=reason,
+                    created_by=request.user
+                )
+                
+                return Response({
+                    'message': f'Successfully added {amount} credits',
+                    'new_balance': credit.balance
+                })
+                
+        except ImportError:
+            return Response(
+                {'error': 'Credits module not found'},
+                status=status.HTTP_501_NOT_IMPLEMENTED
+            )
+        
+    @action(detail=True, methods=['get', 'put'], url_path='coaching-settings')
+    def coaching_settings(self, request, pk=None):
+        """
+        GET: Get current coaching settings
+        PUT: Update coaching settings
+        Expected payload for PUT:
+        {
+            "one_on_one_coaching_link": "https://calendly.com/..."
+        }
+        """
+        enterprise = self.get_object()
+        
+        if request.method == 'GET':
+            return Response({
+                'one_on_one_coaching_link': enterprise.one_on_one_coaching_link,
+                'one_on_one_coaching_activated': bool(enterprise.one_on_one_coaching_link)
+            })
+            
+        elif request.method == 'PUT':
+            one_on_one_coaching_link = request.data.get('one_on_one_coaching_link')
+            
+            if not one_on_one_coaching_link:
+                return Response(
+                    {'error': 'one_on_one_coaching_link is required'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+                
+            enterprise.one_on_one_coaching_link = one_on_one_coaching_link
+            enterprise.save()
+            
+            return Response({
+                'message': 'Coaching settings updated successfully',
+                'one_on_one_coaching_link': enterprise.one_on_one_coaching_link,
+                'one_on_one_coaching_activated': True
+            })
+        
+    @action(detail=False, methods=['get'])
+    def verticals(self, request):
+        """
+        List all available verticals across all enterprise types.
+        Frontend can filter based on enterprise_type if needed.
+        """
+        from .models import Enterprise
+        
+        verticals = []
+        for choice in Enterprise.Vertical.choices:
+            verticals.append({
+                'id': choice[0],
+                'name': choice[1],
+                'enterprise_types': [
+                    'sport' if choice[0] in ['media_training', 'coach', 'gm'] else 'general'
+                ]
+            })
+        
+        return Response(verticals)
+        
+    @action(detail=True, methods=['get'], url_path='verticals')
+    def enterprise_verticals(self, request, pk=None):
+        """
+        Get currently enabled verticals for this enterprise.
+        Returns list of vertical IDs from Enterprise.accessible_verticals.
+        """
+        enterprise = self.get_object()
+        return Response({
+            'enterprise_id': enterprise.id,
+            'accessible_verticals': enterprise.accessible_verticals or []
+        })
+        
+    @enterprise_verticals.mapping.put
+    def update_enterprise_verticals(self, request, pk=None):
+        """
+        Update accessible verticals for this enterprise.
+        Expected payload:
+        {
+            "vertical_ids": ["media_training", "coach"]
+        }
+        """
+        enterprise = self.get_object()
+        vertical_ids = request.data.get('vertical_ids', [])
+        
+        if not isinstance(vertical_ids, list):
+            return Response(
+                {'error': 'vertical_ids must be a list'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Validate verticals against available choices
+        valid_verticals = [choice[0] for choice in Enterprise.Vertical.choices]
+        invalid_verticals = [v for v in vertical_ids if v not in valid_verticals]
+        
+        if invalid_verticals:
+            return Response(
+                {'error': f'Invalid verticals: {", ".join(invalid_verticals)}'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Update enterprise verticals
+        enterprise.accessible_verticals = vertical_ids
+        enterprise.save()
+        
+        return Response({
+            'message': 'Accessible verticals updated successfully',
+            'enterprise_id': enterprise.id,
+            'accessible_verticals': enterprise.accessible_verticals
+        })
 
-import logging
-import os
-import uuid
-import boto3
-import openai
-from django.conf import settings
+    @action(detail=True, methods=['put'])
+    def update_verticals(self, request, pk=None):
+        """
+        Update the list of accessible verticals for an enterprise.
+        Payload: {"vertical_ids": ["coach", "gm"]}
+        """
+        enterprise = self.get_object()
+        vertical_ids = request.data.get('vertical_ids', [])
+        
+        if not isinstance(vertical_ids, list):
+            return Response(
+                {'error': 'vertical_ids must be an array'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Get available verticals for this enterprise type
+        available_verticals = enterprise.get_available_verticals()
+        
+        # Validate all provided verticals are allowed
+        invalid_verticals = [v for v in vertical_ids if v not in available_verticals]
+        if invalid_verticals:
+            return Response(
+                {'error': f'Invalid verticals: {", ".join(invalid_verticals)}'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Update enterprise verticals
+        enterprise.accessible_verticals = vertical_ids
+        enterprise.save()
+        
+        return Response({
+            'message': 'Accessible verticals updated successfully',
+            'enterprise_id': enterprise.id,
+            'accessible_verticals': enterprise.accessible_verticals
+        })
 
-logger = logging.getLogger(__name__)
+    @action(detail=True, methods=['post'], url_path='progress-report/compute')
+    def compute_progress_report(self, request, pk=None):
+        """
+        Compute progress report for an enterprise.
+        Returns statistics on user activity, session completion, and goal progress.
+        """
+        from datetime import datetime, timedelta
+        
+        enterprise = self.get_object()
+        
+        try:
+            # Get date range (default to last 30 days)
+            end_date = datetime.now()
+            start_date = end_date - timedelta(days=30)
+            
+            # Get total users
+            total_users = enterprise.users.count()
+            
+            # Get active users (users with activity in the last 30 days)
+            active_users = enterprise.users.filter(
+                last_login__gte=start_date
+            ).count()
+            
+            # Get session statistics (placeholder - implement based on your session tracking)
+            total_sessions = 0
+            completed_sessions = 0
+            
+            # Get goal progress
+            goals = TrainingGoal.objects.filter(enterprise=enterprise, is_active=True)
+            goal_progress = [
+                {
+                    'goal_id': goal.id,
+                    'room': goal.room,
+                    'room_display': goal.get_room_display(),
+                    'target_sessions': goal.target_sessions,
+                    'completed_sessions': goal.completed_sessions,
+                    'progress_percent': goal.progress_percent,
+                    'is_completed': goal.is_completed
+                }
+                for goal in goals
+            ]
+            
+            # Calculate overall completion percentage
+            overall_completion = 0
+            if goals.exists():
+                overall_completion = sum(g.progress_percent for g in goals) / goals.count()
+            
+            # Get vertical usage statistics
+            vertical_usage = []
+            for vertical in enterprise.accessible_verticals:
+                vertical_questions = EnterpriseQuestion.objects.filter(
+                    enterprise=enterprise,
+                    vertical=vertical,
+                    is_active=True
+                )
+                vertical_usage.append({
+                    'vertical': vertical,
+                    'vertical_display': dict(EnterpriseQuestion.Vertical.choices).get(vertical, vertical),
+                    'question_count': vertical_questions.count(),
+                    'usage_count': 0  # Placeholder - implement based on your tracking
+                })
+            
+            return Response({
+                'enterprise_id': enterprise.id,
+                'enterprise_name': enterprise.name,
+                'report_period': {
+                    'start_date': start_date.isoformat(),
+                    'end_date': end_date.isoformat()
+                },
+                'user_statistics': {
+                    'total_users': total_users,
+                    'active_users': active_users,
+                    'active_percentage': (active_users / total_users * 100) if total_users > 0 else 0
+                },
+                'session_statistics': {
+                    'total_sessions': total_sessions,
+                    'completed_sessions': completed_sessions,
+                    'completion_rate': (completed_sessions / total_sessions * 100) if total_sessions > 0 else 0
+                },
+                'goal_progress': goal_progress,
+                'overall_completion_percentage': overall_completion,
+                'vertical_usage': vertical_usage,
+                'generated_at': datetime.now().isoformat()
+            })
+            
+        except Exception as e:
+            logger.error(f"Error generating progress report for enterprise {enterprise.id}: {str(e)}", exc_info=True)
+            return Response(
+                {'error': 'Failed to generate progress report'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
-# Configure OpenAI client
-openai.api_key = settings.OPENAI_API_KEY
+    @action(detail=True, methods=['post'], url_path='progress-report/email')
+    def email_progress_report(self, request, pk=None):
+        """
+        Email the progress report to the specified recipients.
+        Payload: {"recipients": ["email1@example.com", "email2@example.com"]}
+        """
+        enterprise = self.get_object()
+        recipients = request.data.get('recipients', [])
+        
+        if not recipients or not isinstance(recipients, list):
+            return Response(
+                {'error': 'recipients must be a non-empty array of email addresses'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            # Generate the report data
+            report_response = self.compute_progress_report(request, pk)
+            if report_response.status_code != status.HTTP_200_OK:
+                return report_response
+                
+            report_data = report_response.data
+            
+            # Format the email content (simplified example)
+            subject = f"Progress Report for {enterprise.name} - {datetime.now().strftime('%B %Y')}"
+            
+            # Create a simple text version of the report
+            text_content = f"""
+            Progress Report for {enterprise.name}
+            Period: {report_data['report_period']['start_date']} to {report_data['report_period']['end_date']}
+            
+            User Statistics:
+            - Total Users: {report_data['user_statistics']['total_users']}
+            - Active Users: {report_data['user_statistics']['active_users']} ({report_data['user_statistics']['active_percentage']:.1f}%)
+            
+            Session Statistics:
+            - Total Sessions: {report_data['session_statistics']['total_sessions']}
+            - Completed Sessions: {report_data['session_statistics']['completed_sessions']}
+            - Completion Rate: {report_data['session_statistics']['completion_rate']:.1f}%
+            
+            Overall Completion: {report_data['overall_completion_percentage']:.1f}%
+            
+            This is an automated report. Please contact support if you have any questions.
+            """
+            
+            # Send the email using our SES utility
+            try:
+                from users.utils.email import send_email_via_ses
+                
+                email_response = send_email_via_ses(
+                    subject=subject,
+                    body=text_content.strip(),
+                    to_emails=recipients,
+                    from_email=settings.DEFAULT_FROM_EMAIL
+                )
+                
+                if not email_response:
+                    return Response(
+                        {'error': 'Failed to send email'},
+                        status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                    )
+                
+                return Response({
+                    'success': True,
+                    'message': f'Progress report sent to {len(recipients)} recipients',
+                    'recipients': recipients
+                })
+                
+            except Exception as e:
+                logger.error(f"Error sending progress report email: {str(e)}", exc_info=True)
+                return Response(
+                    {'error': 'Failed to send email'},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
+                
+        except Exception as e:
+            logger.error(f"Error in email_progress_report: {str(e)}", exc_info=True)
+            return Response(
+                {'error': 'An error occurred while processing your request'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
 
 class EnterpriseQuestionViewSet(viewsets.ModelViewSet):
     """
@@ -232,6 +716,53 @@ class EnterpriseQuestionViewSet(viewsets.ModelViewSet):
             permission_classes = [IsAdminUser]
         return [permission() for permission in permission_classes]
     
+    @action(detail=False, methods=['get'])
+    def question_sections(self, request):
+        """
+        Get available question sections (grouped by vertical) for an enterprise.
+        Returns sections with question counts and active status.
+        
+        Query Parameters:
+            enterprise_id (required): ID of the enterprise
+        """
+        enterprise_id = request.query_params.get('enterprise_id')
+        if not enterprise_id:
+            return Response(
+                {'error': 'enterprise_id is required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+            
+        try:
+            enterprise = Enterprise.objects.get(pk=enterprise_id)
+            
+            # Get all questions for the enterprise
+            questions = EnterpriseQuestion.objects.filter(enterprise=enterprise)
+            
+            # Get available verticals for this enterprise
+            available_verticals = enterprise.get_available_verticals()
+            
+            # Group questions by vertical
+            verticals_data = []
+            for vertical in available_verticals:
+                vertical_questions = questions.filter(vertical=vertical)
+                active_count = vertical_questions.filter(is_active=True).count()
+                
+                verticals_data.append({
+                    'id': vertical,
+                    'name': dict(EnterpriseQuestion.Vertical.choices)[vertical],
+                    'total_questions': vertical_questions.count(),
+                    'active_questions': active_count,
+                    'has_questions': vertical_questions.exists()
+                })
+            
+            return Response(verticals_data)
+            
+        except Enterprise.DoesNotExist:
+            return Response(
+                {'error': 'Enterprise not found'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+            
     @action(detail=False, methods=['get'])
     def test_endpoint(self, request):
         print("=== TEST ENDPOINT HIT ===")
@@ -392,6 +923,72 @@ class EnterpriseQuestionViewSet(viewsets.ModelViewSet):
             question.save(update_fields=['audio_url'])
         except Exception as e:
             logger.error(f"Error uploading audio for question {question.id} to S3: {e}", exc_info=True)
+
+
+class TrainingGoalViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for managing training goals for enterprises.
+    """
+    serializer_class = TrainingGoalSerializer
+    permission_classes = [IsAdminUser]
+    
+    def get_queryset(self):
+        """Return training goals for the specified enterprise"""
+        enterprise_id = self.kwargs.get('enterprise_pk')
+        return TrainingGoal.objects.filter(enterprise_id=enterprise_id)
+    
+    def perform_create(self, serializer):
+        """Set the enterprise when creating a new goal"""
+        enterprise_id = self.kwargs.get('enterprise_pk')
+        enterprise = Enterprise.objects.get(pk=enterprise_id)
+        serializer.save(enterprise=enterprise)
+    
+    @action(detail=False, methods=['get'], url_path='options')
+    def goal_options(self, request, enterprise_pk=None):
+        """
+        Get available room options for training goals based on enterprise type.
+        Sport enterprises get different options than general enterprises.
+        """
+        try:
+            enterprise = Enterprise.objects.get(pk=enterprise_pk)
+            
+            # Define options for each enterprise type
+            sport_options = [
+                {'id': 'presentation', 'name': 'Presentation'},
+                {'id': 'pitch', 'name': 'Pitch'},
+                {'id': 'public_speaking', 'name': 'Public Speaking'},
+                {'id': 'media_training', 'name': 'Media Training'},
+                {'id': 'coach', 'name': 'Coach'},
+                {'id': 'general_manager', 'name': 'General Manager'}
+            ]
+            
+            general_options = [
+                {'id': 'presentation', 'name': 'Presentation'},
+                {'id': 'pitch', 'name': 'Pitch'},
+                {'id': 'public_speaking', 'name': 'Public Speaking'},
+                {'id': 'media_training', 'name': 'Media Training'},
+                {'id': 'coaching', 'name': 'Coaching'}
+            ]
+            
+            options = sport_options if enterprise.enterprise_type == Enterprise.EnterpriseType.SPORT else general_options
+            
+            # Add enterprise type information
+            result = []
+            for opt in options:
+                result.append({
+                    'id': opt['id'],
+                    'name': opt['name'],
+                    'enterprise_types': ['sport' if opt['id'] in [o['id'] for o in sport_options] else 'general']
+                })
+            
+            serializer = TrainingGoalOptionsSerializer(result, many=True)
+            return Response(serializer.data)
+            
+        except Enterprise.DoesNotExist:
+            return Response(
+                {'error': 'Enterprise not found'},
+                status=status.HTTP_404_NOT_FOUND
+            )
 
 
 class EnterpriseUserViewSet(viewsets.ModelViewSet):

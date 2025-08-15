@@ -42,20 +42,37 @@ class Enterprise(models.Model):
         default=True,
         help_text="Require user emails to match the enterprise domain"
     )
+    one_on_one_coaching_link = models.URLField(
+        max_length=500,
+        blank=True,
+        null=True,
+        help_text="Link for 1-on-1 coaching booking"
+    )
+    accessible_verticals = models.JSONField(
+        default=list,
+        help_text="List of vertical IDs from RoomEnum that are accessible"
+    )
     
     class Meta:
         ordering = ['name']
         verbose_name_plural = "Enterprises"
     
     def get_available_verticals(self):
-        """Return the list of available verticals based on enterprise type"""
+        """Return the list of available verticals based on enterprise type and accessible_verticals"""
+        verticals = []
         if self.enterprise_type == self.EnterpriseType.GENERAL:
-            return [self.Vertical.COACHING]
-        return [
-            self.Vertical.MEDIA_TRAINING,
-            self.Vertical.COACH,
-            self.Vertical.GM
-        ]
+            verticals = [self.Vertical.COACHING]
+        else:
+            verticals = [
+                self.Vertical.MEDIA_TRAINING,
+                self.Vertical.COACH,
+                self.Vertical.GM
+            ]
+        
+        # Filter by accessible_verticals if set
+        if self.accessible_verticals:
+            return [v for v in verticals if v[0] in self.accessible_verticals]
+        return verticals
     
     def clean(self):
         """Validate that the enterprise has valid verticals"""
@@ -203,4 +220,78 @@ class EnterpriseQuestion(models.Model):
         super().save(*args, **kwargs)
 
     def __str__(self):
-        return f"{self.enterprise.name} - {self.get_vertical_display()}: {self.question_text[:50]}..."
+        return f"{self.question_text[:50]}..." if len(self.question_text) > 50 else self.question_text
+
+
+class TrainingGoal(models.Model):
+    """
+    Model representing training goals for an enterprise.
+    Tracks progress towards session targets in different rooms/verticals.
+    """
+    class RoomType(models.TextChoices):
+        PRESENTATION = 'presentation', _('Presentation')
+        PITCH = 'pitch', _('Pitch')
+        PUBLIC_SPEAKING = 'public_speaking', _('Public Speaking')
+        MEDIA_TRAINING = 'media_training', _('Media Training')
+        COACH = 'coach', _('Coach')
+        GENERAL_MANAGER = 'general_manager', _('General Manager')
+        COACHING = 'coaching', _('Coaching')
+    
+    enterprise = models.ForeignKey(
+        Enterprise,
+        on_delete=models.CASCADE,
+        related_name='training_goals',
+        help_text="Enterprise this goal belongs to"
+    )
+    room = models.CharField(
+        max_length=20,
+        choices=RoomType.choices,
+        help_text="Type of room/vertical for this goal"
+    )
+    target_sessions = models.PositiveIntegerField(
+        help_text="Target number of sessions to complete"
+    )
+    completed_sessions = models.PositiveIntegerField(
+        default=0,
+        help_text="Number of sessions completed so far"
+    )
+    due_date = models.DateField(
+        null=True,
+        blank=True,
+        help_text="Optional due date for this goal"
+    )
+    is_active = models.BooleanField(
+        default=True,
+        help_text="Whether this goal is currently active"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        ordering = ['-is_active', 'due_date', 'room']
+        unique_together = ['enterprise', 'room', 'is_active']
+    
+    def __str__(self):
+        return f"{self.get_room_display()} - {self.completed_sessions}/{self.target_sessions} (Enterprise: {self.enterprise.name})"
+    
+    @property
+    def progress_percent(self):
+        """Calculate completion percentage"""
+        if self.target_sessions == 0:
+            return 0
+        return min(100, int((self.completed_sessions / self.target_sessions) * 100))
+    
+    @property
+    def is_completed(self):
+        """Check if goal is completed"""
+        return self.completed_sessions >= self.target_sessions
+    
+    def clean(self):
+        """Validate that room type is allowed for the enterprise"""
+        if self.enterprise.enterprise_type == Enterprise.EnterpriseType.GENERAL and \
+           self.room not in [self.RoomType.COACHING, self.RoomType.PRESENTATION, 
+                           self.RoomType.PITCH, self.RoomType.PUBLIC_SPEAKING, 
+                           self.RoomType.MEDIA_TRAINING]:
+            raise ValidationError(
+                f"Invalid room type '{self.get_room_display()}' for general enterprise"
+            )
