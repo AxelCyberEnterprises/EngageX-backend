@@ -379,11 +379,21 @@ class VerifyOTPView(APIView):
         # Generate or get the auth token
         token, created = Token.objects.get_or_create(user=user)
 
+        # Prepare user data for response
+        user_data = {
+            "is_admin": user.is_staff or user.is_superuser,  # Assuming admin users are staff or superusers
+            "token": token.key,
+            "email": user.email,
+            "first_name": user.first_name,
+            "last_name": user.last_name,
+            "user_id": user.id
+        }
+
         return Response(
             {
                 "status": "success",
                 "message": "OTP verified successfully.",
-                "data": {"token": token.key},
+                "data": user_data,
             },
             status=status.HTTP_200_OK,
         )
@@ -981,20 +991,25 @@ class GoogleLoginView(APIView):
 
             print("Token generated:", token.key)
 
+            # Prepare user data for response with consistent format
+            user_data = {
+                "is_admin": user.is_staff or user.is_superuser,
+                "token": token.key,
+                "email": user.email,
+                "first_name": user.first_name,
+                "last_name": user.last_name,
+                "user_id": user.id,
+                # Additional Google-specific data
+                "gender": user_profile.gender,
+                "language_preference": user_profile.language_preference,
+                "first_login": first_login,
+            }
+
             return Response(
                 {
                     "status": "success",
                     "message": "Google login successful.",
-                    "data": {
-                        "token": token.key,
-                        "email": user.email,
-                        "first_name": user.first_name,
-                        "last_name": user.last_name,
-                        # "profile_picture": user_profile.profile_picture,
-                        "gender": user_profile.gender,
-                        "language_preference": user_profile.language_preference,
-                        "first_login": first_login,
-                    },
+                    "data": user_data,
                 },
                 status=status.HTTP_200_OK,
             )
