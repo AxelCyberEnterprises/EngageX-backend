@@ -9,6 +9,7 @@ from openpyxl import load_workbook
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import transaction, IntegrityError, models
+from django.utils import timezone
 from django.db.models import Count, Sum, F, Q
 import os
 import boto3
@@ -179,18 +180,26 @@ class EnterpriseViewSet(viewsets.ModelViewSet):
             "reason": "Monthly subscription"
         }
         """
-        enterprise = self.get_object()
-        amount = request.data.get('amount')
-        reason = request.data.get('reason', 'Admin credit addition')
+        # Initialize variables to avoid reference errors in exception handling
+        enterprise = None
+        amount = None
         
-        if not amount or not isinstance(amount, (int, float)) or amount <= 0:
-            return Response(
-                {'error': 'A positive amount is required'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-            
         try:
             from payments.models import Credit, CreditTransaction
+            
+            # Get request data
+            amount = request.data.get('amount')
+            reason = request.data.get('reason', 'Admin credit addition')
+            
+            # Input validation
+            if not amount or not isinstance(amount, (int, float)) or amount <= 0:
+                return Response(
+                    {'error': 'A positive amount is required'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Get enterprise object
+            enterprise = self.get_object()
             
             with transaction.atomic():
                 # Get or create credit record
@@ -203,24 +212,42 @@ class EnterpriseViewSet(viewsets.ModelViewSet):
                 credit.total_credits += amount
                 credit.save()
                 
-                # Record transaction
-                CreditTransaction.objects.create(
-                    enterprise=enterprise,
-                    amount=amount,
-                    transaction_type='add_to_enterprise',
-                    description=reason,
-                    created_by=request.user
-                )
+                # Create transaction record
+                transaction_data = {
+                    'enterprise': enterprise,
+                    'transaction_type': 'add',
+                    'amount': amount,
+                    'description': reason,
+                    'reference_id': f"credit_add_{enterprise.id}_{timezone.now().timestamp()}"
+                }
                 
-                return Response({
-                    'message': f'Successfully added {amount} credits',
-                    'new_balance': credit.balance
-                })
+                # Add user if authenticated
+                if request.user.is_authenticated:
+                    transaction_data['user'] = request.user
                 
-        except ImportError:
+                # Create transaction
+                credit_transaction = CreditTransaction.objects.create(**transaction_data)
+                
+                # Prepare success response
+                response_data = {
+                    'message': f'Successfully added {amount} credits to enterprise {enterprise.name}',
+                    'enterprise_id': enterprise.id,
+                    'enterprise_name': enterprise.name,
+                    'amount_added': amount,
+                    'new_balance': float(credit.balance),  # Convert Decimal to float for JSON serialization
+                    'transaction_id': credit_transaction.id,
+                    'timestamp': timezone.now().isoformat()
+                }
+                
+                return Response(response_data, status=status.HTTP_200_OK)
+                
+        except Exception as e:
+            error_msg = str(e)
+            enterprise_id = enterprise.id if enterprise and hasattr(enterprise, 'id') else 'unknown'
+            logger.error(f"Error adding {amount or 'unknown'} credits to enterprise {enterprise_id}: {error_msg}")
             return Response(
-                {'error': 'Credits module not found'},
-                status=status.HTTP_501_NOT_IMPLEMENTED
+                {'error': f'Failed to add credits: {error_msg}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
     
     @action(detail=True, methods=['get', 'put'], url_path='coaching-settings')
@@ -327,59 +354,6 @@ class EnterpriseViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_501_NOT_IMPLEMENTED
             )
     
-    @action(detail=True, methods=['post'], url_path='credits/add')
-    def add_credits(self, request, pk=None):
-        """
-        Add credits to the enterprise.
-        Expected payload:
-        {
-            "amount": 100,
-            "reason": "Monthly subscription"
-        }
-        """
-        enterprise = self.get_object()
-        amount = request.data.get('amount')
-        reason = request.data.get('reason', 'Admin credit addition')
-        
-        if not amount or not isinstance(amount, (int, float)) or amount <= 0:
-            return Response(
-                {'error': 'A positive amount is required'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-            
-        try:
-            from payments.models import Credit, CreditTransaction
-            
-            with transaction.atomic():
-                # Get or create credit record
-                credit, created = Credit.objects.get_or_create(
-                    enterprise=enterprise,
-                    defaults={'total_credits': 0, 'credits_used': 0}
-                )
-                
-                # Update credit balance
-                credit.total_credits += amount
-                credit.save()
-                
-                # Record transaction
-                CreditTransaction.objects.create(
-                    enterprise=enterprise,
-                    amount=amount,
-                    transaction_type='add_to_enterprise',
-                    description=reason,
-                    created_by=request.user
-                )
-                
-                return Response({
-                    'message': f'Successfully added {amount} credits',
-                    'new_balance': credit.balance
-                })
-                
-        except ImportError:
-            return Response(
-                {'error': 'Credits module not found'},
-                status=status.HTTP_501_NOT_IMPLEMENTED
-            )
         
     @action(detail=True, methods=['get', 'put'], url_path='coaching-settings')
     def coaching_settings(self, request, pk=None):

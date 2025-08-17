@@ -1,54 +1,87 @@
 from django.db import models
 from django.conf import settings
 from django.utils import timezone
+from django.core.validators import MinValueValidator
+from enterprise.models import Enterprise
 
 
-# class SingletonModel(models.Model):
-#     class Meta:
-#         abstract = True  # no db table
+class Credit(models.Model):
+    """
+    Tracks the total and available credits for an enterprise.
+    """
+    enterprise = models.OneToOneField(
+        Enterprise,
+        on_delete=models.CASCADE,
+        related_name='credit_pool',
+        primary_key=True
+    )
+    total_credits = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=0.00,
+        validators=[MinValueValidator(0)]
+    )
+    credits_used = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=0.00,
+        validators=[MinValueValidator(0)]
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
-#     def save(self, *args, **kwargs):
-#         # ensure there's only one instance by forcing the pk to 1
-#         # when saving, we will always overwrite the instance with pk=1
-#         self.pk = 1
-#         super(SingletonModel, self).save(*args, **kwargs)
+    @property
+    def balance(self):
+        """Calculate remaining credits."""
+        return self.total_credits - self.credits_used
 
-#     def delete(self, *args, **kwargs):
-#         # Prevent deletion of the single instance
-#         pass
-
-#     @classmethod
-#     def load(cls):
-#         defaults = {
-#             'access_token': '',
-#             'refresh_token': '',
-#             'expires_at': timezone.now(),  # future placeholder
-#             'realm_id': '',  # must be non‐null
-#         }
-#         """
-#         Load the single model instance.
-#         Creates the instance if it doesn't exist.
-#         """
-#         # Use get_or_create with pk=1 to always retrieve or create the single instance
-#         obj, created = cls.objects.get_or_create(pk=1, defaults=defaults)
-#         return obj, created
+    def __str__(self):
+        return f"Credits for {self.enterprise.name} (Balance: {self.balance})"
 
 
-# class QuickBooksToken(SingletonModel):
-#     access_token = models.CharField()
-#     refresh_token = models.CharField()
-#     expires_at = models.DateTimeField()
-#     realm_id = models.CharField(max_length=255, unique=True)
-#     created_at = models.DateTimeField(auto_now_add=True)
-#     updated_at = models.DateTimeField(auto_now=True)
+class CreditTransaction(models.Model):
+    """
+    Records all credit transactions (additions and usage) for an enterprise.
+    """
+    TRANSACTION_TYPES = [
+        ('add', 'Add Credits'),
+        ('use', 'Use Credits'),
+        ('refund', 'Refund Credits'),
+        ('expire', 'Credits Expired'),
+    ]
 
-#     def is_expired(self):
-#         if self.expires_at is None:
-#             return True
-#         return self.expires_at <= timezone.now() - timezone.timedelta(minutes=5)
+    enterprise = models.ForeignKey(
+        Enterprise,
+        on_delete=models.CASCADE,
+        related_name='credit_transactions'
+    )
+    transaction_type = models.CharField(max_length=10, choices=TRANSACTION_TYPES)
+    amount = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        validators=[MinValueValidator(0.01)]
+    )
+    description = models.TextField(blank=True, null=True)
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        help_text="User who initiated the transaction (if applicable)"
+    )
+    reference_id = models.CharField(
+        max_length=100,
+        blank=True,
+        null=True,
+        help_text="External reference ID (e.g., payment ID, session ID)"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
 
-#     def __str__(self):
-#         return f"QuickBooks Token for  Realm ID: {self.realm_id}"
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.get_transaction_type_display()}: {self.amount} credits for {self.enterprise.name}"
 
 
 class PaymentTransaction(models.Model):
