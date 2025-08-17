@@ -543,7 +543,7 @@ class EnterpriseViewSet(viewsets.ModelViewSet):
             
             # Get active users (users with activity in the last 30 days)
             active_users = enterprise.users.filter(
-                last_login__gte=start_date
+                user__last_login__gte=start_date
             ).count()
             
             # Get session statistics (placeholder - implement based on your session tracking)
