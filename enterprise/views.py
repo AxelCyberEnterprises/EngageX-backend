@@ -999,7 +999,20 @@ class EnterpriseUserViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAdminUser]
     
     def get_queryset(self):
-        return EnterpriseUser.objects.select_related('user', 'enterprise')
+        queryset = EnterpriseUser.objects.select_related('user', 'enterprise')
+        
+        # Filter by enterprise_id if provided
+        enterprise_id = self.request.query_params.get('enterprise_id')
+        if enterprise_id:
+            queryset = queryset.filter(enterprise_id=enterprise_id)
+            
+        # Filter by is_admin if provided
+        is_admin = self.request.query_params.get('is_admin')
+        if is_admin is not None:
+            is_admin = is_admin.lower() in ('true', '1', 't')
+            queryset = queryset.filter(is_admin=is_admin)
+            
+        return queryset
     
     @action(detail=False, methods=['post'], url_path='bulk-upload')
     def bulk_upload(self, request):
