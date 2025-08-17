@@ -105,38 +105,63 @@ class PracticeSessionSerializer(serializers.ModelSerializer):
             slide_preview = None
 
         with transaction.atomic():
-            # Lock the profile row for this user to prevent race conditions
-            profile = user.user_profile.__class__.objects.select_for_update().get(user=user)
-            print(profile.available_credits)
+            # Import models here to avoid circular imports
+            from payments.models import Credit, CreditTransaction
+            
+            # Check if user is part of an enterprise with available credits
+            enterprise = getattr(user.user_profile, 'enterprise', None)
+            credit_used_from = 'user'  # Track where the credit was used from
+            
+            if enterprise:
+                # Try to use enterprise credits first
+                try:
+                    credit = Credit.objects.select_for_update().get(enterprise=enterprise)
+                    if credit.balance >= 1:  # Check if enterprise has enough credits
+                        credit.credits_used += 1
+                        credit.save()
+                        credit_used_from = 'enterprise'
+                        
+                        # Record the transaction
+                        CreditTransaction.objects.create(
+                            enterprise=enterprise,
+                            transaction_type='use',
+                            amount=1,
+                            description=f'Practice session by {user.email}',
+                            user=user,
+                            reference_id=f"session_credit_use_{enterprise.id}_{timezone.now().timestamp()}"
+                        )
+                except Credit.DoesNotExist:
+                    pass  # No enterprise credit record exists, fall back to user credits
+            
+            # If no enterprise credits were used, try user credits
+            if credit_used_from == 'user':
+                profile = user.user_profile.__class__.objects.select_for_update().get(user=user)
+                if profile.available_credits > 0:
+                    profile.available_credits -= 1
+                    profile.save()
+                else:
+                    raise ValidationError({"credit": "Insufficient credit"})
 
-            if profile.available_credits > 0:
-                profile.available_credits -= 1
-                profile.save()
+            # Create the session
+            session = PracticeSession.objects.create(
+                slide_preview=slide_preview,
+                **validated_data
+            )
 
-                # Create the session first
-                session = PracticeSession.objects.create(
-                    slide_preview=slide_preview,
-                    **validated_data
+            # Handle slide preview if exists
+            if slide_preview:
+                session.slides_file = slide_preview.slides_file
+                slide_preview.is_linked = True
+                slide_preview.save()
+            
+            # Handle enterprise settings if this is an enterprise session
+            if session.session_type == 'enterprise' and enterprise_settings_data:
+                EnterpriseSpecialtySession.objects.create(
+                    session=session,
+                    **enterprise_settings_data
                 )
-
-                # Handle slide preview if exists
-                if slide_preview:
-                    print(slide_preview.slides_file)
-                    session.slides_file = slide_preview.slides_file
-                    slide_preview.is_linked = True
-                    slide_preview.save()
-                
-                # Handle enterprise settings if this is an enterprise session
-                if session.session_type == 'enterprise' and enterprise_settings_data:
-                    EnterpriseSpecialtySession.objects.create(
-                        session=session,
-                        **enterprise_settings_data
-                    )
-                
-                session.save()
-                return session
-            else:
-                raise ValidationError({"credit": "Insufficient credit"})
+            
+            return session
 
     def update(self, instance, validated_data):
         enterprise_settings_data = validated_data.pop('enterprise_settings', None)
