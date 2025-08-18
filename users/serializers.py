@@ -191,6 +191,7 @@ class UserSerializer(serializers.ModelSerializer):
 class VerifyEmailSerializer(serializers.Serializer):
     email = serializers.EmailField()
     verification_code = serializers.CharField(max_length=6)
+    remember_me = serializers.BooleanField(default=False, required=False)
 
 
 class PasswordResetRequestSerializer(serializers.Serializer):

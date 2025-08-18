@@ -272,14 +272,11 @@ class VerifyEmailView(APIView):
             user.has_logged_in = True
             user.save(update_fields=["is_verified", "is_active", "verification_code", "has_logged_in"])
 
-            # Create or get token with expiration
+            # Create token with expiration using the create_token method
             from .models import ExpiringToken
-            token, created = ExpiringToken.objects.get_or_create(user=user)
-            if created:
-                # Set expiration time (3 days by default)
-                token.expires_at = timezone.now() + timezone.timedelta(days=3)
-                token.save()
-            print(f"Token created: {token.key}, expires at: {token.expires_at}")
+            # Use remember_me from request data, default to False if not provided
+            remember_me = request.data.get('remember_me', False)
+            token = ExpiringToken.create_token(user, remember_me=remember_me)
             data = {
                 "token": token.key,
                 "user_id": user.id,
