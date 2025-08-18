@@ -1,7 +1,10 @@
+from datetime import timedelta
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
+from django.utils import timezone
 from .models import Enterprise, EnterpriseUser, EnterpriseQuestion, TrainingGoal
 from users.serializers import UserSerializer
+from practice_sessions.models import PracticeSession
 
 User = get_user_model()
 
@@ -37,6 +40,109 @@ class EnterpriseSerializer(serializers.ModelSerializer):
         return value.lower()
 
 
+class UserProgressSerializer(serializers.Serializer):
+    """
+    Serializer for user progress data in reports.
+    Tracks user progress against enterprise training goals.
+    """
+    user_id = serializers.IntegerField(source='id')
+    first_name = serializers.CharField(source='user.first_name')
+    last_name = serializers.CharField(source='user.last_name')
+    email = serializers.EmailField(source='user.email')
+    role = serializers.SerializerMethodField()
+    assigned_goals = serializers.SerializerMethodField()
+    sessions_completed = serializers.SerializerMethodField()
+    overall_goal_completion = serializers.SerializerMethodField()
+    last_session_date = serializers.SerializerMethodField()
+
+    def get_role(self, obj):
+        return 'Admin' if obj.is_admin else 'User'
+
+    def get_assigned_goals(self, obj):
+        """Return list of enterprise goals with user's progress"""
+        from .models import TrainingGoal
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        enterprise = obj.enterprise
+        goals = []
+        
+        logger.info(f"[DEBUG] Getting goals for user {obj.user_id} in enterprise {enterprise.id}")
+        
+        # Get all active goals for the enterprise
+        active_goals = TrainingGoal.objects.filter(enterprise=enterprise, is_active=True)
+        logger.info(f"[DEBUG] Found {active_goals.count()} active goals for enterprise {enterprise.id}")
+        
+        for goal in active_goals:
+            # Calculate user's completed sessions for this goal in the last 30 days
+            query = PracticeSession.objects.filter(
+                user=obj.user,
+                session_type=goal.room,
+                created_at__gte=timezone.now() - timedelta(days=30)
+            )
+            completed_sessions = query.count()
+            
+            # Log the query details
+            logger.info(f"[DEBUG] Goal {goal.id} ({goal.room}): "
+                      f"target={goal.target_sessions}, "
+                      f"completed_sessions={completed_sessions}")
+            
+            # Calculate progress percentage
+            target = goal.target_sessions
+            progress = min(100, int((completed_sessions / target) * 100)) if target > 0 else 0
+            
+            goal_data = {
+                'goal_id': goal.id,
+                'room': goal.room,
+                'name': goal.get_room_display(),
+                'target': target,
+                'completed': completed_sessions,
+                'progress': progress,
+                'due_date': goal.due_date.isoformat() if goal.due_date else None,
+                'is_active': goal.is_active
+            }
+            
+            logger.info(f"[DEBUG] Goal data: {goal_data}")
+            goals.append(goal_data)
+        
+        logger.info(f"[DEBUG] Total goals found: {len(goals)}")
+        return goals
+
+    def get_sessions_completed(self, obj):
+        """Total sessions completed in last 30 days across all goals"""
+        return PracticeSession.objects.filter(
+            user=obj.user,
+            created_at__gte=timezone.now() - timedelta(days=30)
+        ).count()
+        
+    def get_last_session_date(self, obj):
+        """Get the date of the user's most recent session"""
+        last_session = PracticeSession.objects.filter(
+            user=obj.user
+        ).order_by('-created_at').first()
+        
+        return last_session.created_at.isoformat() if last_session else None
+
+    def get_overall_goal_completion(self, obj):
+        """
+        Calculate weighted average completion percentage across all goals
+        Weights by the target number of sessions for each goal
+        """
+        goals = self.get_assigned_goals(obj)
+        if not goals:
+            return 0
+            
+        total_weighted_progress = 0
+        total_weight = 0
+        
+        for goal in goals:
+            weight = goal['target'] or 1  # Avoid division by zero
+            total_weighted_progress += goal['progress'] * weight
+            total_weight += weight
+            
+        return round(total_weighted_progress / total_weight, 1) if total_weight > 0 else 0
+
+
 class EnterpriseUserSerializer(serializers.ModelSerializer):
     """
     Serializer for the EnterpriseUser model.
@@ -52,18 +158,23 @@ class EnterpriseUserSerializer(serializers.ModelSerializer):
         source='enterprise.name',
         read_only=True
     )
+    progress = serializers.SerializerMethodField()
 
     class Meta:
         model = EnterpriseUser
         fields = [
             'id', 'user', 'user_id', 'enterprise', 'enterprise_name',
-            'user_type', 'is_admin',
+            'user_type', 'is_admin', 'progress',
             'created_at', 'updated_at'
         ]
         read_only_fields = ('id', 'created_at', 'updated_at')
         extra_kwargs = {
             'enterprise': {'required': True},
         }
+        
+    def get_progress(self, obj):
+        """Get user's progress data"""
+        return UserProgressSerializer(obj).data
 
     def validate(self, data):
         """

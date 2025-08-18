@@ -3,7 +3,7 @@ from django.utils.translation import gettext_lazy as _
 from django import forms
 from django.core.exceptions import ValidationError
 from django.utils.html import format_html
-from .models import Enterprise, EnterpriseUser, EnterpriseQuestion
+from .models import Enterprise, EnterpriseUser, EnterpriseQuestion, TrainingGoal
 
 class EnterpriseQuestionInline(admin.TabularInline):
     model = EnterpriseQuestion
@@ -126,6 +126,76 @@ class EnterpriseUserAdmin(admin.ModelAdmin):
                 'classes': ('collapse',)
             }),
         )
+
+
+@admin.register(TrainingGoal)
+class TrainingGoalAdmin(admin.ModelAdmin):
+    list_display = ('enterprise', 'room_display', 'target_sessions_display', 'progress_display', 'due_date', 'is_active')
+    list_filter = ('enterprise', 'is_active', 'room')
+    search_fields = ('enterprise__name', 'room')
+    list_editable = ('is_active',)
+    list_display_links = ('enterprise', 'room_display')
+    list_select_related = ('enterprise',)
+    readonly_fields = ('created_at', 'updated_at', 'progress_display', 'is_completed_display')
+    date_hierarchy = 'due_date'
+    
+    fieldsets = (
+        (None, {
+            'fields': ('enterprise', 'room', 'target_sessions', 'due_date', 'is_active')
+        }),
+        ('Progress', {
+            'fields': ('progress_display', 'is_completed_display'),
+            'classes': ('collapse',)
+        }),
+        ('Timestamps', {
+            'fields': ('created_at', 'updated_at'),
+            'classes': ('collapse',)
+        }),
+    )
+    
+    def get_queryset(self, request):
+        return super().get_queryset(request).select_related('enterprise')
+    
+    def room_display(self, obj):
+        return obj.get_room_display()
+    room_display.short_description = 'Room Type'
+    room_display.admin_order_field = 'room'
+    
+    def target_sessions_display(self, obj):
+        return obj.target_sessions or 'Not set'
+    target_sessions_display.short_description = 'Target Sessions'
+    target_sessions_display.admin_order_field = 'target_sessions'
+    
+    def progress_display(self, obj):
+        if obj.target_sessions is None or obj.target_sessions == 0:
+            return 'N/A (No target set)'
+        try:
+            progress = obj.progress_percent
+            return f"{progress}%"
+        except (TypeError, ZeroDivisionError):
+            return 'N/A'
+    progress_display.short_description = 'Progress'
+    
+    def is_completed_display(self, obj):
+        if obj.target_sessions is None or obj.target_sessions == 0:
+            return 'N/A (No target set)'
+        return 'Yes' if obj.is_completed else 'No'
+    is_completed_display.short_description = 'Completed?'
+    
+    def save_model(self, request, obj, form, change):
+        # Set default values if not provided
+        if obj.target_sessions is None:
+            obj.target_sessions = 0
+            
+        # Ensure only one active goal per room per enterprise
+        if obj.is_active:
+            TrainingGoal.objects.filter(
+                enterprise=obj.enterprise,
+                room=obj.room,
+                is_active=True
+            ).exclude(pk=obj.pk if obj.pk else None).update(is_active=False)
+            
+        super().save_model(request, obj, form, change)
 
 
 @admin.register(EnterpriseQuestion)

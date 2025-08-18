@@ -34,7 +34,8 @@ from .serializers import (
     BulkUserUploadSerializer,
     EnterpriseQuestionSerializer,
     TrainingGoalSerializer,
-    TrainingGoalOptionsSerializer
+    TrainingGoalOptionsSerializer,
+    UserProgressSerializer
 )
 
 # Configure logger
@@ -983,10 +984,118 @@ class EnterpriseUserViewSet(viewsets.ModelViewSet):
         # Filter by is_admin if provided
         is_admin = self.request.query_params.get('is_admin')
         if is_admin is not None:
-            is_admin = is_admin.lower() in ('true', '1', 't')
             queryset = queryset.filter(is_admin=is_admin)
-            
+        
         return queryset
+        
+    @action(detail=False, methods=['get'], url_path='progress-data')
+    def progress_data(self, request):
+        """
+        Get progress data for multiple users in the enterprise.
+        Query Parameters:
+        - enterprise_id: Required, filters users by enterprise
+        - enterprise_user_ids: Comma-separated list of EnterpriseUser IDs to include
+        """
+        enterprise_id = request.query_params.get('enterprise_id')
+        if not enterprise_id:
+            return Response(
+                {'error': 'enterprise_id is required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+            
+        try:
+            # Get the enterprise
+            enterprise = Enterprise.objects.get(id=enterprise_id)
+            logger.info(f"Processing progress data for enterprise: {enterprise.name} (ID: {enterprise.id})")
+            
+            # Get all active goals for this enterprise
+            active_goals = TrainingGoal.objects.filter(enterprise=enterprise, is_active=True)
+            
+            # Get base queryset for users in this enterprise
+            users_queryset = EnterpriseUser.objects.filter(enterprise=enterprise).select_related('user')
+            
+            # Log all enterprise users for debugging
+            all_enterprise_users = list(users_queryset.values_list('id', 'user__email'))
+            logger.info(f"All enterprise users in enterprise {enterprise_id}: {all_enterprise_users}")
+            
+            # Filter by enterprise_user_ids if provided
+            enterprise_user_ids_param = request.query_params.get('enterprise_user_ids')
+            if enterprise_user_ids_param:
+                try:
+                    enterprise_user_ids = [int(euid.strip()) for euid in enterprise_user_ids_param.split(',')]
+                    logger.info(f"Filtering for enterprise user IDs: {enterprise_user_ids}")
+                    users_queryset = users_queryset.filter(id__in=enterprise_user_ids)
+                    logger.info(f"Found {users_queryset.count()} users after filtering")
+                except (ValueError, AttributeError) as e:
+                    return Response(
+                        {'error': f'Invalid enterprise_user_ids parameter: {str(e)}'},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+            
+            # Serialize user progress data
+            serializer = UserProgressSerializer(users_queryset, many=True)
+            
+            # Calculate overall statistics
+            all_goals = []
+            total_sessions = 0
+            total_completion = 0
+            
+            for user_data in users_queryset:
+                user_progress = UserProgressSerializer(user_data).data
+                total_sessions += user_progress['sessions_completed']
+                total_completion += user_progress['overall_goal_completion']
+                all_goals.extend(user_progress['assigned_goals'])
+            
+            # Calculate goal summaries
+            goal_summary = {}
+            for goal in all_goals:
+                if goal['goal_id'] not in goal_summary:
+                    goal_summary[goal['goal_id']] = {
+                        'goal_id': goal['goal_id'],
+                        'name': goal['name'],
+                        'target': goal['target'],
+                        'total_completed': 0,
+                        'user_count': 0
+                    }
+                goal_summary[goal['goal_id']]['total_completed'] += goal['completed']
+                goal_summary[goal['goal_id']]['user_count'] += 1
+            
+            # Format goal summaries
+            goals_summary = []
+            for goal_id, data in goal_summary.items():
+                avg_completed = round(data['total_completed'] / data['user_count'], 1) if data['user_count'] > 0 else 0
+                goals_summary.append({
+                    'goal_id': data['goal_id'],
+                    'name': data['name'],
+                    'target': data['target'],
+                    'average_completed': avg_completed,
+                    'progress': round((data['total_completed'] / (data['target'] * data['user_count'])) * 100, 1) if data['user_count'] > 0 else 0
+                })
+            
+            # Prepare response data
+            response_data = {
+                'enterprise_id': enterprise.id,
+                'enterprise_name': enterprise.name,
+                'total_users': users_queryset.count(),
+                'total_sessions': total_sessions,
+                'average_goal_completion': round(total_completion / users_queryset.count(), 1) if users_queryset.count() > 0 else 0,
+                'goals_summary': goals_summary,
+                'users': serializer.data
+            }
+            
+            return Response(response_data)
+            
+        except Enterprise.DoesNotExist:
+            return Response(
+                {'error': 'Enterprise not found'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        except Exception as e:
+            logger.error(f"Error in progress_data: {str(e)}")
+            return Response(
+                {'error': 'An error occurred while processing your request'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
     
     @action(detail=False, methods=['post'], url_path='bulk-upload')
     def bulk_upload(self, request):

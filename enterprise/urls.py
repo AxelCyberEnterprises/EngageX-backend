@@ -18,6 +18,11 @@ urlpatterns = [
     path('', include(router.urls)),
     path('', include(enterprise_router.urls)),
     
+    # Progress Data Endpoint
+    path('enterprise-users/progress-data/', 
+         views.EnterpriseUserViewSet.as_view({'get': 'progress_data'}), 
+         name='enterprise-user-progress-data'),
+    
     # SSO Authentication Endpoints
     path('sso/request-login/', SSOLoginRequestView.as_view(), name='sso-request-login'),
     path('sso/verify-login/', SSOLoginVerifyView.as_view(), name='sso-verify-login'),
