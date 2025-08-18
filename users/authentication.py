@@ -8,10 +8,17 @@ class ExpiringTokenAuthentication(authentication.TokenAuthentication):
 
     def authenticate_credentials(self, key):
         try:
+            print(f"Looking up token: {key}")
             token = self.model.objects.select_related('user').get(key=key)
+            print(f"Token found - User: {token.user.email if token.user else 'No user'}")
+            print(f"Token created: {token.created}")
             print(f"Token expires at: {token.expires_at}")
             print(f"Current time: {timezone.now()}")
             print(f"Is token expired: {token.is_expired}")
+            
+            # Debug: Check all tokens for this user
+            user_tokens = self.model.objects.filter(user=token.user)
+            print(f"User has {user_tokens.count()} tokens total")
             
         except self.model.DoesNotExist:
             print("Token not found in database")
