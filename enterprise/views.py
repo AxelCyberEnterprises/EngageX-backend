@@ -94,9 +94,8 @@ class EnterpriseViewSet(viewsets.ModelViewSet):
         # This assumes you have a Credit model with a 'balance' field
         try:
             from payments.models import Credit
-            credits_left = Credit.objects.filter(
-                enterprise=enterprise
-            ).aggregate(total=Sum('balance'))['total'] or 0
+            credit = Credit.objects.filter(enterprise=enterprise).first()
+            credits_left = float(credit.balance) if credit else 0
         except ImportError:
             credits_left = 0
         
@@ -110,8 +109,13 @@ class EnterpriseViewSet(viewsets.ModelViewSet):
             goals = TrainingGoal.objects.filter(enterprise=enterprise)
             total_goals = goals.count()
             if total_goals > 0:
-                completed_goals = goals.filter(completed=True).count()
-                goals_completion_percent = int((completed_goals / total_goals) * 100)
+                # Calculate completion based on completed_sessions vs target_sessions
+                total_completed = sum(goal.completed_sessions for goal in goals)
+                total_target = sum(goal.target_sessions for goal in goals)
+                if total_target > 0:
+                    goals_completion_percent = int((total_completed / total_target) * 100)
+                else:
+                    goals_completion_percent = 0
             else:
                 goals_completion_percent = 0
         except (ImportError, AttributeError):
