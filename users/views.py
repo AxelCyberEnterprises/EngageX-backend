@@ -272,7 +272,7 @@ class VerifyEmailView(APIView):
             user.has_logged_in = True
             user.save(update_fields=["is_verified", "is_active", "verification_code", "has_logged_in"])
 
-            token, created = Token.objects.get_or_create(user=user)
+            token, created = ExpiringToken.objects.get_or_create(user=user)
             print(token)
             data = {
                 "token": token.key,
@@ -376,8 +376,13 @@ class VerifyOTPView(APIView):
         # Reset rate limiting on successful verification
         cache.delete(cache_key)
 
-        # Generate or get the auth token
-        token, created = Token.objects.get_or_create(user=user)
+        # Generate or get the auth token with expiration
+        from .models import ExpiringToken
+        token, created = ExpiringToken.objects.get_or_create(user=user)
+        if created:
+            # Set expiration time (3 days by default)
+            token.expires_at = timezone.now() + timezone.timedelta(days=3)
+            token.save()
 
         # Prepare user data for response
         user_data = {
@@ -965,7 +970,7 @@ class GoogleLoginView(APIView):
             user.save()
 
             # Create or get the existing auth token for the user
-            token, created = Token.objects.get_or_create(user=user)
+            token, created = ExpiringTokenToken.objects.get_or_create(user=user)
 
             # Save profile picture (after user is created)
             user_profile, created_profile = UserProfile.objects.get_or_create(user=user)
