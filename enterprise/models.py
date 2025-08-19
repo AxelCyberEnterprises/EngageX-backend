@@ -17,6 +17,9 @@ class Enterprise(models.Model):
         COACH = 'coach', _('Coach')
         GM = 'gm', _('General Manager')
         COACHING = 'coaching', _('Coaching')
+        PITCH = 'pitch', _('Pitch')
+        PRESENTATION = 'presentation', _('Presentation')
+        PUBLIC_SPEAKING = 'public_speaking', _('Public Speaking')
 
     
     name = models.CharField(max_length=255, unique=True)
@@ -57,28 +60,78 @@ class Enterprise(models.Model):
         ordering = ['name']
         verbose_name_plural = "Enterprises"
     
-    def get_available_verticals(self):
-        """Return the list of available verticals based on enterprise type and accessible_verticals"""
-        verticals = []
+    def get_default_verticals(self):
+        """Return the default verticals based on enterprise type
+        
+        Returns:
+            list: List of vertical tuples (value, label) for the enterprise type
+            - Sport enterprises: media_training, coach, gm, pitch, presentation, public_speaking
+            - General enterprises: coaching, pitch, presentation, public_speaking
+        """
         if self.enterprise_type == self.EnterpriseType.GENERAL:
-            verticals = [self.Vertical.COACHING]
-        else:
-            verticals = [
+            return [
+                self.Vertical.COACHING,
+                self.Vertical.PITCH,
+                self.Vertical.PRESENTATION,
+                self.Vertical.PUBLIC_SPEAKING
+            ]
+        else:  # SPORT enterprise
+            return [
                 self.Vertical.MEDIA_TRAINING,
                 self.Vertical.COACH,
-                self.Vertical.GM
+                self.Vertical.GM,
+                self.Vertical.PITCH,
+                self.Vertical.PRESENTATION,
+                self.Vertical.PUBLIC_SPEAKING
             ]
+    
+    def get_available_verticals(self):
+        """Return the list of available verticals based on enterprise type and accessible_verticals"""
+        default_verticals = self.get_default_verticals()
         
-        # Filter by accessible_verticals if set
-        if self.accessible_verticals:
-            return [v for v in verticals if v[0] in self.accessible_verticals]
-        return verticals
+        # If accessible_verticals is not set, return all default verticals for the enterprise type
+        if not self.accessible_verticals:
+            return default_verticals
+            
+        # Otherwise, return the intersection of default verticals and accessible_verticals
+        return [v for v in default_verticals if v[0] in self.accessible_verticals]
+    
+    def set_accessible_verticals(self, vertical_codes):
+        """Set the accessible verticals for this enterprise"""
+        if not isinstance(vertical_codes, list):
+            raise ValueError("vertical_codes must be a list")
+            
+        # Validate that all provided vertical codes are valid
+        valid_codes = [code for code, _ in self.Vertical.choices]
+        for code in vertical_codes:
+            if code not in valid_codes:
+                raise ValueError(f"Invalid vertical code: {code}")
+                
+        # Only keep verticals that are valid for this enterprise type
+        default_verticals = [v[0] for v in self.get_default_verticals()]
+        self.accessible_verticals = [v for v in vertical_codes if v in default_verticals]
+        return self.accessible_verticals
     
     def clean(self):
-        """Validate that the enterprise has valid verticals"""
+        """Validate and initialize enterprise verticals
+        
+        - Sets default verticals if none are configured
+        - Ensures only valid verticals for the enterprise type are allowed
+        - Validates that at least one vertical is enabled
+        """
         super().clean()
-        if not self.get_available_verticals():
-            raise ValidationError("Invalid enterprise type")
+        
+        # Initialize with default verticals if none are set
+        if not hasattr(self, 'accessible_verticals') or not self.accessible_verticals:
+            self.accessible_verticals = [v[0] for v in self.get_default_verticals()]
+        
+        # Ensure all selected verticals are valid for this enterprise type
+        valid_verticals = [v[0] for v in self.get_default_verticals()]
+        self.accessible_verticals = [v for v in self.accessible_verticals if v in valid_verticals]
+        
+        # Ensure at least one vertical is selected
+        if not self.accessible_verticals:
+            raise ValidationError("At least one vertical must be enabled for the enterprise")
     
     def __str__(self):
         return self.name
