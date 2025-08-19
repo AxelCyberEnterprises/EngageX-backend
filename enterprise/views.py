@@ -635,6 +635,9 @@ class EnterpriseViewSet(viewsets.ModelViewSet):
         Email the progress report to the specified recipients.
         Payload: {"recipients": ["email1@example.com", "email2@example.com"]}
         """
+        from django.utils import timezone
+        from datetime import datetime, timedelta
+        
         enterprise = self.get_object()
         recipients = request.data.get('recipients', [])
         
@@ -645,34 +648,78 @@ class EnterpriseViewSet(viewsets.ModelViewSet):
             )
         
         try:
-            # Generate the report data
-            report_response = self.compute_progress_report(request, pk)
-            if report_response.status_code != status.HTTP_200_OK:
-                return report_response
-                
-            report_data = report_response.data
+            # Calculate date range for the report (last 30 days by default)
+            end_date = timezone.now().date()
+            start_date = end_date - timedelta(days=30)
             
-            # Format the email content (simplified example)
-            subject = f"Progress Report for {enterprise.name} - {datetime.now().strftime('%B %Y')}"
+            # Get the progress data using the progress_data endpoint
+            from enterprise.serializers import UserProgressSerializer
+            from enterprise.models import EnterpriseUser
             
-            # Create a simple text version of the report
-            text_content = f"""
-            Progress Report for {enterprise.name}
-            Period: {report_data['report_period']['start_date']} to {report_data['report_period']['end_date']}
+            # Get all users for this enterprise
+            users_queryset = EnterpriseUser.objects.filter(enterprise=enterprise)\
+                .select_related('user')\
+                .order_by('user__last_name')
             
-            User Statistics:
-            - Total Users: {report_data['user_statistics']['total_users']}
-            - Active Users: {report_data['user_statistics']['active_users']} ({report_data['user_statistics']['active_percentage']:.1f}%)
+            # Calculate statistics
+            total_users = users_queryset.count()
+            active_users = users_queryset.filter(
+                user__last_login__date__gte=start_date
+            ).count()
             
-            Session Statistics:
-            - Total Sessions: {report_data['session_statistics']['total_sessions']}
-            - Completed Sessions: {report_data['session_statistics']['completed_sessions']}
-            - Completion Rate: {report_data['session_statistics']['completion_rate']:.1f}%
+            # Get completion data
+            total_completion = 0
+            for user in users_queryset:
+                user_progress = UserProgressSerializer(user).data
+                total_completion += user_progress.get('overall_goal_completion', 0)
             
-            Overall Completion: {report_data['overall_completion_percentage']:.1f}%
+            avg_completion = (total_completion / total_users) if total_users > 0 else 0
             
-            This is an automated report. Please contact support if you have any questions.
+            # Create email subject
+            subject = f"EngageX Progress Report - {datetime.now().strftime('%Y-%m')}"
+            
+            # Create HTML email content
+            html_content = f"""
+            <html>
+                <body>
+                    <h2>EngageX Progress Report</h2>
+                    <p><strong>Enterprise:</strong> {enterprise.name}</p>
+                    <p><strong>Report Period:</strong> {start_date} to {end_date}</p>
+                    
+                    <h3>User Statistics</h3>
+                    <p>Total Users: {total_users}</p>
+                    <p>Active Users (30 days): {active_users} ({(active_users/total_users*100 if total_users > 0 else 0):.1f}%)</p>
+                    
+                    <h3>Progress</h3>
+                    <p>Avg. Completion: {avg_completion:.1f}%</p>
+                    
+                    <p><em>This is an automated report. Contact support for assistance.</em></p>
+                </body>
+            </html>
             """
+            
+            # Create a plain text version as fallback
+            text_content = f"""
+            EngageX Progress Report
+            ======================
+            
+            Enterprise: {enterprise.name}
+            Report Period: {start_date} to {end_date}
+            
+            USER STATISTICS
+            --------------
+            Total Users: {total_users}
+            Active Users (30 days): {active_users} ({(active_users/total_users*100 if total_users > 0 else 0):.1f}%)
+            
+            PROGRESS
+            --------
+            Avg. Completion: {avg_completion:.1f}%
+            
+            This is an automated report. Contact support for assistance.
+            """
+            
+            # Log the content for debugging
+            logger.info(f"Sending email with content:\n{text_content}")
             
             # Send the email using our SES utility
             try:
@@ -682,7 +729,8 @@ class EnterpriseViewSet(viewsets.ModelViewSet):
                     subject=subject,
                     body=text_content.strip(),
                     to_emails=recipients,
-                    from_email=settings.DEFAULT_FROM_EMAIL
+                    from_email=settings.DEFAULT_FROM_EMAIL,
+                    html_body=html_content
                 )
                 
                 if not email_response:
