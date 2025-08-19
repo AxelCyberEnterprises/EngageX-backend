@@ -5,6 +5,7 @@ from django.contrib.auth import get_user_model, login
 from django.conf import settings
 from django.utils import timezone
 from rest_framework.authtoken.models import Token
+from users.models import ExpiringToken
 import secrets
 
 User = get_user_model()
@@ -110,7 +111,7 @@ class SSOLoginVerifyView(APIView):
             user.save(update_fields=['last_login', 'last_login_method', 'has_logged_in'])
             
             # Get or create a token for the user
-            token, created = Token.objects.get_or_create(user=user)
+            token, created = ExpiringToken.objects.get_or_create(user=user)
             
             # Clear the used code
             user.sso_login_code = None

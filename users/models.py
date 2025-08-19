@@ -17,51 +17,43 @@ from .storages_backends import (
     UserVideosStorage,
     StaticVideosStorage,
 )
+import secrets
 
 
-class ExpiringToken(Token):
+class ExpiringToken(models.Model):
     """
-    Extends the default Token model to add an expiration time.
+    Custom Token model with expiration.
+    Stored in its own table, not authtoken_token.
     """
+    key = models.CharField(max_length=40, primary_key=True, editable=False)
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        related_name="expiring_auth_token",
+        on_delete=models.CASCADE
+    )
+    created = models.DateTimeField(auto_now_add=True)
     expires_at = models.DateTimeField(null=True, blank=True)
 
     @property
     def is_expired(self):
-        """Check if token is expired."""
         if not self.expires_at:
             return False
         return timezone.now() > self.expires_at
 
     @classmethod
     def create_token(cls, user, remember_me=False):
-        """Create a new token with optional expiration.
-        
-        Args:
-            user: The user this token belongs to
-            remember_me: If True, token expires in 30 days. If False, expires in 3 days.
-        """
-        # Delete existing tokens for this user
-        cls.objects.filter(user=user).delete()
-        
-        # Default to 3 days expiration
-        expires_at = timezone.now() + timedelta(days=3)
-        if remember_me:
-            # If remember_me is True, extend to 30 days
-            expires_at = timezone.now() + timedelta(days=30)
-        
+        cls.objects.filter(user=user).delete()  # enforce one active token per user
+
+        expires_at = timezone.now() + timedelta(days=30 if remember_me else 3)
+
         return cls.objects.create(
+            key=secrets.token_hex(20),
             user=user,
             expires_at=expires_at
         )
-    
-    def clear_otp(self):
-        """
-        Clear the OTP code and related fields after successful verification.
-        """
-        self.otp_code = None
-        self.otp_created_at = None
-        self.otp_verified = True
-        self.save(update_fields=['otp_code', 'otp_created_at', 'otp_verified'])
+
+    def __str__(self):
+        return f"Token for {self.user} (expires {self.expires_at})"
 
 
 from django.dispatch import receiver

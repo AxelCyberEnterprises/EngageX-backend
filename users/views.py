@@ -379,13 +379,10 @@ class VerifyOTPView(APIView):
         # Reset rate limiting on successful verification
         cache.delete(cache_key)
 
-        # Generate or get the auth token with expiration
+        # Generate a new auth token with expiration (3 days by default)
+        # This will automatically handle any existing tokens for the user
         from .models import ExpiringToken
-        token, created = ExpiringToken.objects.get_or_create(user=user)
-        if created:
-            # Set expiration time (3 days by default)
-            token.expires_at = timezone.now() + timezone.timedelta(days=3)
-            token.save()
+        token = ExpiringToken.create_token(user=user, remember_me=False)
 
         # Prepare user data for response
         user_data = {
