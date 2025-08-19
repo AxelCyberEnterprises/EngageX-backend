@@ -1016,17 +1016,51 @@ class EnterpriseUserViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         queryset = EnterpriseUser.objects.select_related('user', 'enterprise')
         
+        # Get query parameters
+        params = self.request.query_params
+        
         # Filter by enterprise_id if provided
-        enterprise_id = self.request.query_params.get('enterprise_id')
+        enterprise_id = params.get('enterprise_id')
         if enterprise_id:
             queryset = queryset.filter(enterprise_id=enterprise_id)
             
         # Filter by is_admin if provided
-        is_admin = self.request.query_params.get('is_admin')
+        is_admin = params.get('is_admin')
         if is_admin is not None:
+            is_admin = is_admin.lower() in ('true', '1', 't')
             queryset = queryset.filter(is_admin=is_admin)
+            
+        # Search functionality
+        search_query = params.get('search')
+        if search_query:
+            # Create a Q object to combine multiple search conditions with OR
+            search_filter = Q()
+            
+            # Search in user fields (first_name, last_name, email)
+            user_fields = ['first_name', 'last_name', 'email']
+            for field in user_fields:
+                search_filter |= Q(**{f'user__{field}__icontains': search_query})
+                
+            # Also search in the combined first_name + last_name
+            search_filter |= (Q(user__first_name__icontains=search_query) | 
+                            Q(user__last_name__icontains=search_query))
+            
+            # Search in enterprise user specific fields
+            search_filter |= (Q(department__icontains=search_query) |
+                            Q(job_title__icontains=search_query) |
+                            Q(phone_number__icontains=search_query))
+            
+            queryset = queryset.filter(search_filter)
         
-        return queryset
+        # Ordering
+        order_by = params.get('order_by', 'user__last_name')
+        if order_by.lstrip('-') in ['first_name', 'last_name', 'email', 'date_joined']:
+            order_by = f'user__{order_by.lstrip("-")}'
+            if order_by.startswith('-'):
+                order_by = f'-user__{order_by[1:]}'
+            queryset = queryset.order_by(order_by)
+        
+        return queryset.distinct()
         
     def update(self, request, *args, **kwargs):
         """
@@ -1079,11 +1113,25 @@ class EnterpriseUserViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['get'], url_path='progress-data')
     def progress_data(self, request):
         """
-        Get progress data for multiple users in the enterprise.
+        Get progress data for multiple users in the enterprise with advanced filtering and search.
+        
         Query Parameters:
         - enterprise_id: Required, filters users by enterprise
-        - enterprise_user_ids: Comma-separated list of EnterpriseUser IDs to include
+        - search: Optional, search term to filter users by name or email (case-insensitive)
+        - department: Optional, filter users by department
+        - goal_status: Optional, filter by goal status ('completed', 'in_progress', 'not_started')
+        - last_activity_after: Optional, filter users active after this date (YYYY-MM-DD)
+        - last_activity_before: Optional, filter users active before this date (YYYY-MM-DD)
+        - sort_by: Optional, field to sort by (e.g., 'name', 'email', 'last_login', 'sessions_completed', 'goal_completion')
+        - sort_order: Optional, sort order ('asc' or 'desc', default: 'asc')
+        - page: Optional, page number for pagination (default: 1)
+        - page_size: Optional, number of items per page (default: 20, max: 100)
+        - enterprise_user_ids: Comma-separated list of EnterpriseUser IDs to include (overrides other filters)
         """
+        from django.db.models import Q, F, Case, When, Value, IntegerField, Count, Avg, Max
+        from django.utils import timezone
+        from datetime import datetime, timedelta
+        
         enterprise_id = request.query_params.get('enterprise_id')
         if not enterprise_id:
             return Response(
@@ -1099,14 +1147,76 @@ class EnterpriseUserViewSet(viewsets.ModelViewSet):
             # Get all active goals for this enterprise
             active_goals = TrainingGoal.objects.filter(enterprise=enterprise, is_active=True)
             
-            # Get base queryset for users in this enterprise
-            users_queryset = EnterpriseUser.objects.filter(enterprise=enterprise).select_related('user')
+            # Get base queryset for users in this enterprise with related data
+            users_queryset = EnterpriseUser.objects.filter(enterprise=enterprise)\
+                .select_related('user')\
+                .annotate(
+                    last_activity=Max('user__last_login'),
+                    full_name=Concat('user__first_name', Value(' '), 'user__last_name')
+                )\
+                .order_by()  # Clear any default ordering
+            
+            # Apply search filter if provided
+            search_query = request.query_params.get('search')
+            if search_query:
+                users_queryset = users_queryset.filter(
+                    Q(user__first_name__icontains=search_query) |
+                    Q(user__last_name__icontains=search_query) |
+                    Q(user__email__icontains=search_query) |
+                    Q(full_name__icontains=search_query)
+                )
+            
+            # Apply department filter if provided
+            department = request.query_params.get('department')
+            if department:
+                users_queryset = users_queryset.filter(department__iexact=department)
+            
+            # Apply date range filters for last activity
+            try:
+                last_activity_after = request.query_params.get('last_activity_after')
+                if last_activity_after:
+                    last_activity_after = datetime.strptime(last_activity_after, '%Y-%m-%d').date()
+                    users_queryset = users_queryset.filter(user__last_login__date__gte=last_activity_after)
+                
+                last_activity_before = request.query_params.get('last_activity_before')
+                if last_activity_before:
+                    last_activity_before = datetime.strptime(last_activity_before, '%Y-%m-%d').date()
+                    users_queryset = users_queryset.filter(user__last_login__date__lte=last_activity_before)
+            except ValueError:
+                return Response(
+                    {'error': 'Invalid date format. Use YYYY-MM-DD'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
             
             # Log all enterprise users for debugging
             all_enterprise_users = list(users_queryset.values_list('id', 'user__email'))
             logger.info(f"All enterprise users in enterprise {enterprise_id}: {all_enterprise_users}")
             
-            # Filter by enterprise_user_ids if provided
+            # Apply sorting
+            sort_by = request.query_params.get('sort_by', 'user__last_name')
+            sort_order = request.query_params.get('sort_order', 'asc')
+            
+            # Map sort fields to actual model fields
+            sort_mapping = {
+                'name': 'full_name',
+                'email': 'user__email',
+                'last_login': 'last_activity',
+                'department': 'department',
+                'job_title': 'job_title',
+                'sessions_completed': 'sessions_completed',
+                'goal_completion': 'overall_goal_completion'
+            }
+            
+            sort_field = sort_mapping.get(sort_by, 'user__last_name')
+            
+            # Handle descending order
+            if sort_order.lower() == 'desc':
+                sort_field = f'-{sort_field}'
+                
+            # Apply sorting to the queryset
+            users_queryset = users_queryset.order_by(sort_field)
+            
+            # Filter by enterprise_user_ids if provided (overrides other filters)
             enterprise_user_ids_param = request.query_params.get('enterprise_user_ids')
             if enterprise_user_ids_param:
                 try:
@@ -1120,10 +1230,26 @@ class EnterpriseUserViewSet(viewsets.ModelViewSet):
                         status=status.HTTP_400_BAD_REQUEST
                     )
             
-            # Serialize user progress data
-            serializer = UserProgressSerializer(users_queryset, many=True)
+            # Apply pagination
+            try:
+                page = int(request.query_params.get('page', 1))
+                page_size = min(int(request.query_params.get('page_size', 20)), 100)  # Max 100 per page
+            except (ValueError, TypeError):
+                return Response(
+                    {'error': 'Invalid page or page_size parameter'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+                
+            paginator = Paginator(users_queryset, page_size)
+            try:
+                users_page = paginator.page(page)
+            except EmptyPage:
+                users_page = paginator.page(paginator.num_pages)
             
-            # Calculate overall statistics
+            # Serialize paginated user progress data
+            serializer = UserProgressSerializer(users_page, many=True)
+            
+            # Calculate overall statistics for the entire result set (not just current page)
             all_goals = []
             total_sessions = 0
             total_completion = 0
@@ -1132,7 +1258,6 @@ class EnterpriseUserViewSet(viewsets.ModelViewSet):
                 user_progress = UserProgressSerializer(user_data).data
                 total_sessions += user_progress['sessions_completed']
                 total_completion += user_progress['overall_goal_completion']
-                all_goals.extend(user_progress['assigned_goals'])
             
             # Calculate goal summaries
             goal_summary = {}
@@ -1160,10 +1285,41 @@ class EnterpriseUserViewSet(viewsets.ModelViewSet):
                     'progress': round((data['total_completed'] / (data['target'] * data['user_count'])) * 100, 1) if data['user_count'] > 0 else 0
                 })
             
-            # Prepare response data
+            # Get unique departments for filter options
+            departments = list(EnterpriseUser.objects.filter(enterprise=enterprise)\
+                .exclude(department__isnull=True)\
+                .exclude(department__exact='')\
+                .order_by('department')\
+                .values_list('department', flat=True)\
+                .distinct())
+            
+            # Prepare response data with pagination info
             response_data = {
                 'enterprise_id': enterprise.id,
                 'enterprise_name': enterprise.name,
+                'pagination': {
+                    'total_users': paginator.count,
+                    'total_pages': paginator.num_pages,
+                    'current_page': page,
+                    'page_size': page_size,
+                    'has_next': users_page.has_next(),
+                    'has_previous': users_page.has_previous(),
+                    'next_page_number': users_page.next_page_number() if users_page.has_next() else None,
+                    'previous_page_number': users_page.previous_page_number() if users_page.has_previous() else None
+                },
+                'filters': {
+                    'available_departments': departments,
+                    'search_term': search_query,
+                    'selected_department': department,
+                    'date_range': {
+                        'start': last_activity_after.strftime('%Y-%m-%d') if 'last_activity_after' in locals() and last_activity_after else None,
+                        'end': last_activity_before.strftime('%Y-%m-%d') if 'last_activity_before' in locals() and last_activity_before else None
+                    },
+                    'sorting': {
+                        'sort_by': sort_by,
+                        'sort_order': sort_order
+                    }
+                },
                 'total_users': users_queryset.count(),
                 'total_sessions': total_sessions,
                 'average_goal_completion': round(total_completion / users_queryset.count(), 1) if users_queryset.count() > 0 else 0,
