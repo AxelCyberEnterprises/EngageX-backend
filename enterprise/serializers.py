@@ -17,13 +17,17 @@ class EnterpriseSerializer(serializers.ModelSerializer):
     class Meta:
         model = Enterprise
         fields = [
-            'id', 'name', 'domain', 'enterprise_type', 'logo', 
-            'is_active', 'require_domain_match', 'one_on_one_coaching_link',
-            'accessible_verticals', 'available_verticals', 'created_at', 'updated_at'
+            'id', 'name', 'domain', 'enterprise_type', 'logo', 'favicon',
+            'primary_color', 'secondary_color', 'is_active', 'require_domain_match', 
+            'one_on_one_coaching_link', 'accessible_verticals', 'available_verticals', 
+            'created_at', 'updated_at'
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
         extra_kwargs = {
-            'logo': {'required': False, 'allow_null': True}
+            'logo': {'required': False, 'allow_null': True},
+            'favicon': {'required': False, 'allow_null': True},
+            'primary_color': {'required': False},
+            'secondary_color': {'required': False}
         }
     
     def get_available_verticals(self, obj):
@@ -144,9 +148,7 @@ class UserProgressSerializer(serializers.Serializer):
 
 
 class EnterpriseUserSerializer(serializers.ModelSerializer):
-    """
-    Serializer for the EnterpriseUser model.
-    """
+    """Serializer for the EnterpriseUser model."""
     user = UserSerializer(read_only=True)
     user_id = serializers.PrimaryKeyRelatedField(
         queryset=User.objects.all(),
@@ -159,15 +161,33 @@ class EnterpriseUserSerializer(serializers.ModelSerializer):
         read_only=True
     )
     progress = serializers.SerializerMethodField()
+    
+    # Branding fields (effective values that inherit from enterprise if not set)
+    logo = serializers.SerializerMethodField()
+    favicon = serializers.SerializerMethodField()
+    primary_color = serializers.SerializerMethodField()
+    secondary_color = serializers.SerializerMethodField()
+    
+    def get_logo(self, obj):
+        return self.context['request'].build_absolute_uri(obj.effective_logo.url) if obj.effective_logo else None
+        
+    def get_favicon(self, obj):
+        return self.context['request'].build_absolute_uri(obj.effective_favicon.url) if obj.effective_favicon else None
+        
+    def get_primary_color(self, obj):
+        return obj.effective_primary_color
+        
+    def get_secondary_color(self, obj):
+        return obj.effective_secondary_color
 
     class Meta:
         model = EnterpriseUser
         fields = [
-            'id', 'user', 'user_id', 'enterprise', 'enterprise_name',
-            'user_type', 'is_admin', 'progress',
-            'created_at', 'updated_at'
+            'id', 'user', 'user_id', 'enterprise', 'enterprise_name', 'user_type',
+            'is_admin', 'created_at', 'updated_at', 'progress',
+            'logo', 'favicon', 'primary_color', 'secondary_color'  # Add branding fields
         ]
-        read_only_fields = ('id', 'created_at', 'updated_at')
+        read_only_fields = ['created_at', 'updated_at']
         extra_kwargs = {
             'enterprise': {'required': True},
         }

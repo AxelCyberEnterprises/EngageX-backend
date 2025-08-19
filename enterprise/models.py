@@ -4,6 +4,11 @@ from django.core.validators import FileExtensionValidator
 from django.utils.translation import gettext_lazy as _
 from django.core.exceptions import ValidationError
 
+def validate_hex_color(value):
+    import re
+    if not re.match(r'^#([A-Fa-f0-9]{6})$', value):
+        raise ValidationError("Color must be in the format #RRGGBB")
+
 class Enterprise(models.Model):
     """
     Model representing an enterprise organization.
@@ -30,12 +35,6 @@ class Enterprise(models.Model):
         default=EnterpriseType.SPORT,
         help_text="Type of enterprise"
     )
-    logo = models.ImageField(
-        upload_to='enterprise/logos/',
-        null=True,
-        blank=True,
-        validators=[FileExtensionValidator(allowed_extensions=['jpg', 'jpeg', 'png', 'svg'])]
-    )
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -54,6 +53,33 @@ class Enterprise(models.Model):
     accessible_verticals = models.JSONField(
         default=list,
         help_text="List of vertical IDs from RoomEnum that are accessible"
+    )
+    
+    # Branding fields
+    logo = models.ImageField(
+        upload_to='enterprise/logos/',
+        null=True,
+        blank=True,
+        validators=[FileExtensionValidator(allowed_extensions=['jpg', 'jpeg', 'png', 'svg'])]
+    )
+    favicon = models.ImageField(
+        upload_to='enterprise/favicon/',
+        null=True,
+        blank=True,
+        validators=[FileExtensionValidator(allowed_extensions=['ico', 'png', 'jpg'])],
+        help_text="Upload your favicon (ICO, PNG, or JPG)",
+    )
+    primary_color = models.CharField(
+        max_length=7,
+        default='#262b3a',
+        validators=[validate_hex_color],
+        help_text="Primary brand color in hex format (e.g., #RRGGBB)",
+    )
+    secondary_color = models.CharField(
+        max_length=7,
+        default='#10161e',
+        validators=[validate_hex_color],
+        help_text="Secondary brand color in hex format (e.g., #RRGGBB)",
     )
     
     class Meta:
@@ -140,11 +166,12 @@ class Enterprise(models.Model):
 class EnterpriseUser(models.Model):
     """
     Model representing the relationship between a user and an enterprise.
+    Includes branding fields that can be overridden per user or inherited from the enterprise.
     """
     class UserType(models.TextChoices):
-        ROOKIE = 'rookie', _('Rookie Enterprise Dashboard')
-        GENERAL = 'general', _('General Enterprise Dashboard')
-    
+        GENERAL = 'general', _('General User')
+        ADMIN = 'admin', _('Enterprise Admin')
+        
     user = models.OneToOneField(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
@@ -164,10 +191,59 @@ class EnterpriseUser(models.Model):
         default=False,
         help_text="Designates whether the user can manage enterprise settings and users"
     )
-    # department = models.CharField(max_length=100, blank=True, null=True)
-    # position = models.CharField(max_length=100, blank=True, null=True)
+    
+    # Branding fields (can be overridden per user)
+    logo = models.ImageField(
+        upload_to='enterprise/user_branding/logo/',
+        null=True,
+        blank=True,
+        validators=[FileExtensionValidator(allowed_extensions=['jpg', 'jpeg', 'png', 'svg'])],
+        help_text="User-specific logo (overrides enterprise logo if set)",
+    )
+    favicon = models.ImageField(
+        upload_to='enterprise/user_branding/favicon/',
+        null=True,
+        blank=True,
+        validators=[FileExtensionValidator(allowed_extensions=['ico', 'png', 'jpg'])],
+        help_text="User-specific favicon (overrides enterprise favicon if set)",
+    )
+    primary_color = models.CharField(
+        max_length=7,
+        null=True,
+        blank=True,
+        validators=[validate_hex_color],
+        help_text="User-specific primary color (overrides enterprise color if set)",
+    )
+    secondary_color = models.CharField(
+        max_length=7,
+        null=True,
+        blank=True,
+        validators=[validate_hex_color],
+        help_text="User-specific secondary color (overrides enterprise color if set)",
+    )
+    
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+    
+    @property
+    def effective_logo(self):
+        """Return user's logo if set, otherwise return enterprise logo."""
+        return self.logo or self.enterprise.logo
+        
+    @property
+    def effective_favicon(self):
+        """Return user's favicon if set, otherwise return enterprise favicon."""
+        return self.favicon or self.enterprise.favicon
+        
+    @property
+    def effective_primary_color(self):
+        """Return user's primary color if set, otherwise return enterprise primary color."""
+        return self.primary_color or self.enterprise.primary_color
+        
+    @property
+    def effective_secondary_color(self):
+        """Return user's secondary color if set, otherwise return enterprise secondary color."""
+        return self.secondary_color or self.enterprise.secondary_color
     
     class Meta:
         unique_together = ('user', 'enterprise')

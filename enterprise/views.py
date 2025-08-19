@@ -77,6 +77,41 @@ class EnterpriseViewSet(viewsets.ModelViewSet):
         else:
             self.permission_classes = [IsAuthenticated]
         return super().get_permissions()
+        
+    def update(self, request, *args, **kwargs):
+        """
+        Handle PATCH requests for updating enterprise branding.
+        Supports updating logo, favicon, primary_color, and secondary_color.
+        """
+        instance = self.get_object()
+        
+        # Handle file uploads
+        data = request.data.copy()
+        
+        # Process logo if included in the request
+        if 'logo' in request.FILES:
+            instance.logo = request.FILES['logo']
+            
+        # Process favicon if included in the request
+        if 'favicon' in request.FILES:
+            instance.favicon = request.FILES['favicon']
+        
+        # Save the instance to handle file uploads before serialization
+        if request.FILES:
+            instance.save()
+        
+        # Remove file fields from data as they're already handled
+        data.pop('logo', None)
+        data.pop('favicon', None)
+        
+        # Use the serializer for the rest of the fields
+        serializer = self.get_serializer(instance, data=data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
+        
+        # Get the updated instance with all fields
+        updated_instance = self.get_queryset().get(pk=instance.pk)
+        return Response(EnterpriseSerializer(updated_instance, context={'request': request}).data)
     
     @action(detail=True, methods=['get'], url_path='overview-stats')
     def overview_stats(self, request, pk=None):
@@ -976,6 +1011,7 @@ class EnterpriseUserViewSet(viewsets.ModelViewSet):
     """
     serializer_class = EnterpriseUserSerializer
     permission_classes = [IsAdminUser]
+    parser_classes = [MultiPartParser, JSONParser]
     
     def get_queryset(self):
         queryset = EnterpriseUser.objects.select_related('user', 'enterprise')
@@ -991,6 +1027,54 @@ class EnterpriseUserViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(is_admin=is_admin)
         
         return queryset
+        
+    def update(self, request, *args, **kwargs):
+        """
+        Handle PATCH requests for updating enterprise user branding.
+        Supports updating logo, favicon, primary_color, and secondary_color.
+        """
+        instance = self.get_object()
+        
+        # Only allow updating branding fields if the user has permission
+        if not request.user.is_superuser and not request.user.is_staff:
+            # Check if the requesting user is an admin of the same enterprise
+            try:
+                requesting_eu = EnterpriseUser.objects.get(
+                    user=request.user,
+                    enterprise=instance.enterprise,
+                    is_admin=True
+                )
+            except EnterpriseUser.DoesNotExist:
+                return Response(
+                    {'error': 'You do not have permission to update this user'},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+        
+        # Handle file uploads
+        data = request.data.copy()
+        
+        # Process logo if included in the request
+        if 'logo' in request.FILES:
+            instance.logo = request.FILES['logo']
+            
+        # Process favicon if included in the request
+        if 'favicon' in request.FILES:
+            instance.favicon = request.FILES['favicon']
+        
+        # Save the instance to handle file uploads before serialization
+        if request.FILES:
+            instance.save()
+        
+        # Remove file fields from data as they're already handled
+        data.pop('logo', None)
+        data.pop('favicon', None)
+        
+        # Use the serializer for the rest of the fields
+        serializer = self.get_serializer(instance, data=data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
+        
+        return Response(serializer.data)
         
     @action(detail=False, methods=['get'], url_path='progress-data')
     def progress_data(self, request):
