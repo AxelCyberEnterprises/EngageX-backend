@@ -180,9 +180,37 @@ class EnterpriseViewSet(viewsets.ModelViewSet):
         return Response({
             'total_members': total_members,
             'credits_left': credits_left,
-            'one_on_one_coaching_activated': one_on_one_coaching_activated,
-            'goals_completion_percent': goals_completion_percent
+            'goals_completion_percent': goals_completion_percent,
+            'coaching_sessions_booked': enterprise.coaching_sessions_booked
         })
+        
+    @action(detail=True, methods=['post'], url_path='book-coaching-session')
+    def book_coaching_session(self, request, pk=None):
+        """
+        Increment the coaching session counter for the enterprise.
+        This endpoint is called when a user books a coaching session through the one-on-one coaching link.
+        """
+        enterprise = self.get_object()
+        
+        # Check if coaching is enabled for this enterprise
+        if not enterprise.one_on_one_coaching_link:
+            return Response(
+                {'error': 'One-on-one coaching is not enabled for this enterprise'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+            
+        # Increment the counter atomically to handle concurrent requests
+        Enterprise.objects.filter(pk=enterprise.pk).update(
+            coaching_sessions_booked=models.F('coaching_sessions_booked') + 1
+        )
+        
+        # Refresh the enterprise object to get the updated counter
+        enterprise.refresh_from_db()
+        
+        return Response({
+            'message': 'Coaching session booked successfully',
+            'coaching_sessions_booked': enterprise.coaching_sessions_booked
+        }, status=status.HTTP_200_OK)
         
     @action(detail=True, methods=['get'], url_path='credits/summary')
     def credits_summary(self, request, pk=None):

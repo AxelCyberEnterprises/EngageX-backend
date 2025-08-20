@@ -41,14 +41,19 @@ class Enterprise(models.Model):
     
     # Enterprise settings
     require_domain_match = models.BooleanField(
-        default=True,
+        default=False,
         help_text="Require user emails to match the enterprise domain"
     )
     one_on_one_coaching_link = models.URLField(
         max_length=500,
+        default=True,
         blank=True,
         null=True,
         help_text="Link for 1-on-1 coaching booking"
+    )
+    coaching_sessions_booked = models.PositiveIntegerField(
+        default=0,
+        help_text="Number of coaching sessions booked through the one-on-one coaching link"
     )
     accessible_verticals = models.JSONField(
         default=list,
