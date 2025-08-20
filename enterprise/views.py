@@ -16,12 +16,13 @@ import boto3
 import traceback
 from datetime import datetime, timedelta
 
-from rest_framework import viewsets, status
+from rest_framework import viewsets, status, filters
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, IsAdminUser
 from rest_framework.decorators import action
 from rest_framework.parsers import MultiPartParser, JSONParser
 from django.conf import settings
+from django_filters.rest_framework import DjangoFilterBackend
 
 # Import the utility function for voice selection
 from .utils import get_voice_for_question
@@ -55,11 +56,29 @@ User = get_user_model()
 class EnterpriseViewSet(viewsets.ModelViewSet):
     """
     ViewSet for managing enterprises.
+    
+    Search and Filtering:
+    - Search: Use ?search=query to search in name, domain, and enterprise_type
+    - Filtering: Use ?is_active=true/false, ?enterprise_type=type
+    - Ordering: Use ?ordering=field (prefix with - for descending)
     """
     queryset = Enterprise.objects.all()
     serializer_class = EnterpriseSerializer
     permission_classes = [IsAuthenticated]
     parser_classes = [MultiPartParser, JSONParser]
+    filter_backends = [
+        DjangoFilterBackend,
+        filters.SearchFilter,
+        filters.OrderingFilter
+    ]
+    filterset_fields = {
+        'is_active': ['exact'],
+        'enterprise_type': ['exact'],
+        'created_at': ['gte', 'lte', 'exact', 'gt', 'lt'],
+    }
+    search_fields = ['name', 'domain', 'enterprise_type']
+    ordering_fields = ['name', 'created_at', 'updated_at']
+    ordering = ['name']  # Default ordering
     
     def get_permissions(self):
         """

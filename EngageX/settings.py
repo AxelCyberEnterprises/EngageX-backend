@@ -98,6 +98,8 @@ INSTALLED_APPS = [
     "rest_framework.authtoken",
     # API Documentation
     "drf_yasg",
+    # Django Filters
+    "django_filters",
 ]
 
 MIDDLEWARE = [
@@ -148,7 +150,7 @@ AUTH_USER_MODEL = "users.CustomUser"
 # Use our custom token model
 AUTH_TOKEN_MODEL = "users.ExpiringToken"
 
-# Ensure we're using our custom token model for authentication
+# REST Framework settings with filter backends
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
         'users.authentication.ExpiringTokenAuthentication',
@@ -159,8 +161,15 @@ REST_FRAMEWORK = {
         'rest_framework.parsers.FormParser',
         'rest_framework.parsers.MultiPartParser',
     ],
+    'DEFAULT_FILTER_BACKENDS': [
+        'django_filters.rest_framework.DjangoFilterBackend',
+        'rest_framework.filters.SearchFilter',
+        'rest_framework.filters.OrderingFilter',
+    ],
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
     'PAGE_SIZE': 10,
+    'SEARCH_PARAM': 'search',
+    'ORDERING_PARAM': 'ordering',
 }
 
 ROOT_URLCONF = "EngageX.urls"
