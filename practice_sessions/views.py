@@ -1922,260 +1922,497 @@ class ChunkSentimentAnalysisViewSet(viewsets.ModelViewSet):
 class SessionReportView(APIView):
     permission_classes = [IsAuthenticated]
 
+    # def generate_full_summary(self, session_id, metrics_string):
+    #     """Creates a cohesive summary for Strengths, Improvements, and Feedback using OpenAI."""
+    #     client = OpenAI(api_key=settings.OPENAI_API_KEY)
+
+    #     session = PracticeSession.objects.get(id=session_id)
+    #     goals = session.goals
+    #     name = session.user.first_name
+    #     role = session.user.user_profile.user_intent
+
+    #     print(f"Firstname: {name}. role: {role}")
+
+    #     # Retrieve all general feedback summaries for the session's chunks
+    #     general_feedback_summaries = ChunkSentimentAnalysis.objects.filter(
+    #         chunk__session__id=session_id
+    #     ).values_list("general_feedback_summary", flat=True)
+
+    #     combined_feedback = " ".join([g for g in general_feedback_summaries if g])
+
+    #     # If there's no feedback, return default values
+    #     if not combined_feedback.strip():
+    #         print("No feedback available from chunks to generate summary.")
+    #         return {
+    #             "Strength": "N/A - No feedback available.",
+    #             "Area of Improvement": "N/A - No feedback available.",
+    #             "General Feedback Summary": "No feedback was generated for the chunks in this session.",
+    #         }
+
+    #     if session.session_type == "enterprise":
+    #         # Get the enterprise vertical from the user's enterprise
+    #         enterprise_vertical = None
+    #         if hasattr(session.user, 'enterprise_profile') and hasattr(session.user.enterprise_profile, 'enterprise'):
+    #             # Get the available verticals from the enterprise
+    #             enterprise = session.user.enterprise_profile.enterprise
+    #             available_verticals = enterprise.get_available_verticals()
+                
+    #             # If there's only one vertical available, use it
+    #             if len(available_verticals) == 1:
+    #                 enterprise_vertical = available_verticals[0]
+    #             # Otherwise, we'd need additional logic to determine which vertical to use
+    #             # For now, we'll use the first available vertical as a fallback
+    #             elif available_verticals:
+    #                 enterprise_vertical = available_verticals[0]
+            
+    #         print(f"This is an Enterprise Specialty session. Vertical: {enterprise_vertical}")
+            
+    #         # Default prompt if vertical is not found
+    #         prompt = ""
+            
+    #         if enterprise_vertical == Enterprise.Vertical.MEDIA_TRAINING:
+    #             prompt = f"""
+    #             My name is {name}, and I’m currently a {role} in my sports journey.
+
+    #             You are my personal media trainer. Your role is to help young athletes like me become confident, clear, and compelling in interviews and public appearances. Your job is to sharpen how I show up under the spotlight — in press conferences, interviews, post-game chats, or high-stakes media moments. Help me express myself with purpose, connect with my audience, and represent myself and my team well.
+
+    #             My goal with this talk is: {goals}.
+
+    #             Use my transcript and the evaluation data to give me detailed, structured feedback in three parts. Talk to me like a coach who genuinely wants to see me grow — not just as an athlete, but as a communicator and role model.
+
+    #             1. Strengths: Highlight what I did well in this appearance. Focus on how I handled questions, the way I carried myself, my clarity, tone, and any standout responses. Keep the language simple and encouraging. Be specific.
+
+    #             2. Areas for Improvement: Give clear and constructive feedback on where I can get better. Focus on my media presence, how I answered questions, how I framed my thoughts, and whether I stayed composed and on message. Keep the suggestions practical and easy to apply.
+
+    #             3.  General Feedback Summary: Craft a detailed, content-specific analysis of my session. Your summary must be grounded in specific parts of my speech. Go deeper into how I handled each question during the session and list the questions by bullet points('-'). For every question in the transcript (including ones labeled "AUDIENCE QUESTION"). Your primary focus is how I handled the questions but include the following:
+    #             - Did I fully answer the question or dodge it?
+    #             - Did I control the narrative or let the interviewer steer me off message?
+    #             - Was my answer memorable, respectful, and aligned with my personal or team values?
+    #             - Did I stay calm and focused, even if the question was tricky?
+    #             - Was there a moment where I really connected — with a story, perspective, or strong message?
+
+    #             Also:
+    #             - Did it show confidence, presence, or set a clear tone?
+    #             - Did my message feel organized and lead somewhere meaningful?
+    #             - Mention my goal {goals} only if I clearly stated one.
+    #             - Finish with a short reflection on how I’m developing as a public voice — and where I should focus next to elevate my presence.
+
+    #             Tone: Speak to me with respect and belief in my future. I need guidance on how to stand tall, communicate with intention, and leave an impact in every media moment. Start by calling me by name "{name}, as a media journalist...".
+
+    #             Evaluation data: {metrics_string}
+
+    #             Transcript:
+    #             {combined_feedback}
+    #             """
+
+    #         elif enterprise_vertical == Enterprise.Vertical.COACH:
+    #             prompt = f"""
+    #             My name is {name}, and I’m currently a {role} in my sports journey.
+
+    #             You are my personal communication coach. Your job is to help me become better at communicating with my coach/GM — especially when it comes to expressing how I feel, asking for support, giving feedback, or having honest conversations. I want to build trust, show leadership, and strengthen my relationship with my coach/GM through how I communicate.
+
+    #             My goal with this conversation is: {goals}.
+
+    #             Use my transcript and the evaluation data to give me structured feedback in three parts. Talk to me like someone who wants to see me grow — not just as an athlete, but as someone who can communicate clearly, confidently, and with emotional maturity.
+
+    #             1. Strengths: Highlight what I did well in this conversation with my coach. Focus on how I expressed myself, whether I stayed respectful and honest, and if I showed maturity, clarity, or emotional awareness. Be specific and use simple language.
+
+    #             2. Areas for Improvement: Give clear, practical advice on what I could have done better. Look at how I handled disagreement, whether I avoided tough topics, if I rambled or got defensive, or if I missed a chance to be more open or thoughtful.
+
+    #             3.  General Feedback Summary: Craft a detailed, content-specific analysis of my session. Your summary must be grounded in specific parts of my speech. Go deeper into how I handled each question during the session and list the questions by bullet points('-'). For every question in the transcript (including ones labeled "AUDIENCE QUESTION"). Your primary focus is how I handled the questions but include the following:
+    #             - Did I clearly express my thoughts or feelings?
+    #             - Did I stay calm, respectful, and focused even if the topic was hard?
+    #             - Did I show that I was listening and that I understood my coach’s point of view?
+    #             - Was there any moment where I built trust or showed growth as a communicator?
+    #             - Did I give off the impression of someone who’s coachable, driven, and self-aware?
+
+    #             Also:
+    #             - Did I sound like someone who takes ownership of their growth?
+    #             - Mention my goal {goals} only if I clearly stated one.
+    #             - End with your thoughts on how I’m improving in how I show up with my coach — and what the next step should be.
+
+    #             Tone: Speak to me with honesty and belief in my potential. I want to get better at owning my voice and building stronger relationships, starting with the one I have with my coach. Start by calling me by name "{name}, as your coach...".
+
+    #             Evaluation data: {metrics_string}
+
+    #             Transcript:
+    #             {combined_feedback}
+    #             """
+
+    #         elif enterprise_vertical == Enterprise.Vertical.GM:
+    #             prompt = f"""
+    #             My name is {name}, and I’m currently a {role} in my sports journey.
+
+    #             You are my personal communication coach. Your job is to help me become better at communicating with my coach/GM — especially when it comes to expressing how I feel, asking for support, giving feedback, or having honest conversations. I want to build trust, show leadership, and strengthen my relationship with my coach/GM through how I communicate.
+
+    #             My goal with this conversation is: {goals}.
+
+    #             Use my transcript and the evaluation data to give me structured feedback in three parts. Talk to me like someone who wants to see me grow — not just as an athlete, but as someone who can communicate clearly, confidently, and with emotional maturity.
+
+    #             1. Strengths: Highlight what I did well in this conversation with my team GM. Focus on how I expressed myself, whether I stayed respectful and honest, and if I showed maturity, clarity, or emotional awareness. Be specific and use simple language.
+
+    #             2. Areas for Improvement: Give clear, practical advice on what I could have done better. Look at how I handled disagreement, whether I avoided tough topics, if I rambled or got defensive, or if I missed a chance to be more open or thoughtful.
+
+    #             3.  General Feedback Summary: Craft a detailed, content-specific analysis of my session. Your summary must be grounded in specific parts of my speech. Go deeper into how I handled each question during the session and list the questions by bullet points('-'). For every question in the transcript (including ones labeled "AUDIENCE QUESTION"). Your primary focus is how I handled the questions but include the following:
+    #             - Did I clearly express my thoughts or feelings?
+    #             - Did I stay calm, respectful, and focused — even if the topic was hard?
+    #             - Did I show that I was listening and that I understood my GM's point of view?
+    #             - Was there any moment where I built trust or showed growth as a communicator?
+    #             - Did I give off the impression of someone who’s coachable, driven, and self-aware?
+
+    #             Also:
+    #             - Did I sound like someone who takes ownership of their growth?
+    #             - Mention my goal {goals} only if I clearly stated one.
+    #             - End with your thoughts on how I’m improving in how I show up with my GM — and what the next step should be.
+
+    #             Tone: Speak to me with honesty and belief in my potential. I want to get better at owning my voice and building stronger relationships, starting with the one I have with my GM. Start by calling me by name "{name}, as the GM for this team...".
+
+    #             Evaluation data: {metrics_string}
+
+    #             Transcript:
+    #             {combined_feedback}
+    #             """
+    #         elif enterprise_vertical == Enterprise.Vertical.COACHING:
+    #             prompt = f"""
+    #             My name is {name}, and I’m currently a {role} in my sales journey.
+
+    #             You are my personal sales communication coach. Your job is to help me get better at handling objections, building trust, and closing conversations with clarity and confidence. I want to improve how I respond when a prospect pushes back, asks tough questions, or seems uncertain — without sounding defensive or desperate.
+
+    #             My goal with this sales conversation is: {goals}.
+
+    #             Use my transcript and the evaluation data to give me structured, honest feedback in three parts. Speak to me like a coach who wants me to win — not just close deals, but grow into someone who knows how to listen, adapt, and lead the sales conversation with confidence and empathy.
+
+    #             1. Strengths: Identify what I did well in this sales interaction. Focus on how I listened, built rapport, stayed composed, or responded to objections clearly. Mention if I showed confidence, asked smart questions, or guided the conversation with intention. Use simple language and be specific.
+
+    #             2. Areas for Improvement: Give me clear, direct, and practical advice on where I can improve. Focus on how I handled objections, whether I missed opportunities to go deeper, gave vague answers, or talked too much. Be honest — tell me where I lost control of the conversation or came across as uncertain or unprepared.
+
+    #             3.  General Feedback Summary: Craft a detailed, content-specific analysis of my session. Your summary must be grounded in specific parts of my speech. Go deeper into how I handled each question during the session and list the questions by bullet points('-'). For every question in the transcript (including ones labeled "AUDIENCE QUESTION"). Your primary focus is how I handled the questions but include the following:
+    #             - Did I acknowledge and validate their concern?
+    #             - Did I stay calm and confident while answering?
+    #             - Did I give a clear, persuasive response that moved the conversation forward?
+    #             - Did I use any strong reframes or real-world examples to build trust?
+    #             - Were there moments where I gave in too quickly, over-explained, or lost leverage?
+
+    #             Also:
+    #             - Did I control the flow of the conversation, or did the prospect lead me?
+    #             - Did I sound confident in the value of what I was offering?
+    #             - Mention my goal {goals} only if I clearly stated one.
+    #             - End with your thoughts on how I’m growing as a salesperson — and what I should work on next to level up my objection handling skills.
+
+    #             Tone: Talk to me like a pro you believe in. Be real. Be specific. No fluff — just the kind of feedback that makes me sharper, stronger, and more effective in the next sales call.
+
+    #             Evaluation data: {metrics_string}
+
+    #             Transcript:
+    #             {combined_feedback}
+    #             """
+
+    #         else:
+    #             # Fallback to the original media training prompt if vertical is not recognized
+    #             prompt = f"""
+    #             My name is {name}, and I'm currently a {role} in my sports journey.
+
+    #             You are my personal communication mentor. Your focus is to help young athletes like me grow as confident and impactful speakers — whether in interviews, team talks, public appearances, or leadership moments. Your feedback should guide me to express myself better, show up with presence, and connect with others.
+
+    #             My goal with this talk is: {goals}.
+
+    #             I want you to give me helpful feedback using my presentation and the evaluation data. Structure your feedback in three clear parts, and speak to me like a trusted coach who wants me to win — not just in sports, but in how I show up as a person.
+
+    #             1. Strengths: Identify my most impactful specific strengths. Focus on concrete content choices, tone, delivery techniques, and audience engagement strategies. Use simple sentences, do not include transcript quotes here.
+
+    #             2. Areas for Improvement: Provide clear, actionable, and specific feedback on where I can improve. Emphasize my delivery habits, missed emotional beats, and structural weaknesses. Use simple sentences, do not include transcript quotes here.
+
+    #             3. General Feedback Summary: Craft a detailed, content-specific analysis of my session. Your summary must be grounded in specific parts of my speech. Your primary focus is how I handled the questions but include the following:
+    #             - Evaluate the effectiveness of my opening: Was it attention-grabbing, relevant, or emotionally engaging? Did I clearly set the tone or premise for the rest of the talk?
+    #             - Were there any standout words or phrases I used that really connected or showed emotion?
+    #             - Did I use any filler words too often (like "uh," "you know," "like")? If so, quote a few examples.
+    #             - How did I sound — confident, calm, excited, nervous? Did that shift anywhere in the talk?
+    #             - Reflect on whether my style or personal story helped make the talk connect with more people.
+    #             - Clearly state whether my talk was effective — and if so, effective at what specifically 
+    #             - Did my message feel organized, and did I build it up toward something important?
+    #             - "AUDIENCE QUESTION" is in my transcript, evaluate how I answered the audience questions. If no "AUDIENCE QUESTION" is in my transcript dont mention anything about questions
+    #             - Mention my goal {goals} only if I had one — skip this part if I didn't mention any goal.
+    #             - End with your view on how I'm growing as a speaker and how I can take the next step.
+
+    #             Tone: Talk to me with respect, like you believe in my future. Don't use grammar corrections unless it really affects how I come across. Don't use headers, dashes, or bold formatting. Use \n\n between paragraphs and begin with a positive comment based on how I showed up in my presentation.
+
+    #             Evaluation data: {metrics_string}
+
+    #             Transcript:
+    #             {combined_feedback}
+    #             """
+
+    #     else:
+    #         prompt = f"""
+    #             My name is {name}, and my career level is {role}.
+    #             You are my personal expert communication mentor/coach specializing in public speaking, storytelling, pitching, and presentations. Your role is to critique me for my growth, and guide me to become a more impactful professional speaker for my career development.
+
+    #             My goal with this presentation is: {goals}. Using my provided presentation evaluation data and speech, generate a structured JSON response with the following three components:
+
+    #             1. Strengths: Identify my most impactful specific strengths. Focus on concrete content choices, tone, delivery techniques, and audience engagement strategies. Use simple sentences, do not include transcript quotes here.
+
+    #             2. Areas for Improvement: Provide clear, actionable, and specific feedback on where I can improve. Emphasize my delivery habits, missed emotional beats, and structural weaknesses. Use simple sentences, do not include transcript quotes here.
+
+    #             3. General Feedback Summary: Craft a detailed, content-specific analysis of my presentation. Your summary must be grounded in specific parts of my speech. Include the following:
+    #             - Evaluate the effectiveness of my opening: Was it attention-grabbing, relevant, or emotionally engaging? Did I clearly set the tone or premise for the rest of the talk?
+    #             - Highlight specific trigger words or emotionally resonant phrases I used that effectively drove engagement, and explain how they influenced the audience. Include the actual phrases from the transcript.
+    #             - List any filler words I overused (e.g., "um", "like", "you know"). Quote a few instances where these occurred.
+    #             - Comment on how I used powerful or evocative language—did I evoke empathy, joy, urgency, or excitement? Did I show vulnerability or emotional relatability?
+    #             - Analyze my tone of voice, Was it confident, warm, authoritative, enthusiastic, or inconsistent? Note any tone shifts and how they impacted audience engagement. Back this up with quoted phrases that show tone variation.
+    #             - Reflect on whether my style or personal story helped make the talk more memorable.
+    #             - Was I persuasive enough, Did I inspire action, challenge assumptions, or shift perspectives? Highlight specific techniques like storytelling, analogies, or rhetorical questions.
+    #             - Evaluate the structure and flow of my talk. Were transitions smooth? Did I build toward a clear message or emotional climax? Point to exact sentences where this occurred.
+    #             - Clearly state whether my talk was effective — and if so, effective at what specifically (e.g., persuading the audience, building trust, sparking interest).
+    #             - If "AUDIENCE QUESTION" is in my transcript, evaluate how I answered the audience questions. If no "AUDIENCE QUESTION" is in my transcript dont mention anything about questions
+    #             - Reference my goal to {goals}. If I have no goals dont mention anything about goals.
+    #             - Provide an overall evaluation of how well I demonstrated mastery in storytelling, public speaking, or pitching. Include tailored suggestions for improvement based on the context and audience. Ground all observations in direct excerpts from the transcript. Quote exact sentences where possible.
+
+    #             Tone: speak to me personally but professionaly like a mentor coach, critique me for my growth while referencing my transcript not my evaluation data. Don't use headers or "**" for titles, dont use hyphens or dashes '—' in your response, just correct me and reference my transcript. Use \n \n for line breaks between paragraphs and also start with an encouraging remark relevant to my presentation with my name.
+
+    #             Evaluation data: {metrics_string}
+    #             Transcript:
+    #             {combined_feedback}
+    #             """
+
+    #     try:
+    #         print("Calling OpenAI for summary generation...")
+    #         completion = client.chat.completions.create(
+    #             model="gpt-4.1",
+    #             messages=[{"role": "user", "content": prompt}],
+    #             response_format={
+    #                 "type": "json_schema",
+    #                 "json_schema": {
+    #                     "name": "Feedback",
+    #                     "strict": True,
+    #                     "schema": {
+    #                         "type": "object",
+    #                         "properties": {
+    #                             "Strength": {"type": "array","items": {"type": "string"}},
+    #                             "Area of Improvement": {"type": "array","items": {"type": "string"}},
+    #                             "General Feedback Summary": {"type": "string"},
+    #                         },
+    #                         "required": ["Strength", "Area of Improvement", "General Feedback Summary"],
+    #                     "additionalProperties": False
+    #                     }
+    #                 }
+    #             },
+    #             temperature=0.8,  # Adjust temperature as needed
+    #             max_tokens=2600  # Limit tokens to control response length
+    #         )
+    #         print(f"prompt: {prompt}")
+
+    #         refined_summary = completion.choices[0].message.content
+    #         print(f"OpenAI raw response: {refined_summary}")
+    #         # Replace hyphens with commas in the response
+    #         refined_summary = refined_summary.replace('—', ',')
+    #         parsed_summary = json.loads(refined_summary)
+    #         print(f"Parsed summary: {parsed_summary}")
+    #         return parsed_summary
+
+    #     except json.JSONDecodeError as e:
+    #         print(f"Error decoding JSON from OpenAI response: {e}")
+    #         print(f"Faulty JSON content: {refined_summary}")
+    #         # Fallback in case of JSON decoding error
+    #         return {
+    #             "Strength": f"N/A - Error generating detailed summary.{e}",
+    #             "Area of Improvement": f"N/A - Error generating detailed summary.{e}",
+    #             "General Feedback Summary": f"Error processing AI summary. Raw feedback: {combined_feedback}",
+    #         }
+    #     except Exception as e:
+    #         print(f"Error generating summary with OpenAI: {e}")
+    #         # Fallback in case of any other OpenAI error
+    #         return {
+    #             "Strength": f"N/A - Error generating detailed summary.{e}",
+    #             "Area of Improvement": f"N/A - Error generating detailed summary.{e}",
+    #             "General Feedback Summary": f"Error processing AI summary. Raw feedback: {combined_feedback}",
+    #         }
+
+
     def generate_full_summary(self, session_id, metrics_string):
-        """Creates a cohesive summary for Strengths, Improvements, and Feedback using OpenAI."""
+        """
+        Creates a cohesive summary for Strengths, Improvements, and Feedback using OpenAI.
+
+        Behavior changes vs old version:
+        - Prefer session.enterprise_settings.rookie_type as the authoritative session-level vertical.
+        - Only use enterprise.get_available_verticals() when session-level value is missing.
+        If enterprise provides multiple verticals, we do NOT blindly pick the first one.
+        - Normalizes enum/string types for robust comparisons.
+        """
         client = OpenAI(api_key=settings.OPENAI_API_KEY)
 
-        session = PracticeSession.objects.get(id=session_id)
-        goals = session.goals
-        name = session.user.first_name
-        role = session.user.user_profile.user_intent
-
-        print(f"Firstname: {name}. role: {role}")
-
-        # Retrieve all general feedback summaries for the session's chunks
-        general_feedback_summaries = ChunkSentimentAnalysis.objects.filter(
-            chunk__session__id=session_id
-        ).values_list("general_feedback_summary", flat=True)
-
-        combined_feedback = " ".join([g for g in general_feedback_summaries if g])
-
-        # If there's no feedback, return default values
-        if not combined_feedback.strip():
-            print("No feedback available from chunks to generate summary.")
+        try:
+            session = PracticeSession.objects.get(id=session_id)
+        except PracticeSession.DoesNotExist:
+            print(f"generate_full_summary: session {session_id} not found")
             return {
-                "Strength": "N/A - No feedback available.",
-                "Area of Improvement": "N/A - No feedback available.",
-                "General Feedback Summary": "No feedback was generated for the chunks in this session.",
+                "Strength": ["N/A - Session not found."],
+                "Area of Improvement": ["N/A - Session not found."],
+                "General Feedback Summary": "N/A - Session not found.",
             }
 
-        if session.session_type == "enterprise":
-            # Get the enterprise vertical from the user's enterprise
-            enterprise_vertical = None
-            if hasattr(session.user, 'enterprise_profile') and hasattr(session.user.enterprise_profile, 'enterprise'):
-                # Get the available verticals from the enterprise
-                enterprise = session.user.enterprise_profile.enterprise
-                available_verticals = enterprise.get_available_verticals()
-                
-                # If there's only one vertical available, use it
-                if len(available_verticals) == 1:
-                    enterprise_vertical = available_verticals[0]
-                # Otherwise, we'd need additional logic to determine which vertical to use
-                # For now, we'll use the first available vertical as a fallback
-                elif available_verticals:
-                    enterprise_vertical = available_verticals[0]
-            
-            print(f"This is an Enterprise Specialty session. Vertical: {enterprise_vertical}")
-            
-            # Default prompt if vertical is not found
-            prompt = ""
-            
-            if enterprise_vertical == Enterprise.Vertical.MEDIA_TRAINING:
-                prompt = f"""
-                My name is {name}, and I’m currently a {role} in my sports journey.
-
-                You are my personal media trainer. Your role is to help young athletes like me become confident, clear, and compelling in interviews and public appearances. Your job is to sharpen how I show up under the spotlight — in press conferences, interviews, post-game chats, or high-stakes media moments. Help me express myself with purpose, connect with my audience, and represent myself and my team well.
-
-                My goal with this talk is: {goals}.
-
-                Use my transcript and the evaluation data to give me detailed, structured feedback in three parts. Talk to me like a coach who genuinely wants to see me grow — not just as an athlete, but as a communicator and role model.
-
-                1. Strengths: Highlight what I did well in this appearance. Focus on how I handled questions, the way I carried myself, my clarity, tone, and any standout responses. Keep the language simple and encouraging. Be specific.
-
-                2. Areas for Improvement: Give clear and constructive feedback on where I can get better. Focus on my media presence, how I answered questions, how I framed my thoughts, and whether I stayed composed and on message. Keep the suggestions practical and easy to apply.
-
-                3.  General Feedback Summary: Craft a detailed, content-specific analysis of my session. Your summary must be grounded in specific parts of my speech. Go deeper into how I handled each question during the session and list the questions by bullet points('-'). For every question in the transcript (including ones labeled "AUDIENCE QUESTION"). Your primary focus is how I handled the questions but include the following:
-                - Did I fully answer the question or dodge it?
-                - Did I control the narrative or let the interviewer steer me off message?
-                - Was my answer memorable, respectful, and aligned with my personal or team values?
-                - Did I stay calm and focused, even if the question was tricky?
-                - Was there a moment where I really connected — with a story, perspective, or strong message?
-
-                Also:
-                - Did it show confidence, presence, or set a clear tone?
-                - Did my message feel organized and lead somewhere meaningful?
-                - Mention my goal {goals} only if I clearly stated one.
-                - Finish with a short reflection on how I’m developing as a public voice — and where I should focus next to elevate my presence.
-
-                Tone: Speak to me with respect and belief in my future. I need guidance on how to stand tall, communicate with intention, and leave an impact in every media moment. Start by calling me by name "{name}, as a media journalist...".
-
-                Evaluation data: {metrics_string}
-
-                Transcript:
-                {combined_feedback}
-                """
-
-            elif enterprise_vertical == Enterprise.Vertical.COACH:
-                prompt = f"""
-                My name is {name}, and I’m currently a {role} in my sports journey.
-
-                You are my personal communication coach. Your job is to help me become better at communicating with my coach/GM — especially when it comes to expressing how I feel, asking for support, giving feedback, or having honest conversations. I want to build trust, show leadership, and strengthen my relationship with my coach/GM through how I communicate.
-
-                My goal with this conversation is: {goals}.
-
-                Use my transcript and the evaluation data to give me structured feedback in three parts. Talk to me like someone who wants to see me grow — not just as an athlete, but as someone who can communicate clearly, confidently, and with emotional maturity.
-
-                1. Strengths: Highlight what I did well in this conversation with my coach. Focus on how I expressed myself, whether I stayed respectful and honest, and if I showed maturity, clarity, or emotional awareness. Be specific and use simple language.
-
-                2. Areas for Improvement: Give clear, practical advice on what I could have done better. Look at how I handled disagreement, whether I avoided tough topics, if I rambled or got defensive, or if I missed a chance to be more open or thoughtful.
-
-                3.  General Feedback Summary: Craft a detailed, content-specific analysis of my session. Your summary must be grounded in specific parts of my speech. Go deeper into how I handled each question during the session and list the questions by bullet points('-'). For every question in the transcript (including ones labeled "AUDIENCE QUESTION"). Your primary focus is how I handled the questions but include the following:
-                - Did I clearly express my thoughts or feelings?
-                - Did I stay calm, respectful, and focused even if the topic was hard?
-                - Did I show that I was listening and that I understood my coach’s point of view?
-                - Was there any moment where I built trust or showed growth as a communicator?
-                - Did I give off the impression of someone who’s coachable, driven, and self-aware?
-
-                Also:
-                - Did I sound like someone who takes ownership of their growth?
-                - Mention my goal {goals} only if I clearly stated one.
-                - End with your thoughts on how I’m improving in how I show up with my coach — and what the next step should be.
-
-                Tone: Speak to me with honesty and belief in my potential. I want to get better at owning my voice and building stronger relationships, starting with the one I have with my coach. Start by calling me by name "{name}, as your coach...".
-
-                Evaluation data: {metrics_string}
-
-                Transcript:
-                {combined_feedback}
-                """
-
-            elif enterprise_vertical == Enterprise.Vertical.GM:
-                prompt = f"""
-                My name is {name}, and I’m currently a {role} in my sports journey.
-
-                You are my personal communication coach. Your job is to help me become better at communicating with my coach/GM — especially when it comes to expressing how I feel, asking for support, giving feedback, or having honest conversations. I want to build trust, show leadership, and strengthen my relationship with my coach/GM through how I communicate.
-
-                My goal with this conversation is: {goals}.
-
-                Use my transcript and the evaluation data to give me structured feedback in three parts. Talk to me like someone who wants to see me grow — not just as an athlete, but as someone who can communicate clearly, confidently, and with emotional maturity.
-
-                1. Strengths: Highlight what I did well in this conversation with my team GM. Focus on how I expressed myself, whether I stayed respectful and honest, and if I showed maturity, clarity, or emotional awareness. Be specific and use simple language.
-
-                2. Areas for Improvement: Give clear, practical advice on what I could have done better. Look at how I handled disagreement, whether I avoided tough topics, if I rambled or got defensive, or if I missed a chance to be more open or thoughtful.
-
-                3.  General Feedback Summary: Craft a detailed, content-specific analysis of my session. Your summary must be grounded in specific parts of my speech. Go deeper into how I handled each question during the session and list the questions by bullet points('-'). For every question in the transcript (including ones labeled "AUDIENCE QUESTION"). Your primary focus is how I handled the questions but include the following:
-                - Did I clearly express my thoughts or feelings?
-                - Did I stay calm, respectful, and focused — even if the topic was hard?
-                - Did I show that I was listening and that I understood my GM's point of view?
-                - Was there any moment where I built trust or showed growth as a communicator?
-                - Did I give off the impression of someone who’s coachable, driven, and self-aware?
-
-                Also:
-                - Did I sound like someone who takes ownership of their growth?
-                - Mention my goal {goals} only if I clearly stated one.
-                - End with your thoughts on how I’m improving in how I show up with my GM — and what the next step should be.
-
-                Tone: Speak to me with honesty and belief in my potential. I want to get better at owning my voice and building stronger relationships, starting with the one I have with my GM. Start by calling me by name "{name}, as the GM for this team...".
-
-                Evaluation data: {metrics_string}
-
-                Transcript:
-                {combined_feedback}
-                """
-            elif enterprise_vertical == Enterprise.Vertical.COACHING:
-                prompt = f"""
-                My name is {name}, and I’m currently a {role} in my sales journey.
-
-                You are my personal sales communication coach. Your job is to help me get better at handling objections, building trust, and closing conversations with clarity and confidence. I want to improve how I respond when a prospect pushes back, asks tough questions, or seems uncertain — without sounding defensive or desperate.
-
-                My goal with this sales conversation is: {goals}.
-
-                Use my transcript and the evaluation data to give me structured, honest feedback in three parts. Speak to me like a coach who wants me to win — not just close deals, but grow into someone who knows how to listen, adapt, and lead the sales conversation with confidence and empathy.
-
-                1. Strengths: Identify what I did well in this sales interaction. Focus on how I listened, built rapport, stayed composed, or responded to objections clearly. Mention if I showed confidence, asked smart questions, or guided the conversation with intention. Use simple language and be specific.
-
-                2. Areas for Improvement: Give me clear, direct, and practical advice on where I can improve. Focus on how I handled objections, whether I missed opportunities to go deeper, gave vague answers, or talked too much. Be honest — tell me where I lost control of the conversation or came across as uncertain or unprepared.
-
-                3.  General Feedback Summary: Craft a detailed, content-specific analysis of my session. Your summary must be grounded in specific parts of my speech. Go deeper into how I handled each question during the session and list the questions by bullet points('-'). For every question in the transcript (including ones labeled "AUDIENCE QUESTION"). Your primary focus is how I handled the questions but include the following:
-                - Did I acknowledge and validate their concern?
-                - Did I stay calm and confident while answering?
-                - Did I give a clear, persuasive response that moved the conversation forward?
-                - Did I use any strong reframes or real-world examples to build trust?
-                - Were there moments where I gave in too quickly, over-explained, or lost leverage?
-
-                Also:
-                - Did I control the flow of the conversation, or did the prospect lead me?
-                - Did I sound confident in the value of what I was offering?
-                - Mention my goal {goals} only if I clearly stated one.
-                - End with your thoughts on how I’m growing as a salesperson — and what I should work on next to level up my objection handling skills.
-
-                Tone: Talk to me like a pro you believe in. Be real. Be specific. No fluff — just the kind of feedback that makes me sharper, stronger, and more effective in the next sales call.
-
-                Evaluation data: {metrics_string}
-
-                Transcript:
-                {combined_feedback}
-                """
-
-            else:
-                # Fallback to the original media training prompt if vertical is not recognized
-                prompt = f"""
-                My name is {name}, and I'm currently a {role} in my sports journey.
-
-                You are my personal communication mentor. Your focus is to help young athletes like me grow as confident and impactful speakers — whether in interviews, team talks, public appearances, or leadership moments. Your feedback should guide me to express myself better, show up with presence, and connect with others.
-
-                My goal with this talk is: {goals}.
-
-                I want you to give me helpful feedback using my presentation and the evaluation data. Structure your feedback in three clear parts, and speak to me like a trusted coach who wants me to win — not just in sports, but in how I show up as a person.
-
-                1. Strengths: Identify my most impactful specific strengths. Focus on concrete content choices, tone, delivery techniques, and audience engagement strategies. Use simple sentences, do not include transcript quotes here.
-
-                2. Areas for Improvement: Provide clear, actionable, and specific feedback on where I can improve. Emphasize my delivery habits, missed emotional beats, and structural weaknesses. Use simple sentences, do not include transcript quotes here.
-
-                3. General Feedback Summary: Craft a detailed, content-specific analysis of my session. Your summary must be grounded in specific parts of my speech. Your primary focus is how I handled the questions but include the following:
-                - Evaluate the effectiveness of my opening: Was it attention-grabbing, relevant, or emotionally engaging? Did I clearly set the tone or premise for the rest of the talk?
-                - Were there any standout words or phrases I used that really connected or showed emotion?
-                - Did I use any filler words too often (like "uh," "you know," "like")? If so, quote a few examples.
-                - How did I sound — confident, calm, excited, nervous? Did that shift anywhere in the talk?
-                - Reflect on whether my style or personal story helped make the talk connect with more people.
-                - Clearly state whether my talk was effective — and if so, effective at what specifically 
-                - Did my message feel organized, and did I build it up toward something important?
-                - "AUDIENCE QUESTION" is in my transcript, evaluate how I answered the audience questions. If no "AUDIENCE QUESTION" is in my transcript dont mention anything about questions
-                - Mention my goal {goals} only if I had one — skip this part if I didn't mention any goal.
-                - End with your view on how I'm growing as a speaker and how I can take the next step.
-
-                Tone: Talk to me with respect, like you believe in my future. Don't use grammar corrections unless it really affects how I come across. Don't use headers, dashes, or bold formatting. Use \n\n between paragraphs and begin with a positive comment based on how I showed up in my presentation.
-
-                Evaluation data: {metrics_string}
-
-                Transcript:
-                {combined_feedback}
-                """
-
-        else:
-            prompt = f"""
-                My name is {name}, and my career level is {role}.
-                You are my personal expert communication mentor/coach specializing in public speaking, storytelling, pitching, and presentations. Your role is to critique me for my growth, and guide me to become a more impactful professional speaker for my career development.
-
-                My goal with this presentation is: {goals}. Using my provided presentation evaluation data and speech, generate a structured JSON response with the following three components:
-
-                1. Strengths: Identify my most impactful specific strengths. Focus on concrete content choices, tone, delivery techniques, and audience engagement strategies. Use simple sentences, do not include transcript quotes here.
-
-                2. Areas for Improvement: Provide clear, actionable, and specific feedback on where I can improve. Emphasize my delivery habits, missed emotional beats, and structural weaknesses. Use simple sentences, do not include transcript quotes here.
-
-                3. General Feedback Summary: Craft a detailed, content-specific analysis of my presentation. Your summary must be grounded in specific parts of my speech. Include the following:
-                - Evaluate the effectiveness of my opening: Was it attention-grabbing, relevant, or emotionally engaging? Did I clearly set the tone or premise for the rest of the talk?
-                - Highlight specific trigger words or emotionally resonant phrases I used that effectively drove engagement, and explain how they influenced the audience. Include the actual phrases from the transcript.
-                - List any filler words I overused (e.g., "um", "like", "you know"). Quote a few instances where these occurred.
-                - Comment on how I used powerful or evocative language—did I evoke empathy, joy, urgency, or excitement? Did I show vulnerability or emotional relatability?
-                - Analyze my tone of voice, Was it confident, warm, authoritative, enthusiastic, or inconsistent? Note any tone shifts and how they impacted audience engagement. Back this up with quoted phrases that show tone variation.
-                - Reflect on whether my style or personal story helped make the talk more memorable.
-                - Was I persuasive enough, Did I inspire action, challenge assumptions, or shift perspectives? Highlight specific techniques like storytelling, analogies, or rhetorical questions.
-                - Evaluate the structure and flow of my talk. Were transitions smooth? Did I build toward a clear message or emotional climax? Point to exact sentences where this occurred.
-                - Clearly state whether my talk was effective — and if so, effective at what specifically (e.g., persuading the audience, building trust, sparking interest).
-                - If "AUDIENCE QUESTION" is in my transcript, evaluate how I answered the audience questions. If no "AUDIENCE QUESTION" is in my transcript dont mention anything about questions
-                - Reference my goal to {goals}. If I have no goals dont mention anything about goals.
-                - Provide an overall evaluation of how well I demonstrated mastery in storytelling, public speaking, or pitching. Include tailored suggestions for improvement based on the context and audience. Ground all observations in direct excerpts from the transcript. Quote exact sentences where possible.
-
-                Tone: speak to me personally but professionaly like a mentor coach, critique me for my growth while referencing my transcript not my evaluation data. Don't use headers or "**" for titles, dont use hyphens or dashes '—' in your response, just correct me and reference my transcript. Use \n \n for line breaks between paragraphs and also start with an encouraging remark relevant to my presentation with my name.
-
-                Evaluation data: {metrics_string}
-                Transcript:
-                {combined_feedback}
-                """
-
+        goals = getattr(session, "goals", "") or ""
+        name = getattr(session.user, "first_name", "") or ""
+        role = ""
         try:
-            print("Calling OpenAI for summary generation...")
+            role = session.user.user_profile.user_intent or ""
+        except Exception:
+            # defensive: missing user_profile or user_intent
+            role = ""
+
+        print(f"[generate_full_summary] firstname={name!r}, role={role!r}, session_id={session_id}")
+
+        # -- Collect existing chunk-level general feedback summaries --
+        try:
+            general_feedback_summaries_qs = ChunkSentimentAnalysis.objects.filter(
+                chunk__session__id=session_id
+            ).values_list("general_feedback_summary", flat=True)
+            general_feedback_summaries = [s for s in general_feedback_summaries_qs if s]
+        except Exception as e:
+            print(f"[generate_full_summary] error fetching ChunkSentimentAnalysis: {e}")
+            general_feedback_summaries = []
+
+        combined_feedback = "\n\n".join(general_feedback_summaries).strip()
+        if not combined_feedback:
+            combined_feedback = "No chunk-level feedback summaries available."
+
+        # -- Collect session transcript (join chunk transcripts) --
+        try:
+            chunk_transcripts_qs = SessionChunk.objects.filter(session=session).order_by("order").values_list(
+                "transcript", flat=True
+            )
+            transcripts = [t for t in chunk_transcripts_qs if t]
+            transcript_text = "\n\n".join(transcripts)
+        except Exception as e:
+            print(f"[generate_full_summary] error fetching transcripts: {e}")
+            transcript_text = ""
+
+        # Truncate transcript_text to avoid very large prompts (keep some safety margin)
+        MAX_TRANSCRIPT_CHARS = 30000
+        if len(transcript_text) > MAX_TRANSCRIPT_CHARS:
+            print(f"[generate_full_summary] transcript too long ({len(transcript_text)} chars), truncating to {MAX_TRANSCRIPT_CHARS}")
+            transcript_text = transcript_text[:MAX_TRANSCRIPT_CHARS]
+            # indicate truncation to the model
+            transcript_text += "\n\n[TRUNCATED - full transcript omitted due to length]"
+
+        # Truncate combined_feedback as well
+        MAX_FEEDBACK_CHARS = 5000
+        if len(combined_feedback) > MAX_FEEDBACK_CHARS:
+            combined_feedback = combined_feedback[:MAX_FEEDBACK_CHARS] + "\n\n[TRUNCATED - more feedback omitted]"
+
+        # -- Determine the correct "vertical" for this session --
+        enterprise_vertical = None
+
+        # 1) Prefer session-level rookie_type if it exists
+        try:
+            if hasattr(session, "enterprise_settings") and getattr(session.enterprise_settings, "rookie_type", None):
+                enterprise_vertical = session.enterprise_settings.rookie_type
+        except Exception as e:
+            print(f"[generate_full_summary] error reading session.enterprise_settings: {e}")
+
+        # 2) If session-level not set, fallback to enterprise available verticals only when sensible
+        if not enterprise_vertical:
+            try:
+                if hasattr(session.user, "enterprise_profile") and getattr(session.user.enterprise_profile, "enterprise", None):
+                    enterprise = session.user.enterprise_profile.enterprise
+                    available_verticals = enterprise.get_available_verticals() or []
+                    # Only auto-pick if enterprise has exactly one vertical (safe default).
+                    if len(available_verticals) == 1:
+                        enterprise_vertical = available_verticals[0]
+                    else:
+                        # multiple verticals -> prefer None so we use a general prompt
+                        enterprise_vertical = None
+            except Exception as e:
+                print(f"[generate_full_summary] error reading enterprise/get_available_verticals: {e}")
+                enterprise_vertical = None
+
+        # Normalize enterprise_vertical to a lowercase string for comparisons
+        ev = None
+        if enterprise_vertical is None:
+            ev = None
+        else:
+            try:
+                if isinstance(enterprise_vertical, str):
+                    ev = enterprise_vertical.lower()
+                else:
+                    # Enum-like object: try name or value
+                    ev = getattr(enterprise_vertical, "name", None) or getattr(enterprise_vertical, "value", None) or str(enterprise_vertical)
+                    ev = str(ev).lower()
+            except Exception:
+                ev = str(enterprise_vertical).lower()
+
+        print(f"[generate_full_summary] chosen vertical (normalized) = {ev!r}")
+
+        # -- Build the prompt based on vertical --
+        # Keep prompts concise and include: goals, metrics_string, combined_feedback, transcript_text, name, role.
+        base_context = (
+            f"Name: {name}\n"
+            f"Role: {role}\n"
+            f"Session Goals: {goals}\n"
+            f"Metrics Summary: {metrics_string}\n\n"
+            f"Chunk-level feedback summaries (if any):\n{combined_feedback}\n\n"
+            f"Transcript (or transcript excerpts):\n{transcript_text}\n\n"
+        )
+
+        if ev == "media_training" or ev == "media-training" or ev == "media training":
+            prompt_heading = (
+                "You are a professional media trainer coaching this speaker on public interviews, "
+                "press conferences, and media appearances."
+            )
+            specific_instructions = (
+                "From the transcript and feedback, produce:\n"
+                "1) Strengths: a list of concise bullet items (what the speaker did well for media appearances).\n"
+                "2) Areas for Improvement: targeted, practical suggestions the speaker can apply (short bullets).\n"
+                "3) General Feedback Summary: a short cohesive paragraph summarizing overall performance and messaging.\n"
+                "Focus on clarity, message, tone, body language cues, and media-appropriate phrasing. "
+                "Keep language simple, actionable, and specific. Use evidence from the transcript/feedback when possible."
+            )
+        elif ev == "coach" or ev == "coaching":
+            prompt_heading = (
+                "You are a performance coach providing feedback to the speaker/athlete to improve presentation and delivery."
+            )
+            specific_instructions = (
+                "From the transcript and feedback, produce:\n"
+                "1) Strengths: concise bullet items highlighting performance elements to preserve.\n"
+                "2) Areas for Improvement: practical, prioritized coaching tips.\n"
+                "3) General Feedback Summary: a cohesive paragraph summarizing the session and recommended next steps.\n"
+                "Focus on pacing, confidence, structure of answers, and actionable rehearsal suggestions."
+            )
+        elif ev in ("gm", "general_manager", "general-manager"):
+            prompt_heading = (
+                "You are advising from a General Manager perspective: how the speaker portrays themselves and their team/organization."
+            )
+            specific_instructions = (
+                "From the transcript and feedback, produce:\n"
+                "1) Strengths: items that reflect positively on the organization/team.\n"
+                "2) Areas for Improvement: items to align messaging with organizational goals.\n"
+                "3) General Feedback Summary: a paragraph summarizing brand/organizational impact and recommended messaging changes."
+            )
+        else:
+            # Generic speaking / presentation prompt
+            prompt_heading = (
+                "You are an experienced public-speaking coach giving practical feedback on the speaker's performance."
+            )
+            specific_instructions = (
+                "From the transcript and feedback, produce:\n"
+                "1) Strengths: concise bullet items highlighting what the speaker did well.\n"
+                "2) Areas for Improvement: prioritized, actionable tips.\n"
+                "3) General Feedback Summary: a short cohesive paragraph summarizing overall performance."
+            )
+
+        prompt = (
+            f"{prompt_heading}\n\n"
+            f"{specific_instructions}\n\n"
+            f"CONTEXT:\n{base_context}\n\n"
+            "INSTRUCTIONS FOR OUTPUT:\n"
+            "Return a JSON object (no extra text) with exactly these keys:\n"
+            '  - \"Strength\" (array of short strings),\n'
+            '  - \"Area of Improvement\" (array of short strings),\n'
+            '  - \"General Feedback Summary\" (string).\n'
+            "Make the strengths and areas concrete (short bullets). The General Feedback Summary should be a short, actionable paragraph.\n"
+        )
+
+        # -- Call OpenAI with JSON schema formatting --
+        try:
             completion = client.chat.completions.create(
                 model="gpt-4.1",
                 messages=[{"role": "user", "content": prompt}],
@@ -2187,44 +2424,59 @@ class SessionReportView(APIView):
                         "schema": {
                             "type": "object",
                             "properties": {
-                                "Strength": {"type": "array","items": {"type": "string"}},
-                                "Area of Improvement": {"type": "array","items": {"type": "string"}},
+                                "Strength": {"type": "array", "items": {"type": "string"}},
+                                "Area of Improvement": {"type": "array", "items": {"type": "string"}},
                                 "General Feedback Summary": {"type": "string"},
                             },
                             "required": ["Strength", "Area of Improvement", "General Feedback Summary"],
-                        "additionalProperties": False
-                        }
-                    }
+                            "additionalProperties": False,
+                        },
+                    },
                 },
-                temperature=0.8,  # Adjust temperature as needed
-                max_tokens=2600  # Limit tokens to control response length
+                temperature=0.6,
+                max_tokens=2200,
             )
-            print(f"prompt: {prompt}")
 
-            refined_summary = completion.choices[0].message.content
-            print(f"OpenAI raw response: {refined_summary}")
-            # Replace hyphens with commas in the response
-            refined_summary = refined_summary.replace('—', ',')
-            parsed_summary = json.loads(refined_summary)
-            print(f"Parsed summary: {parsed_summary}")
-            return parsed_summary
+            raw_content = completion.choices[0].message.content
+            print(f"[generate_full_summary] OpenAI raw response: {raw_content[:1000]}")
 
-        except json.JSONDecodeError as e:
-            print(f"Error decoding JSON from OpenAI response: {e}")
-            print(f"Faulty JSON content: {refined_summary}")
-            # Fallback in case of JSON decoding error
-            return {
-                "Strength": f"N/A - Error generating detailed summary.{e}",
-                "Area of Improvement": f"N/A - Error generating detailed summary.{e}",
-                "General Feedback Summary": f"Error processing AI summary. Raw feedback: {combined_feedback}",
-            }
+            # The SDK returns JSON text; parse it.
+            try:
+                # Replace any long-dash unicode with comma for safer JSON if necessary
+                normalized = raw_content.replace("—", ",")
+                parsed_summary = json.loads(normalized)
+                # Ensure keys exist and normalize fallback shapes
+                strengths = parsed_summary.get("Strength") or parsed_summary.get("Strengths") or []
+                areas = parsed_summary.get("Area of Improvement") or parsed_summary.get("Areas of Improvement") or []
+                general = parsed_summary.get("General Feedback Summary") or parsed_summary.get("General Feedback") or ""
+                # Ensure shapes
+                if not isinstance(strengths, list):
+                    strengths = [str(strengths)]
+                if not isinstance(areas, list):
+                    areas = [str(areas)]
+                if not isinstance(general, str):
+                    general = str(general)
+
+                return {
+                    "Strength": strengths,
+                    "Area of Improvement": areas,
+                    "General Feedback Summary": general,
+                }
+            except json.JSONDecodeError as e:
+                print(f"[generate_full_summary] JSON decode error: {e}")
+                print(f"[generate_full_summary] Faulty JSON content (truncated): {raw_content[:2000]}")
+                # Fallback: return the combined feedback and a short note
+                return {
+                    "Strength": ["N/A - Error decoding AI response."],
+                    "Area of Improvement": ["N/A - Error decoding AI response."],
+                    "General Feedback Summary": f"Could not parse AI JSON response. Raw: {raw_content[:1000]}",
+                }
         except Exception as e:
-            print(f"Error generating summary with OpenAI: {e}")
-            # Fallback in case of any other OpenAI error
+            print(f"[generate_full_summary] Error calling OpenAI: {e}")
             return {
-                "Strength": f"N/A - Error generating detailed summary.{e}",
-                "Area of Improvement": f"N/A - Error generating detailed summary.{e}",
-                "General Feedback Summary": f"Error processing AI summary. Raw feedback: {combined_feedback}",
+                "Strength": ["N/A - Error generating detailed summary."],
+                "Area of Improvement": ["N/A - Error generating detailed summary."],
+                "General Feedback Summary": f"Error generating AI summary. Combined feedback: {combined_feedback[:1000]}",
             }
 
     def get(self, request, session_id):
