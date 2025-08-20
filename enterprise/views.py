@@ -475,65 +475,65 @@ class EnterpriseViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['get'], url_path='verticals')
     def enterprise_verticals(self, request, pk=None):
         """
-        Get currently enabled verticals for this enterprise.
-        Returns list of vertical IDs from Enterprise.accessible_verticals.
+        Get currently enabled and available verticals for this enterprise.
+        Returns:
+        {
+            'enterprise_id': str,
+            'accessible_verticals': List[str],  # Currently enabled verticals
+            'available_verticals': [           # All available verticals for this enterprise
+                {'value': str, 'label': str},
+                ...
+            ]
+        }
         """
         enterprise = self.get_object()
+        available_verticals = enterprise.get_available_verticals()
+        
+        # Convert list of vertical strings to list of dicts with value and label
+        available_verticals_list = [
+            {
+                'value': vertical,
+                'label': dict(enterprise.Vertical.choices).get(vertical, vertical)
+            }
+            for vertical in available_verticals
+        ]
+        
         return Response({
-            'enterprise_id': enterprise.id,
-            'accessible_verticals': enterprise.accessible_verticals or []
+            'enterprise_id': str(enterprise.id),
+            'accessible_verticals': enterprise.accessible_verticals or [],
+            'available_verticals': available_verticals_list
         })
         
     @enterprise_verticals.mapping.put
     def update_enterprise_verticals(self, request, pk=None):
         """
         Update accessible verticals for this enterprise.
-        Expected payload:
+        
+        Expected payload (either format is accepted):
         {
             "vertical_ids": ["media_training", "coach"]
+            // or
+            "accessible_verticals": ["media_training", "coach"]
+        }
+        
+        Returns:
+        {
+            'message': str,
+            'enterprise_id': str,
+            'accessible_verticals': List[str],  # Updated list of enabled verticals
+            'available_verticals': [           # All available verticals for this enterprise
+                {'value': str, 'label': str},
+                ...
+            ]
         }
         """
         enterprise = self.get_object()
-        vertical_ids = request.data.get('vertical_ids', [])
+        # Accept both vertical_ids and accessible_verticals for backward compatibility
+        vertical_ids = request.data.get('vertical_ids', request.data.get('accessible_verticals', []))
         
         if not isinstance(vertical_ids, list):
             return Response(
                 {'error': 'vertical_ids must be a list'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
-        # Validate verticals against available choices
-        valid_verticals = [choice[0] for choice in Enterprise.Vertical.choices]
-        invalid_verticals = [v for v in vertical_ids if v not in valid_verticals]
-        
-        if invalid_verticals:
-            return Response(
-                {'error': f'Invalid verticals: {", ".join(invalid_verticals)}'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
-        # Update enterprise verticals
-        enterprise.accessible_verticals = vertical_ids
-        enterprise.save()
-        
-        return Response({
-            'message': 'Accessible verticals updated successfully',
-            'enterprise_id': enterprise.id,
-            'accessible_verticals': enterprise.accessible_verticals
-        })
-
-    @action(detail=True, methods=['put'])
-    def update_verticals(self, request, pk=None):
-        """
-        Update the list of accessible verticals for an enterprise.
-        Payload: {"vertical_ids": ["coach", "gm"]}
-        """
-        enterprise = self.get_object()
-        vertical_ids = request.data.get('vertical_ids', [])
-        
-        if not isinstance(vertical_ids, list):
-            return Response(
-                {'error': 'vertical_ids must be an array'},
                 status=status.HTTP_400_BAD_REQUEST
             )
         
@@ -552,10 +552,20 @@ class EnterpriseViewSet(viewsets.ModelViewSet):
         enterprise.accessible_verticals = vertical_ids
         enterprise.save()
         
+        # Format available verticals for response
+        available_verticals_list = [
+            {
+                'value': vertical,
+                'label': dict(enterprise.Vertical.choices).get(vertical, vertical)
+            }
+            for vertical in available_verticals
+        ]
+        
         return Response({
             'message': 'Accessible verticals updated successfully',
-            'enterprise_id': enterprise.id,
-            'accessible_verticals': enterprise.accessible_verticals
+            'enterprise_id': str(enterprise.id),
+            'accessible_verticals': enterprise.accessible_verticals or [],
+            'available_verticals': available_verticals_list
         })
 
     @action(detail=True, methods=['post'], url_path='progress-report/compute')

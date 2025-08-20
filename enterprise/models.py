@@ -112,15 +112,16 @@ class Enterprise(models.Model):
             ]
     
     def get_available_verticals(self):
-        """Return the list of available verticals based on enterprise type and accessible_verticals"""
-        default_verticals = self.get_default_verticals()
+        """
+        Return the list of available verticals based on enterprise type.
         
-        # If accessible_verticals is not set, return all default verticals for the enterprise type
-        if not self.accessible_verticals:
-            return default_verticals
-            
-        # Otherwise, return the intersection of default verticals and accessible_verticals
-        return [v for v in default_verticals if v[0] in self.accessible_verticals]
+        Returns:
+            list: List of (value, label) tuples representing all verticals
+                  available for this enterprise type
+        """
+        # Simply return all default verticals for the enterprise type
+        # The frontend will handle which ones are currently enabled
+        return self.get_default_verticals()
     
     def set_accessible_verticals(self, vertical_codes):
         """Set the accessible verticals for this enterprise"""
