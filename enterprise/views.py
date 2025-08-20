@@ -8,13 +8,15 @@ import openai
 from openpyxl import load_workbook
 from django.conf import settings
 from django.core.exceptions import ValidationError
+from django.core.paginator import Paginator
 from django.db import transaction, IntegrityError, models
 from django.utils import timezone
-from django.db.models import Count, Sum, F, Q
+from django.db.models import Q, F, Case, When, Value, IntegerField, Count, Avg, Max, Sum
 import os
 import boto3
 import traceback
 from datetime import datetime, timedelta
+from django.db.models.functions import Concat
 
 from rest_framework import viewsets, status, filters
 from rest_framework.response import Response
@@ -1185,7 +1187,6 @@ class EnterpriseUserViewSet(viewsets.ModelViewSet):
         Query Parameters:
         - enterprise_id: Required, filters users by enterprise
         - search: Optional, search term to filter users by name or email (case-insensitive)
-        - department: Optional, filter users by department
         - goal_status: Optional, filter by goal status ('completed', 'in_progress', 'not_started')
         - last_activity_after: Optional, filter users active after this date (YYYY-MM-DD)
         - last_activity_before: Optional, filter users active before this date (YYYY-MM-DD)
@@ -1195,9 +1196,6 @@ class EnterpriseUserViewSet(viewsets.ModelViewSet):
         - page_size: Optional, number of items per page (default: 20, max: 100)
         - enterprise_user_ids: Comma-separated list of EnterpriseUser IDs to include (overrides other filters)
         """
-        from django.db.models import Q, F, Case, When, Value, IntegerField, Count, Avg, Max
-        from django.utils import timezone
-        from datetime import datetime, timedelta
         
         enterprise_id = request.query_params.get('enterprise_id')
         if not enterprise_id:
@@ -1233,11 +1231,6 @@ class EnterpriseUserViewSet(viewsets.ModelViewSet):
                     Q(full_name__icontains=search_query)
                 )
             
-            # Apply department filter if provided
-            department = request.query_params.get('department')
-            if department:
-                users_queryset = users_queryset.filter(department__iexact=department)
-            
             # Apply date range filters for last activity
             try:
                 last_activity_after = request.query_params.get('last_activity_after')
@@ -1268,8 +1261,6 @@ class EnterpriseUserViewSet(viewsets.ModelViewSet):
                 'name': 'full_name',
                 'email': 'user__email',
                 'last_login': 'last_activity',
-                'department': 'department',
-                'job_title': 'job_title',
                 'sessions_completed': 'sessions_completed',
                 'goal_completion': 'overall_goal_completion'
             }
@@ -1352,13 +1343,7 @@ class EnterpriseUserViewSet(viewsets.ModelViewSet):
                     'progress': round((data['total_completed'] / (data['target'] * data['user_count'])) * 100, 1) if data['user_count'] > 0 else 0
                 })
             
-            # Get unique departments for filter options
-            departments = list(EnterpriseUser.objects.filter(enterprise=enterprise)\
-                .exclude(department__isnull=True)\
-                .exclude(department__exact='')\
-                .order_by('department')\
-                .values_list('department', flat=True)\
-                .distinct())
+
             
             # Prepare response data with pagination info
             response_data = {
@@ -1375,9 +1360,7 @@ class EnterpriseUserViewSet(viewsets.ModelViewSet):
                     'previous_page_number': users_page.previous_page_number() if users_page.has_previous() else None
                 },
                 'filters': {
-                    'available_departments': departments,
                     'search_term': search_query,
-                    'selected_department': department,
                     'date_range': {
                         'start': last_activity_after.strftime('%Y-%m-%d') if 'last_activity_after' in locals() and last_activity_after else None,
                         'end': last_activity_before.strftime('%Y-%m-%d') if 'last_activity_before' in locals() and last_activity_before else None
