@@ -13,21 +13,23 @@ class EnterpriseSerializer(serializers.ModelSerializer):
     Serializer for the Enterprise model.
     """
     available_verticals = serializers.SerializerMethodField()
+    sport_type_display = serializers.SerializerMethodField()
     
     class Meta:
         model = Enterprise
         fields = [
-            'id', 'name', 'domain', 'enterprise_type', 'logo', 'favicon',
-            'primary_color', 'secondary_color', 'is_active', 'require_domain_match', 
-            'one_on_one_coaching_link', 'accessible_verticals', 'available_verticals', 
-            'created_at', 'updated_at'
+            'id', 'name', 'domain', 'enterprise_type', 'sport_type', 'sport_type_display',
+            'logo', 'favicon', 'primary_color', 'secondary_color', 'is_active', 
+            'require_domain_match', 'one_on_one_coaching_link', 'accessible_verticals', 
+            'available_verticals', 'created_at', 'updated_at'
         ]
-        read_only_fields = ['id', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'created_at', 'updated_at', 'sport_type_display']
         extra_kwargs = {
             'logo': {'required': False, 'allow_null': True},
             'favicon': {'required': False, 'allow_null': True},
             'primary_color': {'required': False},
-            'secondary_color': {'required': False}
+            'secondary_color': {'required': False},
+            'sport_type': {'required': False, 'allow_null': True, 'write_only': False}
         }
     
     def get_available_verticals(self, obj):
@@ -36,6 +38,12 @@ class EnterpriseSerializer(serializers.ModelSerializer):
             'value': vertical,
             'label': dict(Enterprise.Vertical.choices)[vertical]
         } for vertical in obj.get_available_verticals()]
+        
+    def get_sport_type_display(self, obj):
+        """Return the display value for sport_type."""
+        if not obj.sport_type:
+            return None
+        return dict(Enterprise._meta.get_field('sport_type').choices).get(obj.sport_type)
 
     def validate_domain(self, value):
         """Ensure domain is in the correct format."""

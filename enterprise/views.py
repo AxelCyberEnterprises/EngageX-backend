@@ -905,6 +905,9 @@ class EnterpriseQuestionViewSet(viewsets.ModelViewSet):
         vertical = self.request.query_params.get('vertical')
         if vertical:
             queryset = queryset.filter(vertical=vertical)
+        sport_type = self.request.query_params.get('sport_type')
+        if sport_type:
+            queryset = queryset.filter(sport_type=sport_type)
         is_active = self.request.query_params.get('is_active')
         if is_active is not None:
             is_active = is_active.lower() in ('true', '1', 't')

@@ -35,6 +35,18 @@ class Enterprise(models.Model):
         default=EnterpriseType.SPORT,
         help_text="Type of enterprise"
     )
+    sport_type = models.CharField(
+        max_length=10,
+        choices=[
+            ('nfl', 'NFL'),
+            ('nba', 'NBA'),
+            ('wnba', 'WNBA'),
+            ('mlb', 'MLB')
+        ],
+        blank=True,
+        null=True,
+        help_text="Primary sport type for this enterprise (if applicable)"
+    )
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

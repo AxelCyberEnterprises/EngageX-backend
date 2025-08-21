@@ -39,8 +39,8 @@ class EnterpriseQuestionInline(admin.TabularInline):
 
 @admin.register(Enterprise)
 class EnterpriseAdmin(admin.ModelAdmin):
-    list_display = ('name', 'domain', 'enterprise_type_display', 'is_active', 'created_at')
-    list_filter = ('is_active', 'enterprise_type')
+    list_display = ('name', 'domain', 'enterprise_type_display', 'sport_type_display', 'is_active', 'created_at')
+    list_filter = ('is_active', 'enterprise_type', 'sport_type')
     search_fields = ('name', 'domain')
     readonly_fields = ('created_at', 'updated_at', 'available_verticals_display')
     list_editable = ('is_active',)
@@ -48,7 +48,7 @@ class EnterpriseAdmin(admin.ModelAdmin):
     
     fieldsets = (
         (None, {
-            'fields': ('name', 'domain', 'enterprise_type', 'logo', 'is_active')
+            'fields': ('name', 'domain', 'enterprise_type', 'sport_type', 'logo', 'is_active')
         }),
         ('Verticals', {
             'fields': ('available_verticals_display',),
@@ -108,6 +108,31 @@ class EnterpriseAdmin(admin.ModelAdmin):
         )
     enterprise_type_display.short_description = 'Type'
     enterprise_type_display.admin_order_field = 'enterprise_type'
+    
+    def sport_type_display(self, obj):
+        """Display sport type as a colored badge"""
+        if not obj.sport_type:
+            return "-"
+            
+        # Get the display value for the sport type
+        sport_type_display = dict(Enterprise._meta.get_field('sport_type').choices).get(obj.sport_type, obj.sport_type)
+        
+        # Choose a color based on sport type
+        sport_colors = {
+            'nfl': '#013369',  # NFL blue
+            'nba': '#1D428A',  # NBA blue
+            'wnba': '#FFCD34', # WNBA yellow
+            'mlb': '#002D62'   # MLB navy blue
+        }
+        color = sport_colors.get(obj.sport_type, '#757575')  # Default gray
+        
+        return format_html(
+            '<span class="badge" style="background: {color}; color: white; padding: 3px 6px; border-radius: 4px; font-size: 12px;">{text}</span>',
+            color=color,
+            text=sport_type_display.upper()
+        )
+    sport_type_display.short_description = 'Sport Type'
+    sport_type_display.admin_order_field = 'sport_type'
 
 @admin.register(EnterpriseUser)
 class EnterpriseUserAdmin(admin.ModelAdmin):
