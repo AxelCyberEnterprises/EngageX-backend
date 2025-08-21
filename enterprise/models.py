@@ -240,6 +240,20 @@ class EnterpriseUser(models.Model):
         help_text="User-specific secondary color (overrides enterprise color if set)",
     )
     
+    role = models.CharField(
+        max_length=100,
+        null=True,
+        blank=True,
+        help_text="User's role within the enterprise"
+    )
+    
+    team = models.CharField(
+        max_length=100,
+        null=True,
+        blank=True,
+        help_text="User's team within the enterprise"
+    )
+    
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     

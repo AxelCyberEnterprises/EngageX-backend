@@ -193,11 +193,14 @@ class EnterpriseUserSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'user', 'user_id', 'enterprise', 'enterprise_name', 'user_type',
             'is_admin', 'created_at', 'updated_at', 'progress',
-            'logo', 'favicon', 'primary_color', 'secondary_color'  # Add branding fields
+            'logo', 'favicon', 'primary_color', 'secondary_color',
+            'role', 'team'  # Add role and team fields
         ]
         read_only_fields = ['created_at', 'updated_at']
         extra_kwargs = {
             'enterprise': {'required': True},
+            'role': {'required': False, 'allow_blank': True},
+            'team': {'required': False, 'allow_blank': True}
         }
         
     def get_progress(self, obj):
