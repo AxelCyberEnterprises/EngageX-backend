@@ -180,20 +180,6 @@ class PracticeSession(models.Model):
     )
     scheduled_delete_at = models.DateTimeField(null=True, blank=True)
 
-    # --- Replace original slides_URL with slides_file (FileField) ---
-    slides_file = models.FileField(
-        # Pass the *instance* of the storage class obtained above
-        storage=SlidesStorageInstance,  # <-- Use the obtained storage instance here (either custom or default)
-        upload_to='slides/',  # <-- Specify the subdirectory within that storage
-        blank=True,
-        null=True,
-        # Add validators if you want to restrict file types (e.g., PDF, PPT, images)
-        validators=[FileExtensionValidator(
-            allowed_extensions=['pdf', 'ppt', 'pptx', 'odp', 'key', 'jpg', 'jpeg', 'png', 'gif'])],
-        help_text="Upload presentation slides (e.g., PDF, PPT, image files).",
-    )
-    # --- End Change ---
-
     slide_specific_timing = models.JSONField(default=dict, null=True, blank=True)
     allow_ai_questions = models.BooleanField(
         default=False, help_text="Allow AI to ask random questions during the session"

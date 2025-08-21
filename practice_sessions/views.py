@@ -1664,215 +1664,324 @@ class SessionDashboardView(APIView):
         return round(((current_value - previous_value) / previous_value) * 100, 2)
 
 
-class UploadSessionSlidesView(APIView):
-    """
-    Endpoint to upload slides to a specific practice session, and retrieve the slide URL.
-    """
+# class UploadSessionSlidesView(APIView):
+#     """
+#     Endpoint to upload slides to a specific practice session, and retrieve the slide URL.
+#     """
 
+#     permission_classes = [IsAuthenticated]
+#     parser_classes = [MultiPartParser, FormParser]
+
+#     def get(self, request, pk=None):
+#         """
+#         Retrieve the URL of the slides for a specific practice session.
+#         Returns a pre-signed URL for S3 files if USE_S3 is True and files are not public.
+#         For local storage, returns the standard URL.
+#         """
+#         try:
+#             # Get the practice session object by its primary key
+#             practice_session = get_object_or_404(PracticeSession, pk=pk)
+#             print(practice_session.slide_preview)
+#             print(practice_session.slide_preview.slides_file)
+
+#             if practice_session.user != request.user:
+#                 return Response(
+#                     {"message": "You do not have permission to access slides for this session."},
+#                     status=status.HTTP_403_FORBIDDEN,
+#                 )
+
+#             # Check if a slides_file has been uploaded for this session
+#             if not practice_session.slides_file or not practice_session.slides_file.name:
+#                 # Return a 404 or 200 with a clear message if no file is attached
+#                 return Response(
+#                     {"message": "No slides available for this session."},
+#                     status=status.HTTP_404_NOT_FOUND  # Or status.HTTP_200_OK with {"slide_url": None}
+#                 )
+
+#             slide_url = None
+#             # Determine the storage method configured and get the appropriate URL
+#             if settings.USE_S3:
+#                 try:
+#                     s3_client = boto3.client(
+#                         "s3",
+#                         region_name=settings.AWS_S3_REGION_NAME,
+#                         # Consider more secure ways to handle credentials in production
+#                     )
+#                 except Exception as e:
+#                     print(f"Error initializing S3 client: {e}")
+#                     return Response(
+#                         {"error": "Could not initialize S3 client."},
+#                         status=status.HTTP_500_INTERNAL_SERVER_ERROR
+#                     )
+
+#                 try:
+#                     s3_key = practice_session.slides_file.name  # This is the value from the database field
+
+#                     print(f"Attempting to generate pre-signed URL for S3 key: {s3_key}")  # Log the key from .name
+
+#                     # Generate the pre-signed URL for 'get_object' operation
+#                     slide_url = s3_client.generate_presigned_url(
+#                         'get_object',
+#                         Params={'Bucket': settings.AWS_STORAGE_BUCKET_NAME, 'Key': s3_key},
+#                         ExpiresIn=3600  # URL expires in 1 hour (adjust the expiration time as needed)
+#                     )
+#                     print(f"Generated pre-signed S3 URL for key: {s3_key}")  # Log the key used to generate URL
+
+
+#                 except (NoCredentialsError, PartialCredentialsError):
+#                     print("AWS credentials not found or incomplete. Cannot generate pre-signed URL.")
+#                     return Response(
+#                         {"error": "AWS credentials not configured correctly."},
+#                         status=status.HTTP_500_INTERNAL_SERVER_ERROR
+#                     )
+#                 except ClientError as e:
+#                     print(f"S3 ClientError generating pre-signed URL: {e}")
+#                     if e.response['Error']['Code'] == '404' or e.response['Error']['Code'] == 'NoSuchKey':
+#                         print(
+#                             f"NoSuchKey error details from S3: Key attempted: {e.response['Error'].get('Key')}")  # Log the key S3 was asked for
+#                         return Response(
+#                             {"error": "Slide file not found in S3. The requested key does not exist."},
+#                             status=status.HTTP_404_NOT_FOUND
+#                         )
+#                     return Response(
+#                         {"error": f"S3 error generating slide URL: {e}"},
+#                         status=status.HTTP_500_INTERNAL_SERVER_ERROR
+#                     )
+#                 except Exception as e:
+#                     print(f"Error generating pre-signed URL: {e}")
+#                     traceback.print_exc()
+#                     return Response(
+#                         {"error": "Could not generate slide URL due to unexpected error."},
+#                         status=status.HTTP_500_INTERNAL_SERVER_ERROR
+#                     )
+#             else:
+#                 try:
+#                     slide_url = practice_session.slides_file.url
+#                     print(f"Using local storage URL: {slide_url}")
+#                 except Exception as e:
+#                     print(f"Error getting local storage URL: {e}")
+#                     traceback.print_exc()
+#                     return Response(
+#                         {"error": "Could not retrieve local slide URL."},
+#                         status=status.HTTP_500_INTERNAL_SERVER_ERROR
+#                     )
+
+#             if slide_url:
+#                 return Response(
+#                     {
+#                         "status": "success",
+#                         "message": "Slide URL retrieved successfully.",
+#                         "slide_url": slide_url,
+#                     },
+#                     status=status.HTTP_200_OK,
+#                 )
+#             else:
+#                 return Response(
+#                     {"message": "Could not retrieve slide URL."},
+#                     status=status.HTTP_500_INTERNAL_SERVER_ERROR
+#                 )
+
+#         except PracticeSession.DoesNotExist:
+#             return Response(
+#                 {"error": "PracticeSession not found"}, status=status.HTTP_404_NOT_FOUND
+#             )
+#         except Exception as e:
+#             print(f"An unexpected error occurred while retrieving slide URL: {e}")
+#             traceback.print_exc()
+#             return Response(
+#                 {"error": "An internal error occurred.", "details": str(e)},
+#                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+#             )
+
+#     def put(self, request, pk=None):
+#         """
+#         Generate and save slide summary for a specific practice session.
+#         """
+#         try:
+#             practice_session = get_object_or_404(PracticeSession, pk=pk)
+#             print(practice_session.slide_preview)
+
+#             if practice_session.user != request.user:
+#                 return Response(
+#                     {
+#                         "message": "You do not have permission to upload slides for this session."
+#                     },
+#                     status=status.HTTP_403_FORBIDDEN,
+#                 )
+
+#             # Check if there is a slides file
+#             if not practice_session.slides_file:
+#                 return Response(
+#                     {"message": "No slides file found for this session."},
+#                     status=status.HTTP_400_BAD_REQUEST,
+#                 )
+
+#             # Get the path to the slides file
+#             slides_path = practice_session.slides_file
+#             if not slides_path.name.endswith('pdf'):
+#                 return Response(
+#                     {"message": "Slides file is not a PDF."},
+#                     status=status.HTTP_400_BAD_REQUEST,
+#                 )
+
+#             print('---processing pdf----')
+
+#             with concurrent.futures.ThreadPoolExecutor() as executor:
+#                 print("DEBUG pdf_path:", slides_path, type(slides_path))
+#                 future = executor.submit(generate_slide_summary, slides_path)
+#                 result = future.result()
+
+#             practice_session.slide_efficiency = result['SlideEfficiency']
+#             practice_session.text_economy = result['TextEconomy']
+#             practice_session.visual_communication = result['VisualCommunication']
+#             practice_session.save()
+
+#             # Serialize updated session
+#             from .serializers import PracticeSessionSerializer
+#             session_data = PracticeSessionSerializer(practice_session).data
+
+#             # *** CHECK THIS LOG AFTER A PUT REQUEST ***
+#             if practice_session.slides_file:
+#                 print(
+#                     f"WS: After save in PUT, practice_session.slides_file.name is: {practice_session.slides_file.name}"
+#                 )
+#             else:
+#                 print("WS: After save in PUT, practice_session.slides_file is None.")
+#             # *** WHAT IS THE EXACT OUTPUT OF THIS LINE? ***
+
+#             return Response(
+#                 {
+#                     "status": "success",
+#                     "message": "Slides uploaded and summary generated successfully.",
+#                     "data": session_data
+#                 },
+#                 status=status.HTTP_200_OK,
+#             )
+
+#         except PracticeSession.DoesNotExist:
+#             return Response(
+#                 {"error": "PracticeSession not found."},
+#                 status=status.HTTP_404_NOT_FOUND,
+#             )
+
+#         except Exception as e:
+#             print(f"An unexpected error occurred during slide upload for session {pk}: {e}")
+#             traceback.print_exc()
+#             return Response(
+#                 {
+#                     "error": "An internal error occurred during slide upload.",
+#                     "details": str(e),
+#                 },
+#                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+#             )
+
+
+class UploadSessionSlidesView(APIView):
     permission_classes = [IsAuthenticated]
     parser_classes = [MultiPartParser, FormParser]
 
     def get(self, request, pk=None):
-        """
-        Retrieve the URL of the slides for a specific practice session.
-        Returns a pre-signed URL for S3 files if USE_S3 is True and files are not public.
-        For local storage, returns the standard URL.
-        """
         try:
-            # Get the practice session object by its primary key
             practice_session = get_object_or_404(PracticeSession, pk=pk)
-            print(practice_session.slide_preview)
-            print(practice_session.slide_preview.slides_file)
-
+            
             if practice_session.user != request.user:
                 return Response(
                     {"message": "You do not have permission to access slides for this session."},
                     status=status.HTTP_403_FORBIDDEN,
                 )
 
-            # Check if a slides_file has been uploaded for this session
-            if not practice_session.slides_file or not practice_session.slides_file.name:
-                # Return a 404 or 200 with a clear message if no file is attached
+            if not practice_session.slide_preview or not practice_session.slide_preview.slides_file:
                 return Response(
                     {"message": "No slides available for this session."},
-                    status=status.HTTP_404_NOT_FOUND  # Or status.HTTP_200_OK with {"slide_url": None}
+                    status=status.HTTP_404_NOT_FOUND
                 )
 
-            slide_url = None
-            # Determine the storage method configured and get the appropriate URL
+            # Get the URL from the slide preview
+            slide_url = practice_session.slide_preview.slides_file.url
             if settings.USE_S3:
                 try:
                     s3_client = boto3.client(
                         "s3",
                         region_name=settings.AWS_S3_REGION_NAME,
-                        # Consider more secure ways to handle credentials in production
                     )
-                except Exception as e:
-                    print(f"Error initializing S3 client: {e}")
-                    return Response(
-                        {"error": "Could not initialize S3 client."},
-                        status=status.HTTP_500_INTERNAL_SERVER_ERROR
-                    )
-
-                try:
-                    s3_key = practice_session.slides_file.name  # This is the value from the database field
-
-                    print(f"Attempting to generate pre-signed URL for S3 key: {s3_key}")  # Log the key from .name
-
-                    # Generate the pre-signed URL for 'get_object' operation
+                    s3_key = practice_session.slide_preview.slides_file.name
                     slide_url = s3_client.generate_presigned_url(
                         'get_object',
                         Params={'Bucket': settings.AWS_STORAGE_BUCKET_NAME, 'Key': s3_key},
-                        ExpiresIn=3600  # URL expires in 1 hour (adjust the expiration time as needed)
-                    )
-                    print(f"Generated pre-signed S3 URL for key: {s3_key}")  # Log the key used to generate URL
-
-
-                except (NoCredentialsError, PartialCredentialsError):
-                    print("AWS credentials not found or incomplete. Cannot generate pre-signed URL.")
-                    return Response(
-                        {"error": "AWS credentials not configured correctly."},
-                        status=status.HTTP_500_INTERNAL_SERVER_ERROR
-                    )
-                except ClientError as e:
-                    print(f"S3 ClientError generating pre-signed URL: {e}")
-                    if e.response['Error']['Code'] == '404' or e.response['Error']['Code'] == 'NoSuchKey':
-                        print(
-                            f"NoSuchKey error details from S3: Key attempted: {e.response['Error'].get('Key')}")  # Log the key S3 was asked for
-                        return Response(
-                            {"error": "Slide file not found in S3. The requested key does not exist."},
-                            status=status.HTTP_404_NOT_FOUND
-                        )
-                    return Response(
-                        {"error": f"S3 error generating slide URL: {e}"},
-                        status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                        ExpiresIn=3600
                     )
                 except Exception as e:
-                    print(f"Error generating pre-signed URL: {e}")
-                    traceback.print_exc()
-                    return Response(
-                        {"error": "Could not generate slide URL due to unexpected error."},
-                        status=status.HTTP_500_INTERNAL_SERVER_ERROR
-                    )
-            else:
-                try:
-                    slide_url = practice_session.slides_file.url
-                    print(f"Using local storage URL: {slide_url}")
-                except Exception as e:
-                    print(f"Error getting local storage URL: {e}")
-                    traceback.print_exc()
-                    return Response(
-                        {"error": "Could not retrieve local slide URL."},
-                        status=status.HTTP_500_INTERNAL_SERVER_ERROR
-                    )
+                    print(f"Error generating S3 URL: {e}")
 
-            if slide_url:
-                return Response(
-                    {
-                        "status": "success",
-                        "message": "Slide URL retrieved successfully.",
-                        "slide_url": slide_url,
-                    },
-                    status=status.HTTP_200_OK,
-                )
-            else:
-                return Response(
-                    {"message": "Could not retrieve slide URL."},
-                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
-                )
-
-        except PracticeSession.DoesNotExist:
             return Response(
-                {"error": "PracticeSession not found"}, status=status.HTTP_404_NOT_FOUND
+                {
+                    "status": "success",
+                    "message": "Slide URL retrieved successfully.",
+                    "slide_url": slide_url,
+                },
+                status=status.HTTP_200_OK,
             )
+
         except Exception as e:
-            print(f"An unexpected error occurred while retrieving slide URL: {e}")
-            traceback.print_exc()
+            print(f"Error in get slides: {e}")
             return Response(
-                {"error": "An internal error occurred.", "details": str(e)},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                {"error": "An error occurred while retrieving slides."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
     def put(self, request, pk=None):
-        """
-        Generate and save slide summary for a specific practice session.
-        """
         try:
             practice_session = get_object_or_404(PracticeSession, pk=pk)
-            print(practice_session.slide_preview)
 
             if practice_session.user != request.user:
                 return Response(
-                    {
-                        "message": "You do not have permission to upload slides for this session."
-                    },
+                    {"message": "You do not have permission to upload slides for this session."},
                     status=status.HTTP_403_FORBIDDEN,
                 )
 
-            # Check if there is a slides file
-            if not practice_session.slides_file:
+            if not practice_session.slide_preview or not practice_session.slide_preview.slides_file:
                 return Response(
-                    {"message": "No slides file found for this session."},
+                    {"message": "No slides found for this session."},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
-            # Get the path to the slides file
-            slides_path = practice_session.slides_file
-            if not slides_path.name.endswith('pdf'):
+            # Process the slides file from the preview
+            slides_file = practice_session.slide_preview.slides_file
+            if not slides_file.name.endswith('pdf'):
                 return Response(
                     {"message": "Slides file is not a PDF."},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
-            print('---processing pdf----')
-
+            # Generate slide summary
             with concurrent.futures.ThreadPoolExecutor() as executor:
-                print("DEBUG pdf_path:", slides_path, type(slides_path))
-                future = executor.submit(generate_slide_summary, slides_path)
+                future = executor.submit(generate_slide_summary, slides_file)
                 result = future.result()
 
-            practice_session.slide_efficiency = result['SlideEfficiency']
-            practice_session.text_economy = result['TextEconomy']
-            practice_session.visual_communication = result['VisualCommunication']
+            # Update the session with the results
+            practice_session.slide_efficiency = result.get('SlideEfficiency', 0)
+            practice_session.text_economy = result.get('TextEconomy', 0)
+            practice_session.visual_communication = result.get('VisualCommunication', 0)
             practice_session.save()
 
-            # Serialize updated session
-            from .serializers import PracticeSessionSerializer
-            session_data = PracticeSessionSerializer(practice_session).data
-
-            # *** CHECK THIS LOG AFTER A PUT REQUEST ***
-            if practice_session.slides_file:
-                print(
-                    f"WS: After save in PUT, practice_session.slides_file.name is: {practice_session.slides_file.name}"
-                )
-            else:
-                print("WS: After save in PUT, practice_session.slides_file is None.")
-            # *** WHAT IS THE EXACT OUTPUT OF THIS LINE? ***
+            # Mark the preview as linked
+            practice_session.slide_preview.is_linked = True
+            practice_session.slide_preview.save()
 
             return Response(
                 {
                     "status": "success",
-                    "message": "Slides uploaded and summary generated successfully.",
-                    "data": session_data
+                    "message": "Slides processed successfully.",
+                    "data": PracticeSessionSerializer(practice_session).data
                 },
                 status=status.HTTP_200_OK,
             )
 
-        except PracticeSession.DoesNotExist:
-            return Response(
-                {"error": "PracticeSession not found."},
-                status=status.HTTP_404_NOT_FOUND,
-            )
-
         except Exception as e:
-            print(f"An unexpected error occurred during slide upload for session {pk}: {e}")
-            traceback.print_exc()
+            print(f"Error processing slides: {e}")
             return Response(
-                {
-                    "error": "An internal error occurred during slide upload.",
-                    "details": str(e),
-                },
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                {"error": "An error occurred while processing slides."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
 

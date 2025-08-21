@@ -43,6 +43,13 @@ class EnterpriseSpecialtySessionSerializer(serializers.ModelSerializer):
         }
 
 
+class SlidePreviewSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = SlidePreview
+        fields = '__all__'
+        read_only_fields = ["user", "is_linked", "created_at"]
+
+
 class PracticeSessionSerializer(serializers.ModelSerializer):
     user_email = serializers.EmailField(source="user.email", read_only=True)
     full_name = serializers.SerializerMethodField()
@@ -50,6 +57,14 @@ class PracticeSessionSerializer(serializers.ModelSerializer):
     latest_score = serializers.SerializerMethodField()
     slide_preview_id = serializers.CharField(allow_null=True, allow_blank=True, required=False)
     
+    slide_preview = SlidePreviewSerializer(read_only=True)
+    slide_preview_id = serializers.PrimaryKeyRelatedField(
+        queryset=SlidePreview.objects.all(),
+        source='slide_preview',
+        write_only=True,
+        required=False
+    )
+
     # Enterprise Specialty fields
     enterprise_settings = EnterpriseSpecialtySessionSerializer(required=False, allow_null=True)
 
@@ -277,8 +292,4 @@ class SessionReportSerializer(serializers.Serializer):
     slide_specific_timing = DictField(allow_empty=True)
 
 
-class SlidePreviewSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = SlidePreview
-        fields = '__all__'
-        read_only_fields = ["user", "is_linked", "created_at"]
+
