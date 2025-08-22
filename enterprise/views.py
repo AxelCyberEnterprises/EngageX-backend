@@ -3,6 +3,7 @@ import io
 import logging
 import random
 import string
+from django.template.loader import render_to_string
 import uuid
 import openai
 from openpyxl import load_workbook
@@ -1124,6 +1125,102 @@ class EnterpriseUserViewSet(viewsets.ModelViewSet):
     serializer_class = EnterpriseUserSerializer
     permission_classes = [IsAuthenticated]
     parser_classes = [MultiPartParser, JSONParser]
+    
+    def create(self, request, *args, **kwargs):
+        """
+        Create a single enterprise user.
+        
+        Required fields:
+        - email: User's email address
+        - enterprise: ID of the enterprise
+        
+        Optional fields:
+        - first_name: User's first name
+        - last_name: User's last name
+        - user_type: 'general' (default) or 'rookie'
+        - role: User's role in the enterprise
+        - team: User's team in the enterprise
+        - send_invitation: Whether to send invitation email (default: true)
+        """
+        try:
+            # Get enterprise
+            enterprise_id = request.data.get('enterprise')
+            if not enterprise_id:
+                return Response(
+                    {'error': 'Enterprise ID is required'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+                
+            try:
+                enterprise = Enterprise.objects.get(pk=enterprise_id)
+            except Enterprise.DoesNotExist:
+                return Response(
+                    {'error': 'Enterprise not found'},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+            
+            # Check permissions - only enterprise admins can create users
+            if not request.user.is_staff and not request.user.is_superuser:
+                # Check if user is an admin of this enterprise
+                try:
+                    enterprise_user = EnterpriseUser.objects.get(
+                        user=request.user,
+                        enterprise=enterprise,
+                        is_admin=True
+                    )
+                except EnterpriseUser.DoesNotExist:
+                    return Response(
+                        {'error': 'You do not have permission to create users for this enterprise'},
+                        status=status.HTTP_403_FORBIDDEN
+                    )
+            
+            # Create user data dict from request
+            user_data = {
+                'email': request.data.get('email'),
+                'first_name': request.data.get('first_name', ''),
+                'last_name': request.data.get('last_name', ''),
+                'user_type': request.data.get('user_type', 'general'),
+                'role': request.data.get('role'),
+                'team': request.data.get('team')
+            }
+            
+            # Check if send_invitation is provided, default to True if not
+            send_invitation = request.data.get('send_invitation', 'true').lower() == 'true'
+            
+            try:
+                # Create the user
+                user = self._create_enterprise_user(user_data, enterprise, send_invitation)
+                
+                # Get the created enterprise user
+                enterprise_user = EnterpriseUser.objects.get(user=user, enterprise=enterprise)
+                
+                # Return the created user
+                serializer = self.get_serializer(enterprise_user)
+                headers = self.get_success_headers(serializer.data)
+                return Response(
+                    serializer.data,
+                    status=status.HTTP_201_CREATED,
+                    headers=headers
+                )
+                
+            except ValueError as e:
+                return Response(
+                    {'error': str(e)},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            except Exception as e:
+                logger.error(f"Error creating enterprise user: {str(e)}", exc_info=True)
+                return Response(
+                    {'error': 'An error occurred while creating the user'},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
+                
+        except Exception as e:
+            logger.error(f"Unexpected error in create enterprise user: {str(e)}", exc_info=True)
+            return Response(
+                {'error': 'An unexpected error occurred'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
     
     def get_queryset(self):
         queryset = EnterpriseUser.objects.select_related('user', 'enterprise')
