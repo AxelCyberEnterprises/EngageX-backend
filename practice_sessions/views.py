@@ -2395,18 +2395,6 @@ class SessionReportView(APIView):
             print(f"[generate_full_summary] error fetching transcripts: {e}")
             transcript_text = ""
 
-        # Truncate transcript_text to avoid very large prompts (keep some safety margin)
-        MAX_TRANSCRIPT_CHARS = 30000
-        if len(transcript_text) > MAX_TRANSCRIPT_CHARS:
-            print(f"[generate_full_summary] transcript too long ({len(transcript_text)} chars), truncating to {MAX_TRANSCRIPT_CHARS}")
-            transcript_text = transcript_text[:MAX_TRANSCRIPT_CHARS]
-            # indicate truncation to the model
-            transcript_text += "\n\n[TRUNCATED - full transcript omitted due to length]"
-
-        # Truncate combined_feedback as well
-        MAX_FEEDBACK_CHARS = 5000
-        if len(combined_feedback) > MAX_FEEDBACK_CHARS:
-            combined_feedback = combined_feedback[:MAX_FEEDBACK_CHARS] + "\n\n[TRUNCATED - more feedback omitted]"
 
         # -- Determine the correct "vertical" for this session --
         enterprise_vertical = None
@@ -2468,44 +2456,143 @@ class SessionReportView(APIView):
                 "press conferences, and media appearances."
             )
             specific_instructions = (
-                "From the transcript and feedback, produce:\n"
-                "1) Strengths: a list of concise bullet items (what the speaker did well for media appearances).\n"
-                "2) Areas for Improvement: targeted, practical suggestions the speaker can apply (short bullets).\n"
-                "3) General Feedback Summary: a short cohesive paragraph summarizing overall performance and messaging.\n"
-                "Focus on clarity, message, tone, body language cues, and media-appropriate phrasing. "
-                "Keep language simple, actionable, and specific. Use evidence from the transcript/feedback when possible."
+                f"""Use my transcript and the evaluation data to give me detailed, structured feedback in three parts. Talk to me like a coach who genuinely wants to see me grow — not just as an athlete, but as a communicator and role model.
+
+               1. Strengths: Highlight what I did well in this appearance. Focus on how I handled questions, the way I carried myself, my clarity, tone, and any standout responses. Keep the language simple and encouraging. Be specific.
+
+               2. Areas for Improvement: Give clear and constructive feedback on where I can get better. Focus on my media presence, how I answered questions, how I framed my thoughts, and whether I stayed composed and on message. Keep the suggestions practical and easy to apply.
+
+               3.  General Feedback Summary: Craft a detailed, content-specific analysis of my session. Your summary must be grounded in specific parts of my speech. Go deeper into how I handled each question during the session and list the questions by bullet points('-'). For every question in the transcript (including ones labeled "AUDIENCE QUESTION"). Your primary focus is how I handled the questions but include the following:
+               - Did I fully answer the question or dodge it?
+               - Did I control the narrative or let the interviewer steer me off message?
+               - Was my answer memorable, respectful, and aligned with my personal or team values?
+               - Did I stay calm and focused, even if the question was tricky?
+               - Was there a moment where I really connected — with a story, perspective, or strong message?
+                Also:
+               - Did it show confidence, presence, or set a clear tone?
+               - Did my message feel organized and lead somewhere meaningful?
+               - Mention my goal {goals} only if I clearly stated one.
+               - Finish with a short reflection on how I’m developing as a public voice — and where I should focus next to elevate my presence.
+
+               Tone: Speak to me with respect and belief in my future. I need guidance on how to stand tall, communicate with intention, and leave an impact in every media moment. Start by calling me by name "{name}, as a media journalist...".
+
+                """
             )
-        elif ev == "coach" or ev == "coaching":
+        elif ev == "coach":
             prompt_heading = (
-                "You are a performance coach providing feedback to the speaker/athlete to improve presentation and delivery."
+                " You are my personal communication coach. Your job is to help me become better at communicating with my coach — especially when it comes to expressing how I feel, asking for support, giving feedback, or having honest conversations. I want to build trust, show leadership, and strengthen my relationship with my coach through how I communicate."
             )
             specific_instructions = (
-                "From the transcript and feedback, produce:\n"
-                "1) Strengths: concise bullet items highlighting performance elements to preserve.\n"
-                "2) Areas for Improvement: practical, prioritized coaching tips.\n"
-                "3) General Feedback Summary: a cohesive paragraph summarizing the session and recommended next steps.\n"
-                "Focus on pacing, confidence, structure of answers, and actionable rehearsal suggestions."
+                 f"""
+                Use my transcript and the evaluation data to give me structured feedback in three parts. Talk to me like someone who wants to see me grow — not just as an athlete, but as someone who can communicate clearly, confidently, and with emotional maturity.
+
+                1. Strengths: Highlight what I did well in this conversation with my coach. Focus on how I expressed myself, whether I stayed respectful and honest, and if I showed maturity, clarity, or emotional awareness. Be specific and use simple language.
+
+                2. Areas for Improvement: Give clear, practical advice on what I could have done better. Look at how I handled disagreement, whether I avoided tough topics, if I rambled or got defensive, or if I missed a chance to be more open or thoughtful.
+
+                3.  General Feedback Summary: Craft a detailed, content-specific analysis of my session. Your summary must be grounded in specific parts of my speech. Go deeper into how I handled each question during the session and list the questions by bullet points('-'). For every question in the transcript (including ones labeled "AUDIENCE QUESTION"). Your primary focus is how I handled the questions but include the following:
+                - Did I clearly express my thoughts or feelings?
+                - Did I stay calm, respectful, and focused even if the topic was hard?
+                - Did I show that I was listening and that I understood my coach’s point of view?
+                - Was there any moment where I built trust or showed growth as a communicator?
+                - Did I give off the impression of someone who’s coachable, driven, and self-aware?
+
+                Also:
+                - Did I sound like someone who takes ownership of their growth?
+                - Mention my goal {goals} only if I clearly stated one.
+                - End with your thoughts on how I’m improving in how I show up with my coach — and what the next step should be.
+
+                Tone: Speak to me with honesty and belief in my potential. I want to get better at owning my voice and building stronger relationships, starting with the one I have with my coach. Start by calling me by name "{name}, as your coach...".
+
+"""
             )
         elif ev in ("gm", "general_manager", "general-manager"):
             prompt_heading = (
-                "You are advising from a General Manager perspective: how the speaker portrays themselves and their team/organization."
+                "You are advising from a General Manager perspective: how the speaker portrays themselves and their team/organization. Your job is to help me become better at communicating with my General Manager — especially when it comes to expressing how I feel, asking for support, giving feedback, or having honest conversations. I want to build trust, show leadership, and strengthen my relationship with my coach/GM through how I communicate."
             )
             specific_instructions = (
-                "From the transcript and feedback, produce:\n"
-                "1) Strengths: items that reflect positively on the organization/team.\n"
-                "2) Areas for Improvement: items to align messaging with organizational goals.\n"
-                "3) General Feedback Summary: a paragraph summarizing brand/organizational impact and recommended messaging changes."
+                f"""
+                Use my transcript and the evaluation data to give me structured feedback in three parts. Talk to me like someone who wants to see me grow — not just as an athlete, but as someone who can communicate clearly, confidently, and with emotional maturity.
+
+                1. Strengths: Highlight what I did well in this conversation with my GM. Focus on how I expressed myself, whether I stayed respectful and honest, and if I showed maturity, clarity, or emotional awareness. Be specific and use simple language.
+
+                2. Areas for Improvement: Give clear, practical advice on what I could have done better. Look at how I handled disagreement, whether I avoided tough topics, if I rambled or got defensive, or if I missed a chance to be more open or thoughtful.
+
+                3.  General Feedback Summary: Craft a detailed, content-specific analysis of my session. Your summary must be grounded in specific parts of my speech. Go deeper into how I handled each question during the session and list the questions by bullet points('-'). For every question in the transcript (including ones labeled "AUDIENCE QUESTION"). Your primary focus is how I handled the questions but include the following:
+                - Did I clearly express my thoughts or feelings?
+                - Did I stay calm, respectful, and focused even if the topic was hard?
+                - Did I show that I was listening and that I understood my GM’s point of view?
+                - Was there any moment where I built trust or showed growth as a communicator?
+                - Did I give off the impression of someone who’s coachable, driven, and self-aware?
+
+                Also:
+                - Did I sound like someone who takes ownership of their growth?
+                - Mention my goal {goals} only if I clearly stated one.
+                - End with your thoughts on how I’m improving in how I show up with my GM — and what the next step should be.
+
+                Tone: Speak to me with honesty and belief in my potential. I want to get better at owning my voice and building stronger relationships, starting with the one I have with my coach. Start by calling me by name "{name}, as your GM...".
+
+"""
+            )
+        elif ev=="coaching":
+            prompt_heading = (
+                "  You are my company communication coach. Your job is to help me become better at handling questions and objections from customers. I want to build trust, and encourage our prospect to buy through how I communicate."
+            )
+            specific_instructions = (
+                f"""
+                Use my transcript and the evaluation data to give me structured feedback in three parts. Talk to me like someone who wants to see me grow — not just as a salesperson, but as someone who can communicate clearly, confidently, and with emotional maturity in a sales conversation.
+                    1. Strengths: Highlight what I did well in this sales interaction. Focus on how I engaged the prospect, whether I built rapport, asked good questions, listened actively, and showed confidence, clarity, or emotional awareness. Be specific and use simple language.
+
+                    2. Areas for Improvement: Give clear, practical advice on what I could have done better. Look at how I handled objections, whether I avoided addressing pain points, if I rambled or sounded defensive, or if I missed a chance to go deeper, ask stronger questions, or guide the conversation toward value.
+
+                    3. General Feedback Summary
+
+                    Craft a detailed, content-specific analysis of my session. Your summary must be grounded in specific parts of my speech. Go deeper into how I handled each question or objection during the sales conversation and list the questions by bullet points (‘-’). For every question or objection in the transcript (including ones labeled “AUDIENCE QUESTION”). Your primary focus is how I handled the prospect’s responses, but include the following:
+
+                    - Did I clearly communicate value and connect it to the prospect’s needs?
+                    - Did I stay calm, respectful, and focused when handling objections?
+                    - Did I show that I was listening and that I understood the prospect’s point of view?
+                    - Was there any moment where I built trust, credibility, or advanced the sales relationship?
+                    - Did I come across as coachable, driven, and self-aware in my delivery?
+
+                    Also:
+
+                    - Did I sound like someone who takes ownership of their growth as a salesperson?
+                    - Mention my sales goal {goals} only if I clearly stated one.
+                    - End with your thoughts on how I’m improving in how I show up in sales conversations — and what the next step in my growth should be.
+
+                    Tone: Speak to me with honesty and belief in my potential. I want to get better at owning my voice and building stronger sales relationships, starting with how I handle every conversation. Start by calling me by name: “{name}, as your trainer...”
+                    """
             )
         else:
             # Generic speaking / presentation prompt
             prompt_heading = (
-                "You are an experienced public-speaking coach giving practical feedback on the speaker's performance."
+                "You are my personal expert communication mentor/coach specializing in public speaking, storytelling, pitching, and presentations. Your role is to critique me for my growth, and guide me to become a more impactful professional speaker for my career development."
             )
             specific_instructions = (
-                "From the transcript and feedback, produce:\n"
-                "1) Strengths: concise bullet items highlighting what the speaker did well.\n"
-                "2) Areas for Improvement: prioritized, actionable tips.\n"
-                "3) General Feedback Summary: a short cohesive paragraph summarizing overall performance."
+                f"""
+                My goal with this presentation is: {goals}. Using my provided presentation evaluation data and speech, generate a structured JSON response with the following three components:
+
+                1. Strengths: Identify my most impactful specific strengths. Focus on concrete content choices, tone, delivery techniques, and audience engagement strategies. Use simple sentences, do not include transcript quotes here.
+
+                2. Areas for Improvement: Provide clear, actionable, and specific feedback on where I can improve. Emphasize my delivery habits, missed emotional beats, and structural weaknesses. Use simple sentences, do not include transcript quotes here.
+
+                3. General Feedback Summary: Craft a detailed, content-specific analysis of my presentation. Your summary must be grounded in specific parts of my speech. Include the following:
+                - Evaluate the effectiveness of my opening: Was it attention-grabbing, relevant, or emotionally engaging? Did I clearly set the tone or premise for the rest of the talk?
+                - Highlight specific trigger words or emotionally resonant phrases I used that effectively drove engagement, and explain how they influenced the audience. Include the actual phrases from the transcript.
+                - List any filler words I overused (e.g., "um", "like", "you know"). Quote a few instances where these occurred.
+                - Comment on how I used powerful or evocative language—did I evoke empathy, joy, urgency, or excitement? Did I show vulnerability or emotional relatability?
+                - Analyze my tone of voice, Was it confident, warm, authoritative, enthusiastic, or inconsistent? Note any tone shifts and how they impacted audience engagement. Back this up with quoted phrases that show tone variation.
+                - Reflect on whether my style or personal story helped make the talk more memorable.
+                - Was I persuasive enough, Did I inspire action, challenge assumptions, or shift perspectives? Highlight specific techniques like storytelling, analogies, or rhetorical questions.
+                - Evaluate the structure and flow of my talk. Were transitions smooth? Did I build toward a clear message or emotional climax? Point to exact sentences where this occurred.
+                - Clearly state whether my talk was effective — and if so, effective at what specifically (e.g., persuading the audience, building trust, sparking interest).
+                - If "AUDIENCE QUESTION" is in my transcript, evaluate how I answered the audience questions. If no "AUDIENCE QUESTION" is in my transcript dont mention anything about questions
+                - Reference my goal to {goals}. If I have no goals dont mention anything about goals.
+                - Provide an overall evaluation of how well I demonstrated mastery in storytelling, public speaking, or pitching. Include tailored suggestions for improvement based on the context and audience. Ground all observations in direct excerpts from the transcript. Quote exact sentences where possible.
+
+                Tone: speak to me personally but professionaly like a mentor coach, critique me for my growth while referencing my transcript not my evaluation data. Don't use headers or "**" for titles, dont use hyphens or dashes '—' in your response, just correct me and reference my transcript. Use \n \n for line breaks between paragraphs and also start with an encouraging remark relevant to my presentation with my name.
+            """
             )
 
         prompt = (
@@ -2517,7 +2604,7 @@ class SessionReportView(APIView):
             '  - \"Strength\" (array of short strings),\n'
             '  - \"Area of Improvement\" (array of short strings),\n'
             '  - \"General Feedback Summary\" (string).\n'
-            "Make the strengths and areas concrete (short bullets). The General Feedback Summary should be a short, actionable paragraph.\n"
+            "Make the strengths and areas concrete (short bullets). The General Feedback Summary should be detailed and content-specific to my transcript.\n"
         )
 
         # -- Call OpenAI with JSON schema formatting --
@@ -2547,7 +2634,9 @@ class SessionReportView(APIView):
             )
 
             raw_content = completion.choices[0].message.content
-            print(f"[generate_full_summary] OpenAI raw response: {raw_content[:1000]}")
+            print(f"[generate_full_summary] Prompt: {prompt}")
+
+            print(f"[generate_full_summary] OpenAI raw response: {raw_content}")
 
             # The SDK returns JSON text; parse it.
             try:
