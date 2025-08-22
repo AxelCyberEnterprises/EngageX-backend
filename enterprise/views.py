@@ -1118,15 +1118,21 @@ class TrainingGoalViewSet(viewsets.ModelViewSet):
 class EnterpriseUserViewSet(viewsets.ModelViewSet):
     """
     ViewSet for managing enterprise users.
+    - Admins can view and manage all enterprise users
+    - Regular users can only view and manage their own enterprise user object
     """
     serializer_class = EnterpriseUserSerializer
-    permission_classes = [IsAdminUser]
+    permission_classes = [IsAuthenticated]
     parser_classes = [MultiPartParser, JSONParser]
     
     def get_queryset(self):
         queryset = EnterpriseUser.objects.select_related('user', 'enterprise')
         
-        # Get query parameters
+        # For non-admin users, only return their own enterprise user object
+        if not (self.request.user.is_staff or self.request.user.is_superuser):
+            return queryset.filter(user=self.request.user)
+        
+        # For admin users, apply the existing filters
         params = self.request.query_params
         
         # Filter by enterprise_id if provided
