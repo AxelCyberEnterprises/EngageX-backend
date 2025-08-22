@@ -81,17 +81,50 @@ class EnterpriseViewSet(viewsets.ModelViewSet):
     }
     search_fields = ['name', 'domain', 'enterprise_type']
     ordering_fields = ['name', 'created_at', 'updated_at']
-    ordering = ['name']  # Default ordering
+    ordering = ['name']
+    
+    def get_queryset(self):
+        """
+        Return a queryset of enterprises based on user permissions:
+        - Superusers and staff see all enterprises
+        - Enterprise admins see their enterprise
+        - Regular users see enterprises they belong to
+        """
+        queryset = super().get_queryset()
+        user = self.request.user
+        
+        # Superusers and staff can see all enterprises
+        if user.is_superuser or user.is_staff:
+            return queryset
+            
+        try:
+            # For enterprise admins and regular users, only show their enterprise
+            if hasattr(user, 'enterprise_profile'):
+                return queryset.filter(id=user.enterprise_profile.enterprise_id)
+                
+        except EnterpriseUser.DoesNotExist:
+            pass
+            
+        # Default: no access if no enterprise profile exists
+        return queryset.none()  # Default ordering
     
     def get_permissions(self):
         """
         Instantiates and returns the list of permissions that this view requires.
         - Superusers and staff users can perform all actions
+        - Enterprise admins can perform all actions
         - Regular users can only perform safe actions (GET, HEAD, OPTIONS)
         """
-        # Allow all actions for superusers and staff users
-        if self.request.user.is_superuser or self.request.user.is_staff or self.request.user.is_admin:
+        # Check if user is a superuser or staff
+        if self.request.user.is_superuser or self.request.user.is_staff:
             return [IsAuthenticated()]
+            
+        # Check if user is an enterprise admin through their EnterpriseUser profile
+        try:
+            if hasattr(self.request.user, 'enterprise_profile') and self.request.user.enterprise_profile.is_admin:
+                return [IsAuthenticated()]
+        except EnterpriseUser.DoesNotExist:
+            pass
             
         # For regular users, only allow safe methods
         if self.action in ['create', 'update', 'partial_update', 'destroy']:
