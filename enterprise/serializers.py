@@ -164,6 +164,7 @@ class EnterpriseUserSerializer(serializers.ModelSerializer):
         source='user',
         required=False
     )
+    enterprise = EnterpriseSerializer(read_only=True)
     enterprise_name = serializers.CharField(
         source='enterprise.name',
         read_only=True
