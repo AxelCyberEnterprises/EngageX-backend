@@ -124,7 +124,7 @@ class PracticeSessionSerializer(serializers.ModelSerializer):
             from payments.models import Credit, CreditTransaction
             
             # Check if user is part of an enterprise with available credits
-            enterprise = getattr(user.user_profile, 'enterprise', None)
+            enterprise = user.get_enterprise()
             credit_used_from = 'user'  # Track where the credit was used from
             
             if enterprise:
