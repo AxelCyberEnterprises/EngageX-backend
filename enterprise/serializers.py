@@ -2,9 +2,11 @@ from datetime import timedelta
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from django.utils import timezone
+from django.db.models import Sum
 from .models import Enterprise, EnterpriseUser, EnterpriseQuestion, TrainingGoal
 from users.serializers import UserSerializer
 from practice_sessions.models import PracticeSession
+from payments.models import CreditTransaction
 
 User = get_user_model()
 
@@ -176,6 +178,8 @@ class EnterpriseUserSerializer(serializers.ModelSerializer):
     favicon = serializers.SerializerMethodField()
     primary_color = serializers.SerializerMethodField()
     secondary_color = serializers.SerializerMethodField()
+
+    credits_used = serializers.SerializerMethodField()
     
     def get_logo(self, obj):
         return self.context['request'].build_absolute_uri(obj.effective_logo.url) if obj.effective_logo else None
@@ -189,13 +193,25 @@ class EnterpriseUserSerializer(serializers.ModelSerializer):
     def get_secondary_color(self, obj):
         return obj.effective_secondary_color
 
+    def get_credits_used(self, obj):
+        # The 'obj' is the current EnterpriseUser instance being serialized.
+        # We access its related 'user' object to query for credit transactions.
+        total_credits = CreditTransaction.objects.filter(
+            user=obj.user,
+            transaction_type=CreditTransaction.TRANSACTION_TYPES[1][0] # Using the 'use' choice
+        ).aggregate(total=Sum('amount'))['total']
+
+        # Return 0 if no transactions are found to avoid a 'None' value in the response
+        return total_credits if total_credits is not None else 0
+
+
     class Meta:
         model = EnterpriseUser
         fields = [
             'id', 'user', 'user_id', 'enterprise', 'enterprise_name', 'user_type',
             'is_admin', 'created_at', 'updated_at', 'progress',
             'logo', 'favicon', 'primary_color', 'secondary_color',
-            'role', 'team'  # Add role and team fields
+            'role', 'team', 'credits_used'
         ]
         read_only_fields = ['created_at', 'updated_at']
         extra_kwargs = {
