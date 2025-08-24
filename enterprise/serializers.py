@@ -194,16 +194,12 @@ class EnterpriseUserSerializer(serializers.ModelSerializer):
         return obj.effective_secondary_color
 
     def get_credits_used(self, obj):
-        # The 'obj' is the current EnterpriseUser instance being serialized.
-        # We access its related 'user' object to query for credit transactions.
         total_credits = CreditTransaction.objects.filter(
             user=obj.user,
-            transaction_type=CreditTransaction.TRANSACTION_TYPES[1][0] # Using the 'use' choice
+            transaction_type=CreditTransaction.TRANSACTION_TYPES[1][0]
         ).aggregate(total=Sum('amount'))['total']
 
-        # Return 0 if no transactions are found to avoid a 'None' value in the response
         return total_credits if total_credits is not None else 0
-
 
     class Meta:
         model = EnterpriseUser

@@ -184,7 +184,6 @@ class Enterprise(models.Model):
 class EnterpriseUser(models.Model):
     """
     Model representing the relationship between a user and an enterprise.
-    Includes branding fields that can be overridden per user or inherited from the enterprise.
     """
     class UserType(models.TextChoices):
         GENERAL = 'general', _('General User')
@@ -210,36 +209,6 @@ class EnterpriseUser(models.Model):
         help_text="Designates whether the user can manage enterprise settings and users"
     )
     
-    # Branding fields (can be overridden per user)
-    logo = models.ImageField(
-        upload_to='enterprise/user_branding/logo/',
-        null=True,
-        blank=True,
-        validators=[FileExtensionValidator(allowed_extensions=['jpg', 'jpeg', 'png', 'svg'])],
-        help_text="User-specific logo (overrides enterprise logo if set)",
-    )
-    favicon = models.ImageField(
-        upload_to='enterprise/user_branding/favicon/',
-        null=True,
-        blank=True,
-        validators=[FileExtensionValidator(allowed_extensions=['ico', 'png', 'jpg'])],
-        help_text="User-specific favicon (overrides enterprise favicon if set)",
-    )
-    primary_color = models.CharField(
-        max_length=7,
-        null=True,
-        blank=True,
-        validators=[validate_hex_color],
-        help_text="User-specific primary color (overrides enterprise color if set)",
-    )
-    secondary_color = models.CharField(
-        max_length=7,
-        null=True,
-        blank=True,
-        validators=[validate_hex_color],
-        help_text="User-specific secondary color (overrides enterprise color if set)",
-    )
-    
     role = models.CharField(
         max_length=100,
         null=True,
@@ -259,23 +228,23 @@ class EnterpriseUser(models.Model):
     
     @property
     def effective_logo(self):
-        """Return user's logo if set, otherwise return enterprise logo."""
-        return self.logo or self.enterprise.logo
+        """Return enterprise logo."""
+        return self.enterprise.logo
         
     @property
     def effective_favicon(self):
-        """Return user's favicon if set, otherwise return enterprise favicon."""
-        return self.favicon or self.enterprise.favicon
+        """Return enterprise favicon."""
+        return self.enterprise.favicon
         
     @property
     def effective_primary_color(self):
-        """Return user's primary color if set, otherwise return enterprise primary color."""
-        return self.primary_color or self.enterprise.primary_color
+        """Return enterprise primary color."""
+        return self.enterprise.primary_color
         
     @property
     def effective_secondary_color(self):
-        """Return user's secondary color if set, otherwise return enterprise secondary color."""
-        return self.secondary_color or self.enterprise.secondary_color
+        """Return enterprise secondary color."""
+        return self.enterprise.secondary_color
     
     class Meta:
         unique_together = ('user', 'enterprise')
