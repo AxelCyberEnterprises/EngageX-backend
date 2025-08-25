@@ -16,6 +16,7 @@ class EnterpriseSerializer(serializers.ModelSerializer):
     """
     available_verticals = serializers.SerializerMethodField()
     sport_type_display = serializers.SerializerMethodField()
+    user_count = serializers.SerializerMethodField()
     
     class Meta:
         model = Enterprise
@@ -23,7 +24,7 @@ class EnterpriseSerializer(serializers.ModelSerializer):
             'id', 'name', 'enterprise_type', 'sport_type', 'sport_type_display',
             'logo', 'favicon', 'primary_color', 'secondary_color', 'is_active', 
             'one_on_one_coaching_link', 'accessible_verticals', 
-            'available_verticals', 'created_at', 'updated_at'
+            'available_verticals', 'user_count', 'created_at', 'updated_at'
         ]
         read_only_fields = ['id', 'created_at', 'updated_at', 'sport_type_display']
         extra_kwargs = {
@@ -46,6 +47,10 @@ class EnterpriseSerializer(serializers.ModelSerializer):
         if not obj.sport_type:
             return None
         return dict(Enterprise._meta.get_field('sport_type').choices).get(obj.sport_type)
+        
+    def get_user_count(self, obj):
+        """Return the number of users in the enterprise."""
+        return obj.users.count()
 
 
 class UserProgressSerializer(serializers.Serializer):
