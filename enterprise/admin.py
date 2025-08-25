@@ -39,16 +39,16 @@ class EnterpriseQuestionInline(admin.TabularInline):
 
 @admin.register(Enterprise)
 class EnterpriseAdmin(admin.ModelAdmin):
-    list_display = ('name', 'domain', 'enterprise_type_display', 'sport_type_display', 'is_active', 'created_at')
+    list_display = ('name', 'enterprise_type_display', 'sport_type_display', 'is_active', 'created_at')
     list_filter = ('is_active', 'enterprise_type', 'sport_type')
-    search_fields = ('name', 'domain')
+    search_fields = ('name',)
     readonly_fields = ('created_at', 'updated_at', 'available_verticals_display')
     list_editable = ('is_active',)
     inlines = [EnterpriseQuestionInline]
     
     fieldsets = (
         (None, {
-            'fields': ('name', 'domain', 'enterprise_type', 'sport_type', 'logo', 'is_active')
+            'fields': ('name', 'enterprise_type', 'sport_type', 'logo', 'is_active')
         }),
         ('Verticals', {
             'fields': ('available_verticals_display',),
@@ -56,7 +56,7 @@ class EnterpriseAdmin(admin.ModelAdmin):
             'description': _('Available verticals based on enterprise type')
         }),
         ('Settings', {
-            'fields': ('require_domain_match',),
+            'fields': ('one_on_one_coaching_link',),
             'classes': ('collapse',),
             'description': _('Enterprise authentication settings')
         }),

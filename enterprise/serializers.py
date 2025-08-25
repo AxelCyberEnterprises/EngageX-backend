@@ -20,9 +20,9 @@ class EnterpriseSerializer(serializers.ModelSerializer):
     class Meta:
         model = Enterprise
         fields = [
-            'id', 'name', 'domain', 'enterprise_type', 'sport_type', 'sport_type_display',
+            'id', 'name', 'enterprise_type', 'sport_type', 'sport_type_display',
             'logo', 'favicon', 'primary_color', 'secondary_color', 'is_active', 
-            'require_domain_match', 'one_on_one_coaching_link', 'accessible_verticals', 
+            'one_on_one_coaching_link', 'accessible_verticals', 
             'available_verticals', 'created_at', 'updated_at'
         ]
         read_only_fields = ['id', 'created_at', 'updated_at', 'sport_type_display']
@@ -46,12 +46,6 @@ class EnterpriseSerializer(serializers.ModelSerializer):
         if not obj.sport_type:
             return None
         return dict(Enterprise._meta.get_field('sport_type').choices).get(obj.sport_type)
-
-    def validate_domain(self, value):
-        """Ensure domain is in the correct format."""
-        if not value.startswith('@'):
-            value = f"@{value}"
-        return value.lower()
 
 
 class UserProgressSerializer(serializers.Serializer):
@@ -219,22 +213,6 @@ class EnterpriseUserSerializer(serializers.ModelSerializer):
     def get_progress(self, obj):
         """Get user's progress data"""
         return UserProgressSerializer(obj).data
-
-    def validate(self, data):
-        """
-        Validate that the user's email matches the enterprise domain if required.
-        """
-        enterprise = data.get('enterprise')
-        user = data.get('user')
-        
-        if enterprise and user and enterprise.require_domain_match:
-            user_domain = f"@{user.email.split('@')[-1]}"
-            if user_domain != enterprise.domain:
-                raise serializers.ValidationError(
-                    f"User email domain must match the enterprise domain {enterprise.domain}"
-                )
-        
-        return data
 
 
 class BulkUserUploadSerializer(serializers.Serializer):

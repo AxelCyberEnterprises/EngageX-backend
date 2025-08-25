@@ -28,7 +28,6 @@ class Enterprise(models.Model):
 
     
     name = models.CharField(max_length=255, unique=True)
-    domain = models.CharField(max_length=255, unique=True, help_text="Primary domain of the enterprise email")
     enterprise_type = models.CharField(
         max_length=10,
         choices=EnterpriseType.choices,
@@ -52,10 +51,6 @@ class Enterprise(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
     
     # Enterprise settings
-    require_domain_match = models.BooleanField(
-        default=False,
-        help_text="Require user emails to match the enterprise domain"
-    )
     one_on_one_coaching_link = models.URLField(
         max_length=500,
         default=True,

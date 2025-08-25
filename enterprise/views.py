@@ -61,7 +61,7 @@ class EnterpriseViewSet(viewsets.ModelViewSet):
     ViewSet for managing enterprises.
     
     Search and Filtering:
-    - Search: Use ?search=query to search in name, domain, and enterprise_type
+    - Search: Use ?search=query to search in name, and enterprise_type
     - Filtering: Use ?is_active=true/false, ?enterprise_type=type
     - Ordering: Use ?ordering=field (prefix with - for descending)
     """
@@ -79,7 +79,7 @@ class EnterpriseViewSet(viewsets.ModelViewSet):
         'enterprise_type': ['exact'],
         'created_at': ['gte', 'lte', 'exact', 'gt', 'lt'],
     }
-    search_fields = ['name', 'domain', 'enterprise_type']
+    search_fields = ['name', 'enterprise_type']
     ordering_fields = ['name', 'created_at', 'updated_at']
     ordering = ['name']
     
@@ -2116,13 +2116,7 @@ class EnterpriseUserViewSet(viewsets.ModelViewSet):
         Raises:
             Exception: If email sending fails
         """
-        try:
-            # Log AWS configuration for debugging
-            logger.debug(f"Sending invitation email to {user.email}")
-            logger.debug(f"AWS Configuration - Region: {getattr(settings, 'AWS_SES_REGION', 'Not set')}")
-            logger.debug(f"From Email: {getattr(settings, 'DEFAULT_FROM_EMAIL', 'Not set')}")
-            logger.debug(f"Frontend Domain: {getattr(settings, 'FRONTEND_DOMAIN', 'Not set')}")
-            
+        try:            
             # Prepare email context
             login_url = f"{settings.FRONTEND_DOMAIN}/login"
             context = {
