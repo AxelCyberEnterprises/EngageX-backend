@@ -148,8 +148,8 @@ class PracticeSessionSerializer(serializers.ModelSerializer):
                 except Credit.DoesNotExist:
                     pass  # No enterprise credit record exists, fall back to user credits
             
-            # If no enterprise credits were used, try user credits
-            if credit_used_from == 'user':
+            # If no enterprise credits were used and user is not part of an enterprise, try user credits
+            if credit_used_from == 'user' and not enterprise:
                 profile = user.user_profile.__class__.objects.select_for_update().get(user=user)
                 if profile.available_credits > 0:
                     profile.available_credits -= 1
