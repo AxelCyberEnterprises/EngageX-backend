@@ -128,6 +128,10 @@ class PracticeSessionSerializer(serializers.ModelSerializer):
             credit_used_from = 'user'  # Track where the credit was used from
             
             if enterprise:
+                # Check if enterprise is active
+                if not enterprise.is_active:
+                    raise ValidationError({"enterprise": "This enterprise account is currently inactive. Please contact your administrator."})
+                    
                 # Try to use enterprise credits first
                 try:
                     credit = Credit.objects.select_for_update().get(enterprise=enterprise)
