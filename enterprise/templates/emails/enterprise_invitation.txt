@@ -1,28 +1,17 @@
-Hello {{ user.first_name|default:user.email }},
+Hello {{ user.first_name|default:'there' }},
 
-Your account has been created for {{ enterprise.name }} on our platform.
-
-{% if has_password %}
-You can log in using the following credentials:
+Welcome to EngageX! We've set up your account under {{ enterprise.name }}, and you're all set to get started. Below are your login details:
 
 Email: {{ user.email }}
-Password: {{ password }}
+Temporary Password: {{ password }}
 
-For security reasons, we recommend changing your password after your first login.
+For security, you'll be asked to enter a One-Time Password (OTP) on login. After logging in, we strongly recommend changing your password from the randomly generated one above to something more personal and secure.
 
-Please log in here: {{ login_url }}
+You can log in here: {{ login_url }}
 
-If you didn't request this account, please contact our support team immediately.
+If you have any trouble signing in or need help, just reply to this email and our support team will assist you.
 
-Best regards,
-The {{ enterprise.name }} Team
-{% else %}
-Please log in using your existing credentials:
-
-{{ login_url }}
-
-If you've forgotten your password, you can reset it from the login page.
+We're excited to have you on board and can't wait to see you level up your communication with EngageX.
 
 Best regards,
-The {{ enterprise.name }} Team
-{% endif %}
+The EngageX Team

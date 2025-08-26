@@ -1,11 +1,16 @@
 {% extends "emails/base.html" %}
 
 {% block content %}
-<p>Hello {{ user.first_name|default:user.email }},</p>
+<p>Hi {{ user.first_name|default:'there' }},</p>
 
-<p>You have been invited to join {{ enterprise.name }} on our platform.</p>
+<p>Welcome to EngageX! We've set up your account under {{ enterprise.name }}, and you're all set to get started. Below are your login details:</p>
 
-<p>Please click the button below to set your password and access your account:</p>
+<p>Email: {{ user.email }}<br>
+Temporary Password: {{ password }}</p>
+
+<p>🔑 <strong>For security</strong>, you'll be asked to enter a One-Time Password (OTP) on login. After logging in, we strongly recommend changing your password from the randomly generated one above to something more personal and secure.</p>
+
+<p>👉 <strong>You can log in here:</strong></p>
 
 <table role="presentation" border="0" cellpadding="0" cellspacing="0" class="btn btn-primary">
   <tbody>
@@ -14,7 +19,7 @@
         <table role="presentation" border="0" cellpadding="0" cellspacing="0">
           <tbody>
             <tr>
-              <td> <a href="{{ protocol }}://{{ domain }}/auth/set-password/{{ uid }}/{{ token }}/" target="_blank">Set Your Password</a> </td>
+              <td> <a href="{{ login_url }}" target="_blank">Log in to EngageX</a> </td>
             </tr>
           </tbody>
         </table>
@@ -23,12 +28,12 @@
   </tbody>
 </table>
 
-<p>If the button doesn't work, copy and paste this link into your browser:</p>
-<p>{{ protocol }}://{{ domain }}/auth/set-password/{{ uid }}/{{ token }}/</p>
+<p>If the button doesn't work, copy and paste this link into your browser:<br>
+{{ login_url }}</p>
 
-<p>This link will expire in 7 days.</p>
+<p>If you have any trouble signing in or need help, just reply to this email and our support team will assist you.</p>
 
-<p>If you didn't request this, please ignore this email.</p>
+<p>We're excited to have you on board and can't wait to see you level up your communication with EngageX.</p>
 
-<p>Best regards,<br>The {{ enterprise.name }} Team</p>
+<p>Best regards,<br>The EngageX Team</p>
 {% endblock %}

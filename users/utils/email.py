@@ -145,7 +145,7 @@ def send_email_via_ses(subject, body, to_emails, from_email=None, html_body=None
                 'Body': {
                     'Text': {
                         'Charset': 'UTF-8',
-                        'Data': body[:100] + '...' if len(body) > 100 else body,
+                        'Data': body,  # Use the full body for the actual email
                     },
                 },
                 'Subject': {
@@ -155,6 +155,9 @@ def send_email_via_ses(subject, body, to_emails, from_email=None, html_body=None
             },
             'Source': from_email,
         }
+        
+        # Log a preview of the email (first 100 chars) for debugging
+        print(f"Email preview (first 100 chars): {body[:100]}..." if len(body) > 100 else f"Email content: {body}")
         
         # Only add HTML body if provided
         if html_body:
@@ -169,8 +172,8 @@ def send_email_via_ses(subject, body, to_emails, from_email=None, html_body=None
         # Send the email
         response = ses.send_email(**email_data)
         
-        logger.info(f"Email sent successfully to {', '.join(to_emails)}")
-        logger.debug(f"SES Response: {response}")
+        print(f"Email sent successfully to {', '.join(to_emails)}")
+        print(f"SES Response: {response}")
         return response
         
     except NoCredentialsError as e:

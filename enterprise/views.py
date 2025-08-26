@@ -812,7 +812,7 @@ class EnterpriseViewSet(viewsets.ModelViewSet):
             """
             
             # Log the content for debugging
-            logger.info(f"Sending email with content:\n{text_content}")
+            print(f"Sending email with content:\n{text_content}")
             
             # Send the email using our SES utility
             try:
@@ -1199,7 +1199,10 @@ class EnterpriseUserViewSet(viewsets.ModelViewSet):
             }
             
             # Check if send_invitation is provided, default to True if not
-            send_invitation = request.data.get('send_invitation', 'true').lower() == 'true'
+            send_invitation = request.data.get('send_invitation', True)
+            # Convert string 'true'/'false' to boolean if needed
+            if isinstance(send_invitation, str):
+                send_invitation = send_invitation.lower() == 'true'
             
             try:
                 # Create the user
@@ -1365,7 +1368,7 @@ class EnterpriseUserViewSet(viewsets.ModelViewSet):
         try:
             # Get the enterprise
             enterprise = Enterprise.objects.get(id=enterprise_id)
-            logger.info(f"Processing progress data for enterprise: {enterprise.name} (ID: {enterprise.id})")
+            print(f"Processing progress data for enterprise: {enterprise.name} (ID: {enterprise.id})")
             
             # Get all active goals for this enterprise
             active_goals = TrainingGoal.objects.filter(enterprise=enterprise, is_active=True)
@@ -1850,14 +1853,16 @@ class EnterpriseUserViewSet(viewsets.ModelViewSet):
                     raise ValueError(f"Error updating enterprise user: {str(e)}")
                 
                 # Send invitation if requested
-                if send_invitation and created:
+                if send_invitation:
+                    print("Sending invitation email to", user.email)
                     try:
                         # Only send password in email for newly created users
                         self._send_invitation_email(user, enterprise, password if created else None)
+                        print("Successfully sent invitation email to", user.email)
                     except Exception as e:
                         # Log the error but don't fail the whole operation
-                        logger.error(f"Failed to send invitation email to {email}: {str(e)}", exc_info=True)
-                        raise ValueError(f"User created but failed to send invitation: {str(e)}")
+                        print(f"Failed to send invitation email to {user.email}: {str(e)}", exc_info=True)
+                        raise ValueError(f"User {'created' if created else 'updated'} but failed to send invitation: {str(e)}")
                 
                 return user
                 
@@ -1886,6 +1891,8 @@ class EnterpriseUserViewSet(viewsets.ModelViewSet):
         Raises:
             Exception: If email sending fails
         """
+        print(f"[EMAIL] Starting to send invitation email to {user.email}")
+        
         try:            
             # Prepare email context
             login_url = f"{settings.FRONTEND_DOMAIN}/login"
@@ -1898,28 +1905,57 @@ class EnterpriseUserViewSet(viewsets.ModelViewSet):
                 'protocol': 'https' if getattr(settings, 'USE_HTTPS', False) else 'http'
             }
             
-            # Log context for debugging
-            logger.debug(f"Email context: {context}")
+            # Log context for debugging (without password)
+            safe_context = context.copy()
+            if 'password' in safe_context and safe_context['password']:
+                safe_context['password'] = '********'  # Mask password in logs
+            print(f"[EMAIL] Context: {safe_context}")
             
             # Render email content
             if password:
                 subject = f"Your {enterprise.name} account has been created"
             else:
                 subject = f"Welcome to {enterprise.name}"
+                
+            print(f"[EMAIL] Subject: {subject}")
+            
             try:
+                print("[EMAIL] Rendering email template...")
                 text_content = render_to_string('emails/enterprise_invitation.txt', context)
-                logger.debug("Successfully rendered email template")
+                print("[EMAIL] Successfully rendered email template")
+                
+                # Log first 100 chars of email content for debugging
+                logger.debug(f"[EMAIL] Email content preview: {text_content[:100]}...")
+                
             except Exception as e:
-                logger.error(f"Failed to render email template: {str(e)}")
+                logger.error(f"[EMAIL] Failed to render email template: {str(e)}", exc_info=True)
                 raise Exception(f"Failed to render email template: {str(e)}")
             
             # Log email details
-            logger.debug(f"Sending email with subject: {subject}")
-            logger.debug(f"To: {user.email}")
-            logger.debug(f"From: {settings.DEFAULT_FROM_EMAIL}")
+            print(f"[EMAIL] Preparing to send email to: {user.email}")
+            print(f"[EMAIL] From email address: {settings.DEFAULT_FROM_EMAIL}")
             
+            # Check if we're in development mode
+            if getattr(settings, 'DEBUG', False):
+                logger.warning("[EMAIL] DEBUG mode is enabled. Email will be printed to console instead of being sent.")
+                print("\n" + "="*80)
+                print(f"DEBUG EMAIL: Would send to {user.email}")
+                print(f"Subject: {subject}")
+                print("\nContent:")
+                print(text_content)
+                print("="*80 + "\n")
+                return True
+                
             # Send email using AWS SES
             try:
+                print("[EMAIL] Sending email via AWS SES...")
+                
+                # Log AWS SES configuration
+                logger.debug(f"[EMAIL] AWS SES Configuration:")
+                logger.debug(f"- AWS_ACCESS_KEY_ID: {'Set' if hasattr(settings, 'AWS_ACCESS_KEY_ID') else 'Not set'}")
+                logger.debug(f"- AWS_SECRET_ACCESS_KEY: {'Set' if hasattr(settings, 'AWS_SECRET_ACCESS_KEY') else 'Not set'}")
+                logger.debug(f"- AWS_DEFAULT_REGION: {getattr(settings, 'AWS_DEFAULT_REGION', 'Not set')}")
+                
                 response = send_email_via_ses(
                     subject=subject,
                     body=text_content,
@@ -1928,19 +1964,33 @@ class EnterpriseUserViewSet(viewsets.ModelViewSet):
                 )
                 
                 if not response:
-                    error_msg = "send_email_via_ses returned None"
+                    error_msg = "[EMAIL] send_email_via_ses returned None - check AWS SES configuration and credentials"
                     logger.error(error_msg)
                     raise Exception(error_msg)
-                    
-                logger.info(f"Invitation email sent to {user.email}")
-                logger.debug(f"SES Response: {response}")
+                
+                # Log successful sending
+                print(f"[EMAIL] Successfully sent invitation email to {user.email}")
+                logger.debug(f"[EMAIL] SES Response: {response}")
+                
+                return True
                 
             except Exception as e:
-                error_msg = f"Error in send_email_via_ses: {str(e)}"
+                error_msg = f"[EMAIL] Error in send_email_via_ses: {str(e)}"
                 logger.error(error_msg, exc_info=True)
+                
+                # Check for common AWS SES issues
+                if 'InvalidParameterValue' in str(e):
+                    logger.error("[EMAIL] Possible issue with sender email verification in AWS SES")
+                elif 'MessageRejected' in str(e):
+                    logger.error("[EMAIL] Message rejected by SES - check if the sending domain is verified")
+                elif 'Credentials' in str(e):
+                    logger.error("[EMAIL] AWS credentials issue - check AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY")
+                elif 'Region' in str(e):
+                    logger.error("[EMAIL] AWS region issue - check AWS_DEFAULT_REGION setting")
+                    
                 raise Exception(error_msg) from e
             
         except Exception as e:
-            error_msg = f"Failed to send invitation email to {user.email}: {str(e)}"
+            error_msg = f"[EMAIL] Failed to send invitation email to {user.email}: {str(e)}"
             logger.error(error_msg, exc_info=True)
             raise Exception(error_msg)
