@@ -17,6 +17,7 @@ class EnterpriseSerializer(serializers.ModelSerializer):
     available_verticals = serializers.SerializerMethodField()
     sport_type_display = serializers.SerializerMethodField()
     user_count = serializers.SerializerMethodField()
+    goals = serializers.SerializerMethodField()
     
     class Meta:
         model = Enterprise
@@ -24,7 +25,7 @@ class EnterpriseSerializer(serializers.ModelSerializer):
             'id', 'name', 'enterprise_type', 'sport_type', 'sport_type_display',
             'logo', 'favicon', 'primary_color', 'secondary_color', 'is_active', 
             'one_on_one_coaching_link', 'accessible_verticals', 
-            'available_verticals', 'user_count', 'created_at', 'updated_at'
+            'available_verticals', 'user_count', 'goals', 'created_at', 'updated_at'
         ]
         read_only_fields = ['id', 'created_at', 'updated_at', 'sport_type_display']
         extra_kwargs = {
@@ -51,6 +52,11 @@ class EnterpriseSerializer(serializers.ModelSerializer):
     def get_user_count(self, obj):
         """Return the number of users in the enterprise."""
         return obj.users.count()
+        
+    def get_goals(self, obj):
+        """Return list of active training goals for the enterprise"""
+        goals = obj.training_goals.filter(is_active=True)
+        return TrainingGoalSerializer(goals, many=True).data
 
 
 class UserProgressSerializer(serializers.Serializer):
