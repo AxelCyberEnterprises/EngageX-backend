@@ -1891,7 +1891,7 @@ class EnterpriseUserViewSet(viewsets.ModelViewSet):
         
         try:            
             # Prepare email context
-            login_url = f"{settings.FRONTEND_DOMAIN}/login"
+            login_url = f"{settings.FRONTEND_DOMAIN}/auth/login"
             context = {
                 'user': user,
                 'enterprise': enterprise,
