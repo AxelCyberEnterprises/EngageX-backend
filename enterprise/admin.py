@@ -39,10 +39,10 @@ class EnterpriseQuestionInline(admin.TabularInline):
 
 @admin.register(Enterprise)
 class EnterpriseAdmin(admin.ModelAdmin):
-    list_display = ('name', 'enterprise_type_display', 'sport_type_display', 'is_active', 'created_at')
+    list_display = ('name', 'enterprise_type_display', 'sport_type_display', 'current_credits_display', 'is_active', 'created_at')
     list_filter = ('is_active', 'enterprise_type', 'sport_type')
     search_fields = ('name',)
-    readonly_fields = ('created_at', 'updated_at', 'available_verticals_display')
+    readonly_fields = ('created_at', 'updated_at', 'available_verticals_display', 'current_credits_display')
     list_editable = ('is_active',)
     inlines = [EnterpriseQuestionInline]
     
@@ -91,12 +91,13 @@ class EnterpriseAdmin(admin.ModelAdmin):
     
     def available_verticals_display(self, obj):
         """Display available verticals in a more readable format"""
-        verticals = []
-        for vertical in obj.get_available_verticals():
-            verticals.append(f'<span class="badge" style="background: #4caf50; color: white; padding: 3px 6px; border-radius: 4px; font-size: 12px;">{vertical.label}</span>')
-        return format_html(' '.join(verticals))
-    available_verticals_display.short_description = _('Available Verticals')
-    available_verticals_display.allow_tags = True
+        return ", ".join([v.label for v in obj.get_available_verticals()])
+    available_verticals_display.short_description = 'Available Verticals'
+    
+    def current_credits_display(self, obj):
+        return f"{obj.current_credits} credits"
+    current_credits_display.short_description = 'Available Credits'
+    current_credits_display.admin_order_field = 'current_credits'
     
     def enterprise_type_display(self, obj):
         """Color code the enterprise type"""

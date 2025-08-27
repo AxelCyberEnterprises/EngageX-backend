@@ -172,8 +172,20 @@ class Enterprise(models.Model):
         if not self.accessible_verticals:
             raise ValidationError("At least one vertical must be enabled for the enterprise")
     
+    @property
+    def current_credits(self):
+        """
+        Returns the current available credits for this enterprise.
+        Returns 0 if no credit record exists.
+        """
+        from payments.models import Credit
+        try:
+            return Credit.objects.get(enterprise=self).balance
+        except Credit.DoesNotExist:
+            return 0
+
     def __str__(self):
-        return self.name
+        return f"{self.name} (Credits: {self.current_credits})"
 
 
 class EnterpriseUser(models.Model):

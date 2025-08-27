@@ -81,7 +81,7 @@ class UserAssignmentAdmin(admin.ModelAdmin):
 
 class ExpiringTokenAdmin(admin.ModelAdmin):
     list_display = ('key', 'user', 'created', 'expires_at', 'is_expired')
-    fields = ('user', 'key', 'expires_at')
+    fields = ('user', 'expires_at')
     readonly_fields = ('created', 'key')
     list_filter = ('expires_at',)
     search_fields = ('user__username', 'user__email', 'key')
@@ -92,6 +92,31 @@ class ExpiringTokenAdmin(admin.ModelAdmin):
         return obj.is_expired
     is_expired.boolean = True
     is_expired.short_description = 'Expired?'
+    
+    def save_model(self, request, obj, form, change):
+        # Generate a key if it doesn't exist
+        if not obj.key:
+            import secrets
+            obj.key = secrets.token_hex(20)
+        
+        # Set default expiration if not set
+        if not obj.expires_at:
+            from django.utils import timezone
+            from datetime import timedelta
+            obj.expires_at = timezone.now() + timedelta(days=30)
+            
+        super().save_model(request, obj, form, change)
+    
+    def response_add(self, request, obj, post_url_continue=None):
+        from django.contrib import messages
+        from django.http import HttpResponseRedirect
+        from django.urls import reverse
+        
+        msg = f'Successfully created token for {obj.user}. Key: {obj.key}'
+        messages.success(request, msg)
+        
+        # Redirect to the admin index
+        return HttpResponseRedirect(reverse('admin:index'))
 
 
 admin.site.register(ExpiringToken, ExpiringTokenAdmin)

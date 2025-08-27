@@ -4,6 +4,7 @@ from rest_framework.exceptions import ValidationError
 from django.db import transaction
 
 from datetime import timedelta
+from django.utils import timezone
 
 from rest_framework.fields import DictField
 
@@ -103,13 +104,20 @@ class PracticeSessionSerializer(serializers.ModelSerializer):
         return obj.impact
 
     def create(self, validated_data):
+        import logging
+        logger = logging.getLogger(__name__)
+        
         user = validated_data.get('user')
         slide_preview_id = validated_data.pop('slide_preview_id', None)
         enterprise_settings_data = validated_data.pop('enterprise_settings', None)
         
+        logger.info(f"Creating session for user: {user.email}")
+        logger.info(f"Session type: {validated_data.get('session_type')}")
+        
         # Force allow_ai_questions to True for enterprise sessions
         if validated_data.get('session_type') == 'enterprise':
             validated_data['allow_ai_questions'] = True
+            logger.info("Enterprise session detected, enabled AI questions")
 
         if slide_preview_id:
             try:
@@ -120,46 +128,81 @@ class PracticeSessionSerializer(serializers.ModelSerializer):
             slide_preview = None
 
         with transaction.atomic():
-            # Import models here to avoid circular imports
             from payments.models import Credit, CreditTransaction
             
             # Check if user is part of an enterprise with available credits
-            enterprise = user.get_enterprise()
-            credit_used_from = 'user'  # Track where the credit was used from
+            credit_used_from = 'user'  # Default to user credits
+            enterprise = None
             
-            if enterprise:
-                # Check if enterprise is active
+            # Check if user has an enterprise profile
+            if hasattr(user, 'enterprise_profile') and user.enterprise_profile:
+                logger.info(f"User {user.email} has enterprise profile")
+                enterprise = user.enterprise_profile.enterprise
+                logger.info(f"Enterprise: {enterprise.name} (ID: {enterprise.id}), Active: {enterprise.is_active}, Current Credits: {getattr(enterprise, 'current_credits', 'N/A')}")
+                
                 if not enterprise.is_active:
-                    raise ValidationError({"enterprise": "This enterprise account is currently inactive. Please contact your administrator."})
+                    logger.warning(f"Enterprise account {enterprise.name} is inactive")
+                    raise ValidationError({
+                        "enterprise": "This enterprise account is currently inactive. Please contact your administrator."
+                    })
                     
-                # Try to use enterprise credits first
-                try:
-                    credit = Credit.objects.select_for_update().get(enterprise=enterprise)
-                    if credit.balance >= 1:  # Check if enterprise has enough credits
-                        credit.credits_used += 1
-                        credit.save()
-                        credit_used_from = 'enterprise'
-                        
-                        # Record the transaction
-                        CreditTransaction.objects.create(
-                            enterprise=enterprise,
-                            transaction_type='use',
-                            amount=1,
-                            description=f'Practice session by {user.email}',
-                            user=user,
-                            reference_id=f"session_credit_use_{enterprise.id}_{timezone.now().timestamp()}"
-                        )
-                except Credit.DoesNotExist:
-                    pass  # No enterprise credit record exists, fall back to user credits
+                # Check if enterprise has enough credits using the current_credits property
+                if getattr(enterprise, 'current_credits', 0) >= 1:
+                    logger.info(f"Enterprise has sufficient credits: {enterprise.current_credits}")
+                    try:
+                        try:
+                            credit = Credit.objects.select_for_update().get(enterprise=enterprise)
+                            logger.info(f"Enterprise credits - Used: {credit.credits_used}, Total: {credit.total_credits}, Remaining: {credit.balance}")
+                            
+                            credit.credits_used += 1
+                            credit.save()
+                            credit_used_from = 'enterprise'
+                            logger.info(f"Updated credit record - New balance: {credit.balance} (Used: {credit.credits_used}/{credit.total_credits})")
+                            
+                            # Record the transaction
+                            transaction_ref = f"session_credit_use_{enterprise.id}_{timezone.now().timestamp()}"
+                            logger.info(f"Creating transaction record with reference: {transaction_ref}")
+                            
+                            CreditTransaction.objects.create(
+                                enterprise=enterprise,
+                                transaction_type='use',
+                                amount=1,
+                                description=f'Practice session by {user.email}',
+                                user=user,
+                                reference_id=transaction_ref
+                            )
+                            logger.info("Transaction record created successfully")
+                            
+                        except Credit.DoesNotExist:
+                            logger.error(f"No credit record found for enterprise {enterprise.name} (ID: {enterprise.id})")
+                            raise ValidationError({
+                                "credit": "Enterprise credit account not properly configured. Please contact your administrator."
+                            })
+                    except Credit.DoesNotExist:
+                        raise ValidationError({
+                            "credit": "Enterprise credit account not properly configured. Please contact your administrator."
+                        })
+                else:
+                    raise ValidationError({
+                        "credit": "Insufficient enterprise credits. Please contact your administrator."
+                    })
             
-            # If no enterprise credits were used and user is not part of an enterprise, try user credits
-            if credit_used_from == 'user' and not enterprise:
-                profile = user.user_profile.__class__.objects.select_for_update().get(user=user)
+            # If no enterprise credits were used, try user credits
+            if credit_used_from == 'user':
+                logger.info("No enterprise credits used, falling back to user credits")
+                profile = user.user_profile
+                logger.info(f"User {user.email} has {profile.available_credits} credits available")
+                
                 if profile.available_credits > 0:
+                    old_credits = profile.available_credits
                     profile.available_credits -= 1
                     profile.save()
+                    logger.info(f"Deducted 1 credit from user {user.email}. Old: {old_credits}, New: {profile.available_credits}")
                 else:
-                    raise ValidationError({"credit": "Insufficient credit"})
+                    logger.warning(f"Insufficient credits for user {user.email}. Available: {profile.available_credits}")
+                    raise ValidationError({
+                        "credit": "Insufficient credits. Please purchase more credits to continue."
+                    })
 
             # Create the session
             session = PracticeSession.objects.create(
