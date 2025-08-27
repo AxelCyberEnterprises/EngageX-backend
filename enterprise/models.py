@@ -25,6 +25,9 @@ class Enterprise(models.Model):
         PITCH = 'pitch', _('Pitch')
         PRESENTATION = 'presentation', _('Presentation')
         PUBLIC_SPEAKING = 'public_speaking', _('Public Speaking')
+        
+        def __str__(self):
+            return str(self.label)
 
     
     name = models.CharField(max_length=255, unique=True)

@@ -135,31 +135,27 @@ class EnterpriseViewSet(viewsets.ModelViewSet):
         
     def update(self, request, *args, **kwargs):
         """
-        Handle PATCH requests for updating enterprise branding.
-        Supports updating logo, favicon, primary_color, and secondary_color.
+        Handle PATCH requests for updating enterprise data.
+        Supports updating all fields including is_active, logo, favicon, etc.
         """
         instance = self.get_object()
-        
-        # Handle file uploads
         data = request.data.copy()
         
-        # Process logo if included in the request
+        # Handle file uploads if present
         if 'logo' in request.FILES:
             instance.logo = request.FILES['logo']
-            
-        # Process favicon if included in the request
         if 'favicon' in request.FILES:
             instance.favicon = request.FILES['favicon']
         
-        # Save the instance to handle file uploads before serialization
+        # Save the instance to handle file uploads
         if request.FILES:
             instance.save()
         
         # Remove file fields from data as they're already handled
-        data.pop('logo', None)
-        data.pop('favicon', None)
+        for field in ['logo', 'favicon']:
+            data.pop(field, None)
         
-        # Use the serializer for the rest of the fields
+        # Use the serializer for all fields including is_active
         serializer = self.get_serializer(instance, data=data, partial=True)
         serializer.is_valid(raise_exception=True)
         self.perform_update(serializer)

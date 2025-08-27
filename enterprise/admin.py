@@ -91,8 +91,10 @@ class EnterpriseAdmin(admin.ModelAdmin):
     
     def available_verticals_display(self, obj):
         """Display available verticals in a more readable format"""
-        return ", ".join([v.label for v in obj.get_available_verticals()])
+        verticals = ", ".join([str(v.label) for v in obj.get_available_verticals()])
+        return verticals if verticals else "-"
     available_verticals_display.short_description = 'Available Verticals'
+    available_verticals_display.admin_order_field = 'enterprise_type'  # Add this line to make the column sortable
     
     def current_credits_display(self, obj):
         return f"{obj.current_credits} credits"
