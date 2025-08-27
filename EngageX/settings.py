@@ -30,13 +30,13 @@ SECRET_KEY = "django-insecure-wfl*mho^tyaghxhwx4p^2u8)yl#gw+^ub&(=!m#=!x3rrqo1og
 DEBUG = False
 
 # Frontend domain for generating URLs in emails and other frontend links
-FRONTEND_DOMAIN = os.environ.get('FRONTEND_DOMAIN', 'http://localhost:3000')
+# FRONTEND_DOMAIN = os.environ.get('FRONTEND_DOMAIN', 'http://localhost:3000')
 USE_HTTPS = os.environ.get('USE_HTTPS', False)
 
 # Email settings
 DEFAULT_FROM_EMAIL = os.environ.get('DEFAULT_FROM_EMAIL', 'noreply@engagexai.io')
 SERVER_EMAIL = DEFAULT_FROM_EMAIL
-FRONTEND_DOMAIN = os.environ.get('FRONTEND_DOMAIN', 'https://app.engagexai.io')  # Update with your frontend domain
+FRONTEND_DOMAIN = os.environ.get('FRONTEND_DOMAIN', 'https://engagexai.io')  # Update with your frontend domain
 
 # AWS SES Configuration
 AWS_SES_REGION = os.environ.get('AWS_SES_REGION', 'us-west-1')  # Using us-west-1 as per test script
