@@ -2981,7 +2981,14 @@ class SessionReportView(APIView):
 class PerformanceAnalyticsView(APIView):
     def get(self, request):
         user = request.user
-        session = PracticeSession.objects.filter(user=user)
+        user_id = request.query_params.get('user_id')
+        
+        # If user_id is provided and the requester is an admin, filter by that user
+        if user_id and (user.is_staff or user.is_superuser):
+            session = PracticeSession.objects.filter(user_id=user_id)
+        else:
+            # Otherwise, only show the current user's data
+            session = PracticeSession.objects.filter(user=user)
 
         start_date = request.query_params.get("start_date")
         end_date = request.query_params.get("end_date")
@@ -2989,8 +2996,9 @@ class PerformanceAnalyticsView(APIView):
         sort_type = {"max-date":"-date",'min-date':"date",'max-impact':'-impact','min-impact':"impact",'max-duration':"-duration", 'min-duration':'duration'}
 
         if start_date and end_date:
-            parsed_start = datetime.strptime(start_date, "%Y-%m-%d").date()
-            parsed_end = datetime.strptime(end_date, "%Y-%m-%d").date()
+            # Strip any whitespace from the date strings before parsing
+            parsed_start = datetime.strptime(start_date.strip(), "%Y-%m-%d").date()
+            parsed_end = datetime.strptime(end_date.strip(), "%Y-%m-%d").date()
 
             graph_session = PracticeSession.objects.filter(user=user, date__date__range=(parsed_start, parsed_end))
         else:
