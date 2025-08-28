@@ -196,8 +196,9 @@ class EnterpriseUser(models.Model):
     Model representing the relationship between a user and an enterprise.
     """
     class UserType(models.TextChoices):
-        GENERAL = 'general', _('General User')
-        ADMIN = 'admin', _('Enterprise Admin')
+        STANDARD = 'standard', _('Standard User')
+        ROOKIE_ENTERPRISE = 'rookie_enterprise', _('Rookie Enterprise Dashboard')
+        GENERAL_ENTERPRISE = 'general_enterprise', _('General Enterprise Dashboard')
         
     user = models.OneToOneField(
         settings.AUTH_USER_MODEL,
@@ -210,9 +211,9 @@ class EnterpriseUser(models.Model):
         related_name='users'
     )
     user_type = models.CharField(
-        max_length=10,
+        max_length=20,
         choices=UserType.choices,
-        default=UserType.GENERAL
+        default=UserType.GENERAL_ENTERPRISE
     )
     is_admin = models.BooleanField(
         default=False,
