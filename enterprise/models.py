@@ -197,8 +197,8 @@ class EnterpriseUser(models.Model):
     """
     class UserType(models.TextChoices):
         STANDARD = 'standard', _('Standard User')
-        ROOKIE_ENTERPRISE = 'rookie_enterprise', _('Rookie Enterprise Dashboard')
-        GENERAL_ENTERPRISE = 'general_enterprise', _('General Enterprise Dashboard')
+        ROOKIE_ENTERPRISE = 'rookie', _('Rookie Enterprise Dashboard')
+        GENERAL_ENTERPRISE = 'general', _('General Enterprise Dashboard')
         
     user = models.OneToOneField(
         settings.AUTH_USER_MODEL,
