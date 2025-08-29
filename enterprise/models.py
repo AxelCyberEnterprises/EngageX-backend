@@ -3,6 +3,7 @@ from django.conf import settings
 from django.core.validators import FileExtensionValidator
 from django.utils.translation import gettext_lazy as _
 from django.core.exceptions import ValidationError
+import random
 
 def validate_hex_color(value):
     import re
@@ -270,13 +271,24 @@ class EnterpriseQuestion(models.Model):
     Model representing questions for enterprise verticals.
     Each question belongs to a specific enterprise and vertical.
     The same question text can exist across different enterprises and verticals,
-    but must be unique within each enterprise/vertical combination.
+    but must be unique within each enterprise/vertical/gender combination.
     """
+    class Gender(models.TextChoices):
+        MALE = 'M', _('Male')
+        FEMALE = 'F', _('Female')
+        NEUTRAL = 'N', _('Neutral')
+    
     enterprise = models.ForeignKey(
         Enterprise,
         on_delete=models.CASCADE,
         related_name='questions',
         help_text="Enterprise this question belongs to"
+    )
+    gender = models.CharField(
+        max_length=1,
+        choices=Gender.choices,
+        default=Gender.NEUTRAL,
+        help_text="Gender for which this question is appropriate"
     )
     vertical = models.CharField(
         max_length=20,
@@ -315,10 +327,10 @@ class EnterpriseQuestion(models.Model):
         verbose_name_plural = "Enterprise Questions"
         constraints = [
             models.UniqueConstraint(
-                fields=['enterprise', 'vertical', 'question_text'],
-                name='unique_question_per_enterprise_vertical',
-                # This ensures that the same question text can exist in different enterprises or verticals,
-                # but not within the same enterprise/vertical combination
+                fields=['enterprise', 'vertical', 'question_text', 'gender'],
+                name='unique_question_per_enterprise_vertical_gender',
+                # This ensures that the same question text can exist in different enterprises, verticals, or genders,
+                # but not within the same enterprise/vertical/gender combination
             )
         ]
 
@@ -326,7 +338,8 @@ class EnterpriseQuestion(models.Model):
         """
         Validate that:
         1. The vertical is allowed for the enterprise
-        2. The question text is unique within the same enterprise/vertical
+        2. The question text is unique within the same enterprise/vertical/gender
+        3. For media training, set a random gender if not provided
         """
         super().clean()
         
@@ -339,12 +352,17 @@ class EnterpriseQuestion(models.Model):
                     'vertical': f"Vertical '{self.vertical}' is not available for this enterprise type"
                 })
             
-            # Check for duplicate question in the same enterprise/vertical
-            if self._state.adding or self.enterprise_id or self.vertical or self.question_text:
+            # For media training, set a random gender if not provided
+            if self.vertical.lower() == 'media_training' and not self.gender:
+                self.gender = random.choice(['M', 'F'])
+            
+            # Check for duplicate question in the same enterprise/vertical/gender
+            if self._state.adding or self.enterprise_id or self.vertical or self.question_text or self.gender:
                 qs = EnterpriseQuestion.objects.filter(
                     enterprise=self.enterprise,
                     vertical=self.vertical,
-                    question_text__iexact=self.question_text.strip()
+                    question_text__iexact=self.question_text.strip(),
+                    gender=self.gender
                 )
                 
                 if self.pk:
@@ -352,13 +370,22 @@ class EnterpriseQuestion(models.Model):
                     
                 if qs.exists():
                     raise ValidationError({
-                        'question_text': 'This question already exists for this enterprise and vertical.'
+                        'question_text': 'This question with the same gender already exists for this enterprise and vertical.'
                     })
 
     def save(self, *args, **kwargs):
+        # Ensure gender is set for media training questions
+        if hasattr(self, 'vertical') and self.vertical and self.vertical.lower() == 'media_training':
+            if not self.gender or self.gender == 'N':
+                self.gender = random.choice(['M', 'F'])
+                
         # Clean and validate before saving
         self.full_clean()
         super().save(*args, **kwargs)
+        
+        # Refresh from database to ensure we have the latest data
+        if self.pk:
+            self.refresh_from_db()
 
     def __str__(self):
         return f"{self.question_text[:50]}..." if len(self.question_text) > 50 else self.question_text

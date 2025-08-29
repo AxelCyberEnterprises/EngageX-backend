@@ -16,6 +16,7 @@ from django.db.models import Q, F, Case, When, Value, IntegerField, Count, Avg, 
 import os
 import boto3
 import traceback
+import random
 from datetime import datetime, timedelta
 from django.db.models.functions import Concat
 
@@ -914,35 +915,33 @@ class EnterpriseQuestionViewSet(viewsets.ModelViewSet):
                 {'error': 'Enterprise not found'},
                 status=status.HTTP_404_NOT_FOUND
             )
-            
-    @action(detail=False, methods=['get'])
-    def test_endpoint(self, request):
-        print("=== TEST ENDPOINT HIT ===")
-        return Response({
-            'status': 'success',
-            'message': 'Test endpoint is working!',
-            'available_verticals': [
-                {'value': 'media_training', 'label': 'Media Training'},
-                {'value': 'coach', 'label': 'Coach'},
-                {'value': 'gm', 'label': 'General Manager'}
-            ]
-        })
 
     def get_queryset(self):
         queryset = EnterpriseQuestion.objects.select_related('enterprise')
         enterprise_id = self.request.query_params.get('enterprise_id')
         if enterprise_id:
             queryset = queryset.filter(enterprise_id=enterprise_id)
+            
         vertical = self.request.query_params.get('vertical')
         if vertical:
             queryset = queryset.filter(vertical=vertical)
+            
+            # For media training, handle gender filtering
+            if vertical.lower() == 'media_training':
+                gender = self.request.query_params.get('gender')
+                if gender:
+                    queryset = queryset.filter(gender=gender)
+                # If no gender specified, include all questions (for backward compatibility)
+                    
         sport_type = self.request.query_params.get('sport_type')
         if sport_type:
             queryset = queryset.filter(sport_type=sport_type)
+            
         is_active = self.request.query_params.get('is_active')
         if is_active is not None:
             is_active = is_active.lower() in ('true', '1', 't')
             queryset = queryset.filter(is_active=is_active)
+            
         return queryset
 
     def _generate_and_upload_tts(self, question):
@@ -973,8 +972,33 @@ class EnterpriseQuestionViewSet(viewsets.ModelViewSet):
             if not sport_type:
                 sport_type = self.request.data.get('sport_type')
             
-            voice = get_voice_for_question(rookie_type, sport_type)
-            print(f"[TTS] Using voice: {voice} (rookie_type: {rookie_type}, sport_type: {sport_type})")
+            # For media training, use gender to determine voice
+            if question.vertical.lower() == 'media_training':
+                # Ensure gender is set (should be handled by model's clean method)
+                if not question.gender or question.gender == 'N':
+                    # If we still don't have a valid gender, log a warning and use random
+                    print(f"[WARNING] No valid gender set for media training question {question.id}, using random")
+                    question.gender = random.choice(['M', 'F'])
+                    # Save and refresh the question to ensure we have the latest data
+                    question.save(update_fields=['gender'])
+                    question.refresh_from_db()
+                
+                # Now use the set gender
+                if question.gender == 'M':
+                    voice = 'onyx'  # Male voice
+                elif question.gender == 'F':
+                    voice = 'sage'  # Female voice
+                else:
+                    # This should not happen due to above check, but just in case
+                    voice = 'echo'
+                    print(f"[WARNING] Unexpected gender value: {question.gender}")
+                    
+                print(f"[TTS] Using voice: {voice} (media training, gender: {question.gender})")
+                print(f"[DEBUG] Question ID {question.id} - Final gender before TTS: {question.gender}")
+            else:
+                # Use existing logic for non-media training questions
+                voice = get_voice_for_question(rookie_type, sport_type)
+                print(f"[TTS] Using voice: {voice} (rookie_type: {rookie_type}, sport_type: {sport_type})")
             
             audio_resp = openai.audio.speech.create(
                 model="tts-1",
@@ -1030,26 +1054,53 @@ class EnterpriseQuestionViewSet(viewsets.ModelViewSet):
         Save the question and generate TTS audio.
         """
         print("=== PROCESSING ENTERPRISE QUESTION (CREATE) ===")
+        
+        # Save the question first
         question = serializer.save()
+        
+        # Ensure the question is saved and refreshed from the database
+        # This ensures any model-level defaults or clean() methods have been applied
+        question.refresh_from_db()
+        
+        # Generate and upload TTS
         success, error = self._generate_and_upload_tts(question)
+        
+        # If TTS generation fails, update the question to be inactive
         if not success:
+            question.is_active = False
+            question.save(update_fields=['is_active'])
             raise ValidationError({'detail': f'Failed to generate audio: {error}'})
 
     def perform_update(self, serializer):
         """
-        Update the question and re-generate TTS audio if the question text changes.
+        Update the question and re-generate TTS audio if the question text or gender changes.
         """
         print("=== PROCESSING ENTERPRISE QUESTION (UPDATE) ===")
         
-        # Get the original question text before the update
-        original_question_text = self.get_object().question_text
+        # Get the original question before the update
+        original_question = self.get_object()
+        original_question_text = original_question.question_text
+        original_gender = getattr(original_question, 'gender', None)
+        is_media_training = original_question.vertical.lower() == 'media_training'
         
         # Save the updated instance
         question = serializer.save()
         
-        # Check if question_text was updated in the request
+        # Check if we need to regenerate TTS
+        should_regenerate = False
+        
+        # Check if question text changed
         if 'question_text' in serializer.validated_data and \
-        serializer.validated_data['question_text'] != original_question_text:
+           serializer.validated_data['question_text'] != original_question_text:
+            should_regenerate = True
+            
+        # For media training, check if gender changed
+        if is_media_training and 'gender' in serializer.validated_data and \
+           serializer.validated_data['gender'] != original_gender:
+            should_regenerate = True
+        
+        # Regenerate TTS if needed
+        if should_regenerate:
             success, error = self._generate_and_upload_tts(question)
             if not success:
                 raise ValidationError({'detail': f'Failed to re-generate audio: {error}'})

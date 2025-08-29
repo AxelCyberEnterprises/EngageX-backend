@@ -1,3 +1,4 @@
+import random
 from datetime import timedelta
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
@@ -262,13 +263,17 @@ class EnterpriseQuestionSerializer(serializers.ModelSerializer):
         read_only=True
     )
     sport_type_display = serializers.SerializerMethodField()
+    gender_display = serializers.CharField(
+        source='get_gender_display',
+        read_only=True
+    )
 
     class Meta:
         model = EnterpriseQuestion
         fields = [
             'id', 'enterprise', 'enterprise_name', 'vertical', 'vertical_display',
-            'sport_type', 'sport_type_display', 'question_text', 'audio_url', 
-            'is_active', 'created_at', 'updated_at'
+            'sport_type', 'sport_type_display', 'gender', 'gender_display', 
+            'question_text', 'audio_url', 'is_active', 'created_at', 'updated_at'
         ]
         read_only_fields = ('id', 'created_at', 'updated_at')
         extra_kwargs = {
@@ -284,12 +289,14 @@ class EnterpriseQuestionSerializer(serializers.ModelSerializer):
 
     def validate(self, data):
         """
-        Validate that the vertical is allowed for the enterprise.
+        Validate the question data including vertical for media training.
+        The gender assignment for media training is now handled in the model's clean method.
         """
         enterprise = data.get('enterprise')
         vertical = data.get('vertical')
         
         if enterprise and vertical:
+            # Check if vertical is allowed for the enterprise
             available_verticals = enterprise.get_available_verticals()
             if vertical not in available_verticals:
                 raise serializers.ValidationError({
