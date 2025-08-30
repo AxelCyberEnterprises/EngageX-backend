@@ -1083,6 +1083,10 @@ class EnterpriseQuestionViewSet(viewsets.ModelViewSet):
         original_gender = getattr(original_question, 'gender', None)
         is_media_training = original_question.vertical.lower() == 'media_training'
         
+        # For media training, ensure we preserve the original gender if not explicitly changed
+        if is_media_training and 'gender' not in serializer.validated_data and original_gender:
+            serializer.validated_data['gender'] = original_gender
+        
         # Save the updated instance
         question = serializer.save()
         
