@@ -1891,7 +1891,9 @@ class EnterpriseUserViewSet(viewsets.ModelViewSet):
                         enterprise=enterprise,
                         defaults={
                             'user_type': user_type,
-                            'is_admin': is_admin
+                            'is_admin': is_admin,
+                            'role': user_data.get('role'),
+                            'team': user_data.get('team')
                         }
                     )
                 except IntegrityError as e:
