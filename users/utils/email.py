@@ -41,171 +41,85 @@ def _log_aws_config():
         logger.debug(f"{key}: {value}")
     logger.debug("============================")
 
-def send_email_via_ses(subject, body, to_emails, from_email=None, html_body=None):
+def send_email_via_ses(subject, body, to_emails, from_email=None, html_body=None, attachments=None):
     """
-    Send an email using Amazon SES.
+    Send an email using Django's email backend (console for testing)
     
     Args:
         subject (str): Email subject
         body (str): Plain text email body
         to_emails (str or list): Single email address or list of email addresses
         from_email (str, optional): Sender email address. Defaults to settings.DEFAULT_FROM_EMAIL.
-        html_body (str, optional): HTML version of the email. If None, only text will be sent.
-        
+        html_body (str, optional): HTML version of the email body.
+        attachments (list, optional): List of dicts with 'filename' and 'content' keys.
+            'content' can be a file-like object or bytes.
+            
     Returns:
-        dict: SES response if successful, None otherwise
+        dict: Email sending status
     """
-    print("\n=== send_email_via_ses ===")
-    print(f"To: {to_emails}")
-    print(f"Subject: {subject}")
-    print(f"From: {from_email}")
+    from django.core.mail import EmailMultiAlternatives
+    from django.conf import settings
+    import logging
+    import os
+    from email.mime.base import MIMEBase
+    from email import encoders
     
-    # Log AWS configuration for debugging
-    _log_aws_config()
+    logger = logging.getLogger(__name__)
     
-    # Get AWS credentials
-    aws_access_key_id, aws_secret_access_key, aws_region = _get_aws_credentials()
-    
-    # Check if AWS credentials are configured
-    if not all([aws_access_key_id, aws_secret_access_key, aws_region]):
-        print("\n!!! ERROR: AWS SES credentials not properly configured")
-        print(f"AWS_ACCESS_KEY_ID: {'Set' if aws_access_key_id else 'Not set'}")
-        print(f"AWS_SECRET_ACCESS_KEY: {'Set' if aws_secret_access_key else 'Not set'}")
-        print(f"AWS_SES_REGION: {aws_region if aws_region else 'Not set'}")
-        return None
-    else:
-        print("AWS credentials found and validated")
-        
-    from_email = from_email or getattr(settings, 'DEFAULT_FROM_EMAIL', None)
-    if not from_email:
-        error_msg = "No sender email address provided and DEFAULT_FROM_EMAIL is not set"
-        logger.error(error_msg)
-        return None
-        
+    # Ensure to_emails is a list
     if isinstance(to_emails, str):
         to_emails = [to_emails]
     
-    # Validate email addresses
-    if not to_emails or not all(to_emails):
-        error_msg = "No valid recipient email addresses provided"
-        logger.error(error_msg)
-        return None
+    logger = logging.getLogger(__name__)
     
     try:
-        # Log the AWS credentials being used (mask sensitive data)
-        logger.debug(f"Creating SES client with region: {settings.AWS_SES_REGION}")
-        logger.debug(f"From email: {from_email}")
-        logger.debug(f"To emails: {to_emails}")
+        # Set default from email if not provided
+        from_email = from_email or getattr(settings, 'DEFAULT_FROM_EMAIL', 'noreply@example.com')
         
-        # Create a new SES client with explicit configuration
-        print("\nCreating SES client with config:")
-        print(f"Region: {aws_region}")
-        print(f"AWS Access Key ID: {aws_access_key_id[:4]}...{aws_access_key_id[-4:] if aws_access_key_id else ''}")
+        # Log email details
+        logger.info(f"Preparing to send email to: {to_emails}")
+        logger.info(f"Subject: {subject}")
         
-        ses_config = {
-            'region_name': aws_region,
-            'aws_access_key_id': aws_access_key_id,
-            'aws_secret_access_key': aws_secret_access_key,
-            'config': boto3.session.Config(
-                connect_timeout=10,
-                read_timeout=10,
-                retries={
-                    'max_attempts': 3,
-                    'mode': 'standard'
-                }
-            )
-        }
+        # Create email message
+        email = EmailMultiAlternatives(
+            subject=subject,
+            body=body,
+            from_email=from_email,
+            to=to_emails
+        )
         
-        logger.debug("Creating SES client with config:")
-        for key in ses_config:
-            if key != 'aws_secret_access_key':  # Don't log the full secret key
-                safe_value = ses_config[key]
-                if key == 'aws_access_key_id' and safe_value:
-                    safe_value = f"{safe_value[:4]}...{safe_value[-4:]}" if len(safe_value) > 8 else "[REDACTED]"
-                logger.debug(f"  {key}: {safe_value}")
-        
-        ses = boto3.client('ses', **ses_config)
-        logger.debug("Successfully created SES client")
-        
-        # Verify email identity (for debugging)
-        try:
-            identity = ses.get_identity_verification_attributes(
-                Identities=[from_email]
-            )
-            logger.debug(f"Email verification status for {from_email}: {identity.get('VerificationAttributes', {}).get(from_email, {}).get('VerificationStatus', 'Not verified')}")
-        except Exception as e:
-            logger.warning(f"Could not verify email identity: {str(e)}")
-        
-        # Prepare the email data
-        email_data = {
-            'Destination': {
-                'ToAddresses': to_emails if isinstance(to_emails, list) else [to_emails],
-            },
-            'Message': {
-                'Body': {
-                    'Text': {
-                        'Charset': 'UTF-8',
-                        'Data': body,  # Use the full body for the actual email
-                    },
-                },
-                'Subject': {
-                    'Charset': 'UTF-8',
-                    'Data': subject,
-                },
-            },
-            'Source': from_email,
-        }
-        
-        # Log a preview of the email (first 100 chars) for debugging
-        print(f"Email preview (first 100 chars): {body[:100]}..." if len(body) > 100 else f"Email content: {body}")
-        
-        # Only add HTML body if provided
+        # Attach HTML version if provided
         if html_body:
-            email_data['Message']['Body']['Html'] = {
-                'Charset': 'UTF-8',
-                'Data': html_body,
-            }
+            email.attach_alternative(html_body, 'text/html')
         
-        print("\nSending email with data:")
-        print(json.dumps(email_data, indent=2))
+        # Add attachments if any
+        if attachments:
+            for attachment in attachments:
+                filename = attachment.get('filename', 'attachment')
+                content = attachment.get('content')
+                
+                if hasattr(content, 'read'):
+                    # If it's a file-like object, read its content
+                    content = content.read()
+                
+                email.attach(filename, content)
         
         # Send the email
-        response = ses.send_email(**email_data)
+        email.send(fail_silently=False)
         
-        print(f"Email sent successfully to {', '.join(to_emails)}")
-        print(f"SES Response: {response}")
-        return response
-        
-    except NoCredentialsError as e:
-        error_msg = "No AWS credentials found. Please check your AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY environment variables."
-        logger.error(error_msg)
-        logger.exception(e)
-        raise Exception(error_msg) from e
-        
-    except PartialCredentialsError as e:
-        error_msg = f"Incomplete AWS credentials: {str(e)}. Please check your AWS configuration."
-        logger.error(error_msg)
-        logger.exception(e)
-        raise Exception(error_msg) from e
-        
-    except ClientError as e:
-        error_code = e.response.get('Error', {}).get('Code', 'Unknown')
-        error_msg = e.response.get('Error', {}).get('Message', str(e))
-        error_details = f"AWS SES Error ({error_code}): {error_msg}"
-        
-        if error_code == 'InvalidClientTokenId':
-            error_details += "\nThis usually means your AWS access key ID is invalid or not active."
-        elif error_code == 'SignatureDoesNotMatch':
-            error_details += "\nThis usually means your AWS secret access key is incorrect."
-        elif error_code == 'AccessDenied':
-            error_details += "\nThis usually means your IAM user doesn't have permission to use SES."
-        
-        logger.error(error_details)
-        logger.exception(e)
-        raise Exception(f"Failed to send email: {error_msg}") from e
+        logger.info(f"Email sent successfully to {', '.join(to_emails)}")
+        return {
+            'status': 'success',
+            'message': 'Email sent successfully',
+            'to': to_emails
+        }
         
     except Exception as e:
-        error_msg = f"Unexpected error sending email: {str(e)}"
+        error_msg = f"Error sending email: {str(e)}"
         logger.error(error_msg)
-        logger.exception(e)
-        raise Exception(error_msg) from e
+        logger.error(traceback.format_exc())
+        return {
+            'status': 'error',
+            'message': str(e),
+            'type': type(e).__name__
+        }

@@ -722,18 +722,91 @@ class EnterpriseViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'], url_path='progress-report/email')
     def email_progress_report(self, request, pk=None):
         """
-        Email the progress report to the specified recipients.
-        Payload: {"recipients": ["email1@example.com", "email2@example.com"]}
+        Email the progress report to the specified recipients with an optional PDF attachment.
+        
+        Payload: {
+            "recipients": ["email1@example.com", "email2@example.com"],
+            "pdf_file": <binary PDF data>  # Optional PDF file to attach
+        }
         """
         from django.utils import timezone
         from datetime import datetime, timedelta
+        from io import BytesIO
         
         enterprise = self.get_object()
         recipients = request.data.get('recipients', [])
+        pdf_file = request.FILES.get('pdf_file')
         
-        if not recipients or not isinstance(recipients, list):
+        # Log the raw request data for debugging
+        logger.debug(f"Request data: {request.data}")
+        logger.debug(f"Request FILES: {request.FILES}")
+        
+        # Handle case where recipients is a JSON string or contains square brackets
+        if isinstance(recipients, str):
+            try:
+                import json
+                import re
+                
+                # Clean up the string by removing any extra whitespace and newlines
+                recipients = recipients.strip()
+                
+                # If it's a JSON array, parse it
+                if recipients.startswith('[') and recipients.endswith(']'):
+                    recipients = json.loads(recipients)
+                else:
+                    # Clean up the string and split by commas
+                    recipients = re.split(r'[,\n\r]+', recipients)
+                    # Clean up each email
+                    recipients = [email.strip(" []'\"") for email in recipients if email.strip()]
+                
+                logger.debug(f"Parsed recipients: {recipients}")
+            except Exception as e:
+                logger.error(f"Error parsing recipients: {str(e)}")
+                return Response(
+                    {'error': 'Invalid recipients format. Please provide a valid JSON array or comma-separated list of email addresses'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+        
+        logger.debug(f"Final recipients: {recipients}")
+        logger.debug(f"Recipients type: {type(recipients)}")
+        
+        # Ensure recipients is a list and not empty
+        if not isinstance(recipients, list) or not recipients:
             return Response(
                 {'error': 'recipients must be a non-empty array of email addresses'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+            
+        # Clean up email addresses
+        recipients = [email.strip() for email in recipients if email and isinstance(email, str)]
+        
+        if not recipients:
+            return Response(
+                {'error': 'No valid email addresses provided after cleaning'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+            
+        # Clean and validate email addresses
+        from django.core.validators import validate_email
+        from django.core.exceptions import ValidationError
+        
+        valid_emails = []
+        invalid_emails = []
+        for email in recipients:
+            try:
+                validate_email(email)
+                valid_emails.append(email)
+            except ValidationError as e:
+                logger.warning(f"Invalid email address: {email} - {str(e)}")
+                invalid_emails.append(email)
+                continue
+        
+        logger.debug(f"Valid emails: {valid_emails}")
+        logger.debug(f"Invalid emails: {invalid_emails}")
+                
+        if not valid_emails:
+            return Response(
+                {'error': 'No valid email addresses provided'},
                 status=status.HTTP_400_BAD_REQUEST
             )
         
@@ -811,6 +884,14 @@ class EnterpriseViewSet(viewsets.ModelViewSet):
             # Log the content for debugging
             print(f"Sending email with content:\n{text_content}")
             
+            # Prepare attachments if PDF is provided
+            attachments = []
+            if pdf_file:
+                attachments.append({
+                    'filename': f'progress_report_{enterprise.name.replace(" ", "_")}_{datetime.now().strftime("%Y%m%d")}.pdf',
+                    'content': pdf_file
+                })
+            
             # Send the email using our SES utility
             try:
                 from users.utils.email import send_email_via_ses
@@ -820,7 +901,8 @@ class EnterpriseViewSet(viewsets.ModelViewSet):
                     body=text_content.strip(),
                     to_emails=recipients,
                     from_email=settings.DEFAULT_FROM_EMAIL,
-                    html_body=html_content
+                    html_body=html_content,
+                    attachments=attachments
                 )
                 
                 if not email_response:
