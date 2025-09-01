@@ -238,25 +238,6 @@ class EnterpriseUser(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     
-    @property
-    def effective_logo(self):
-        """Return enterprise logo."""
-        return self.enterprise.logo
-        
-    @property
-    def effective_favicon(self):
-        """Return enterprise favicon."""
-        return self.enterprise.favicon
-        
-    @property
-    def effective_primary_color(self):
-        """Return enterprise primary color."""
-        return self.enterprise.primary_color
-        
-    @property
-    def effective_secondary_color(self):
-        """Return enterprise secondary color."""
-        return self.enterprise.secondary_color
     
     class Meta:
         unique_together = ('user', 'enterprise')

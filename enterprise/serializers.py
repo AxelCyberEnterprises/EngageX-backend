@@ -179,26 +179,8 @@ class EnterpriseUserSerializer(serializers.ModelSerializer):
     )
     progress = serializers.SerializerMethodField()
     
-    # Branding fields (effective values that inherit from enterprise if not set)
-    logo = serializers.SerializerMethodField()
-    favicon = serializers.SerializerMethodField()
-    primary_color = serializers.SerializerMethodField()
-    secondary_color = serializers.SerializerMethodField()
-
     credits_used = serializers.SerializerMethodField()
     
-    def get_logo(self, obj):
-        return self.context['request'].build_absolute_uri(obj.effective_logo.url) if obj.effective_logo else None
-        
-    def get_favicon(self, obj):
-        return self.context['request'].build_absolute_uri(obj.effective_favicon.url) if obj.effective_favicon else None
-        
-    def get_primary_color(self, obj):
-        return obj.effective_primary_color
-        
-    def get_secondary_color(self, obj):
-        return obj.effective_secondary_color
-
     def get_credits_used(self, obj):
         total_credits = CreditTransaction.objects.filter(
             user=obj.user,
@@ -212,7 +194,6 @@ class EnterpriseUserSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'user', 'user_id', 'enterprise', 'enterprise_name', 'user_type',
             'is_admin', 'created_at', 'updated_at', 'progress',
-            'logo', 'favicon', 'primary_color', 'secondary_color',
             'role', 'team', 'credits_used'
         ]
         read_only_fields = ['created_at', 'updated_at']
