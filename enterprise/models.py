@@ -188,6 +188,14 @@ class Enterprise(models.Model):
         except Credit.DoesNotExist:
             return 0
 
+    def save(self, *args, **kwargs):
+        """
+        Override save to ensure clean() is always called before saving.
+        This ensures accessible_verticals are always properly set.
+        """
+        self.full_clean()
+        super().save(*args, **kwargs)
+        
     def __str__(self):
         return f"{self.name} (Credits: {self.current_credits})"
 
