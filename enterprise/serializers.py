@@ -303,7 +303,7 @@ class TrainingGoalSerializer(serializers.ModelSerializer):
             'completed_sessions', 'progress_percent', 'is_completed',
             'due_date', 'is_active', 'created_at', 'updated_at'
         ]
-        read_only_fields = ('id', 'created_at', 'updated_at', 'progress_percent', 'is_completed')
+        read_only_fields = ('id', 'created_at', 'updated_at', 'progress_percent', 'is_completed', 'enterprise')
     
     def get_progress_percent(self, obj):
         """Calculate and return the progress percentage."""
