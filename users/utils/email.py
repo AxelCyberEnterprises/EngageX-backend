@@ -2,6 +2,7 @@ import boto3
 import json
 import logging
 import os
+import traceback
 from botocore.exceptions import ClientError, NoCredentialsError, PartialCredentialsError
 from django.conf import settings
 
