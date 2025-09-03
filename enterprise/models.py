@@ -106,25 +106,25 @@ class Enterprise(models.Model):
         """Return the default verticals based on enterprise type
         
         Returns:
-            list: List of vertical tuples (value, label) for the enterprise type
+            list: List of vertical codes for the enterprise type
             - Sport enterprises: media_training, coach, gm, pitch, presentation, public_speaking
             - General enterprises: coaching, pitch, presentation, public_speaking
         """
         if self.enterprise_type == self.EnterpriseType.GENERAL:
             return [
-                self.Vertical.COACHING,
-                self.Vertical.PITCH,
-                self.Vertical.PRESENTATION,
-                self.Vertical.PUBLIC_SPEAKING
+                'coaching',
+                'pitch',
+                'presentation',
+                'public_speaking'
             ]
         else:  # SPORT enterprise
             return [
-                self.Vertical.MEDIA_TRAINING,
-                self.Vertical.COACH,
-                self.Vertical.GM,
-                self.Vertical.PITCH,
-                self.Vertical.PRESENTATION,
-                self.Vertical.PUBLIC_SPEAKING
+                'media_training',
+                'coach',
+                'gm',
+                'pitch',
+                'presentation',
+                'public_speaking'
             ]
     
     def get_available_verticals(self):
@@ -164,17 +164,27 @@ class Enterprise(models.Model):
         """
         super().clean()
         
-        # Initialize with default verticals if none are set
-        if not hasattr(self, 'accessible_verticals') or not self.accessible_verticals:
-            self.accessible_verticals = [v[0] for v in self.get_default_verticals()]
+        # Ensure we have a list to work with
+        if not hasattr(self, 'accessible_verticals') or not isinstance(self.accessible_verticals, list):
+            self.accessible_verticals = []
         
-        # Ensure all selected verticals are valid for this enterprise type
+        # Get valid verticals for this enterprise type
         valid_verticals = [v[0] for v in self.get_default_verticals()]
+        
+        # If no verticals are set, use all valid ones
+        if not self.accessible_verticals:
+            self.accessible_verticals = valid_verticals.copy()
+        
+        # Filter out any invalid verticals
         self.accessible_verticals = [v for v in self.accessible_verticals if v in valid_verticals]
         
-        # Ensure at least one vertical is selected
+        # If we still don't have any verticals, use the first valid one
+        if not self.accessible_verticals and valid_verticals:
+            self.accessible_verticals = [valid_verticals[0]]
+        
+        # If we still have no verticals, raise an error
         if not self.accessible_verticals:
-            raise ValidationError("At least one vertical must be enabled for the enterprise")
+            raise ValidationError("No valid verticals available for this enterprise type")
     
     @property
     def current_credits(self):
@@ -193,7 +203,15 @@ class Enterprise(models.Model):
         Override save to ensure clean() is always called before saving.
         This ensures accessible_verticals are always properly set.
         """
-        self.full_clean()
+        # Set default values before validation if this is a new instance
+        if not self.pk:
+            if not hasattr(self, 'accessible_verticals') or not self.accessible_verticals:
+                self.accessible_verticals = [v[0] for v in self.get_default_verticals()]
+        
+        # Only run full_clean if we're not in a migration
+        if not kwargs.get('raw', False):
+            self.full_clean()
+            
         super().save(*args, **kwargs)
         
     def __str__(self):
