@@ -135,24 +135,31 @@ class Enterprise(models.Model):
             list: List of (value, label) tuples representing all verticals
                   available for this enterprise type
         """
-        # Simply return all default verticals for the enterprise type
-        # The frontend will handle which ones are currently enabled
-        return self.get_default_verticals()
+        # Get the default vertical codes for this enterprise type
+        vertical_codes = self.get_default_verticals()
+        # Convert to list of (value, label) tuples using the Vertical choices
+        return [(code, dict(self.Vertical.choices).get(code, code.title().replace('_', ' ')))
+                for code in vertical_codes]
     
     def set_accessible_verticals(self, vertical_codes):
         """Set the accessible verticals for this enterprise"""
         if not isinstance(vertical_codes, list):
             raise ValueError("vertical_codes must be a list")
             
-        # Validate that all provided vertical codes are valid
-        valid_codes = [code for code, _ in self.Vertical.choices]
-        for code in vertical_codes:
-            if code not in valid_codes:
-                raise ValueError(f"Invalid vertical code: {code}")
-                
-        # Only keep verticals that are valid for this enterprise type
-        default_verticals = [v[0] for v in self.get_default_verticals()]
-        self.accessible_verticals = [v for v in vertical_codes if v in default_verticals]
+        # Get valid verticals for this enterprise type
+        valid_verticals = self.get_default_verticals()
+        
+        # Extract just the code if tuples were passed in
+        if vertical_codes and isinstance(vertical_codes[0], (list, tuple)):
+            vertical_codes = [code for code, _ in vertical_codes]
+        
+        # Filter out any invalid verticals
+        self.accessible_verticals = [v for v in vertical_codes if v in valid_verticals]
+        
+        # If no valid verticals were provided, use all valid ones
+        if not self.accessible_verticals and valid_verticals:
+            self.accessible_verticals = valid_verticals
+            
         return self.accessible_verticals
     
     def clean(self):
@@ -169,7 +176,7 @@ class Enterprise(models.Model):
             self.accessible_verticals = []
         
         # Get valid verticals for this enterprise type
-        valid_verticals = [v[0] for v in self.get_default_verticals()]
+        valid_verticals = self.get_default_verticals()
         
         # If no verticals are set, use all valid ones
         if not self.accessible_verticals:
@@ -178,9 +185,9 @@ class Enterprise(models.Model):
         # Filter out any invalid verticals
         self.accessible_verticals = [v for v in self.accessible_verticals if v in valid_verticals]
         
-        # If we still don't have any verticals, use the first valid one
+        # If we still don't have any verticals, use all valid ones
         if not self.accessible_verticals and valid_verticals:
-            self.accessible_verticals = [valid_verticals[0]]
+            self.accessible_verticals = valid_verticals.copy()
         
         # If we still have no verticals, raise an error
         if not self.accessible_verticals:

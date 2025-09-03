@@ -548,13 +548,10 @@ class EnterpriseViewSet(viewsets.ModelViewSet):
         enterprise = self.get_object()
         available_verticals = enterprise.get_available_verticals()
         
-        # Convert list of vertical strings to list of dicts with value and label
+        # Convert list of (value, label) tuples to list of dicts with value and label
         available_verticals_list = [
-            {
-                'value': vertical,
-                'label': dict(enterprise.Vertical.choices).get(vertical, vertical)
-            }
-            for vertical in available_verticals
+            {'value': code, 'label': label}
+            for code, label in available_verticals
         ]
         
         return Response({
@@ -598,26 +595,30 @@ class EnterpriseViewSet(viewsets.ModelViewSet):
         
         # Get available verticals for this enterprise type
         available_verticals = enterprise.get_available_verticals()
+        available_vertical_codes = [code for code, _ in available_verticals]
         
         # Validate all provided verticals are allowed
-        invalid_verticals = [v for v in vertical_ids if v not in available_verticals]
+        invalid_verticals = [v for v in vertical_ids if v not in available_vertical_codes]
         if invalid_verticals:
             return Response(
                 {'error': f'Invalid verticals: {", ".join(invalid_verticals)}'},
                 status=status.HTTP_400_BAD_REQUEST
             )
         
-        # Update enterprise verticals
-        enterprise.accessible_verticals = vertical_ids
-        enterprise.save()
+        # Update enterprise verticals using the model method for proper validation
+        try:
+            enterprise.set_accessible_verticals(vertical_ids)
+            enterprise.save()
+        except ValueError as e:
+            return Response(
+                {'error': str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
         
         # Format available verticals for response
         available_verticals_list = [
-            {
-                'value': vertical,
-                'label': dict(enterprise.Vertical.choices).get(vertical, vertical)
-            }
-            for vertical in available_verticals
+            {'value': code, 'label': label}
+            for code, label in available_verticals
         ]
         
         return Response({
