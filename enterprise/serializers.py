@@ -40,9 +40,9 @@ class EnterpriseSerializer(serializers.ModelSerializer):
     def get_available_verticals(self, obj):
         """Return the list of available verticals for the enterprise."""
         return [{
-            'value': vertical,
-            'label': dict(Enterprise.Vertical.choices)[vertical]
-        } for vertical in obj.get_available_verticals()]
+            'value': code,
+            'label': label
+        } for code, label in obj.get_available_verticals()]
         
     def get_sport_type_display(self, obj):
         """Return the display value for sport_type."""
