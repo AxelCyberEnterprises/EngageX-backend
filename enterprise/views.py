@@ -1052,10 +1052,12 @@ class EnterpriseQuestionViewSet(viewsets.ModelViewSet):
             if not rookie_type:
                 rookie_type = self.request.data.get('vertical')
             if not sport_type:
-                sport_type = self.request.data.get('sport_type')
-            
-            # For media training, use gender to determine voice
-            if question.vertical.lower() == 'media_training':
+                sport_type = self.request.data.get('sport_type') 
+
+            if question.vertical.lower() == 'coaching':
+                voice = 'sage'  # Female voice
+            elif question.vertical.lower() == 'media_training':        # For media training, use gender to determine voice
+             
                 # Ensure gender is set (should be handled by model's clean method)
                 if not question.gender or question.gender == 'N':
                     # If we still don't have a valid gender, log a warning and use random
