@@ -3,6 +3,7 @@ from datetime import timedelta
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from django.utils import timezone
+from .models import Enterprise
 from django.db.models import Sum
 from .models import Enterprise, EnterpriseUser, EnterpriseQuestion, TrainingGoal
 from users.serializers import UserSerializer
@@ -39,10 +40,11 @@ class EnterpriseSerializer(serializers.ModelSerializer):
     
     def get_available_verticals(self, obj):
         """Return the list of available verticals for the enterprise."""
+        verticals = obj.get_available_verticals()
         return [{
             'value': code,
-            'label': label
-        } for code, label in obj.get_available_verticals()]
+            'label': dict(Enterprise.Vertical.choices).get(code, code.replace('_', ' ').title())
+        } for code in verticals]
         
     def get_sport_type_display(self, obj):
         """Return the display value for sport_type."""
