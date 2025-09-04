@@ -277,9 +277,8 @@ class EnterpriseQuestionSerializer(serializers.ModelSerializer):
         vertical = data.get('vertical')
         
         if enterprise and vertical:
-            # Check if vertical is allowed for the enterprise
-            available_verticals = enterprise.get_available_verticals()
-            if vertical not in available_verticals:
+            # Check if vertical is in the enterprise's accessible_verticals
+            if vertical not in enterprise.accessible_verticals:
                 raise serializers.ValidationError({
                     'vertical': f"Vertical '{vertical}' is not available for this enterprise type"
                 })

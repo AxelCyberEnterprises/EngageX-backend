@@ -358,10 +358,8 @@ class EnterpriseQuestion(models.Model):
         super().clean()
         
         if self.enterprise and self.vertical:
-            available_verticals = self.enterprise.get_available_verticals()
-            
-            # Check if vertical is allowed for this enterprise type
-            if self.vertical not in available_verticals:
+            # Check if vertical is in the enterprise's accessible_verticals
+            if self.vertical not in self.enterprise.accessible_verticals:
                 raise ValidationError({
                     'vertical': f"Vertical '{self.vertical}' is not available for this enterprise type"
                 })
