@@ -602,8 +602,7 @@ class EnterpriseViewSet(viewsets.ModelViewSet):
             )
         
         # Get available verticals for this enterprise type
-        available_verticals = enterprise.get_available_verticals()
-        available_vertical_codes = [code for code, _ in available_verticals]
+        available_vertical_codes = enterprise.get_available_verticals()
         
         # Validate all provided verticals are allowed
         invalid_verticals = [v for v in vertical_ids if v not in available_vertical_codes]
@@ -623,10 +622,11 @@ class EnterpriseViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
         
-        # Format available verticals for response
+        # Format available verticals for response using the Vertical choices from the model
         available_verticals_list = [
             {'value': code, 'label': label}
-            for code, label in available_verticals
+            for code, label in Enterprise.Vertical.choices
+            if code in available_vertical_codes
         ]
         
         return Response({
