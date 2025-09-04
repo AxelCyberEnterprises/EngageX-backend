@@ -548,11 +548,19 @@ class EnterpriseViewSet(viewsets.ModelViewSet):
         enterprise = self.get_object()
         available_verticals = enterprise.get_available_verticals()
         
-        # Convert list of (value, label) tuples to list of dicts with value and label
-        available_verticals_list = [
-            {'value': code, 'label': label}
-            for code, label in available_verticals
-        ]
+        # Convert available_verticals to list of dicts with value and label
+        available_verticals_list = []
+        for item in available_verticals:
+            if isinstance(item, (list, tuple)) and len(item) == 2:
+                # Handle (value, label) tuples
+                code, label = item
+                available_verticals_list.append({'value': str(code), 'label': str(label)})
+            else:
+                # Handle string values - use the string as both value and label
+                code = str(item)
+                # Get the display label from Vertical choices if possible
+                label = dict(enterprise.Vertical.choices).get(code, code.replace('_', ' ').title())
+                available_verticals_list.append({'value': code, 'label': label})
         
         return Response({
             'enterprise_id': str(enterprise.id),

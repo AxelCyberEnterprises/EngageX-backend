@@ -107,39 +107,34 @@ class Enterprise(models.Model):
         
         Returns:
             list: List of vertical codes for the enterprise type
-            - Sport enterprises: media_training, coach, gm, pitch, presentation, public_speaking
-            - General enterprises: coaching, pitch, presentation, public_speaking
+            - All enterprises: media_training, coaching, pitch, presentation, public_speaking
+            - Sport enterprises also include: coach, gm
         """
-        if self.enterprise_type == self.EnterpriseType.GENERAL:
-            return [
-                'coaching',
-                'pitch',
-                'presentation',
-                'public_speaking'
-            ]
-        else:  # SPORT enterprise
-            return [
-                'media_training',
-                'coach',
-                'gm',
-                'pitch',
-                'presentation',
-                'public_speaking'
-            ]
+        verticals = [
+            'media_training',
+            'coaching',
+            'pitch',
+            'presentation',
+            'public_speaking'
+        ]
+        
+        if self.enterprise_type == self.EnterpriseType.SPORT:
+            verticals.extend(['coach', 'gm'])
+            
+        return verticals
     
     def get_available_verticals(self):
         """
         Return the list of available verticals based on enterprise type.
         
         Returns:
-            list: List of (value, label) tuples representing all verticals
-                  available for this enterprise type
+            list: List of vertical codes (strings) available for this enterprise type
         """
         # Get the default vertical codes for this enterprise type
-        vertical_codes = self.get_default_verticals()
-        # Convert to list of (value, label) tuples using the Vertical choices
-        return [(code, dict(self.Vertical.choices).get(code, code.title().replace('_', ' ')))
-                for code in vertical_codes]
+        verticals = self.get_default_verticals()
+        
+        # Ensure we're returning a list of strings
+        return [str(v) for v in verticals]
     
     def set_accessible_verticals(self, vertical_codes):
         """Set the accessible verticals for this enterprise"""
@@ -210,11 +205,20 @@ class Enterprise(models.Model):
         Override save to ensure clean() is always called before saving.
         This ensures accessible_verticals are always properly set.
         """
-        # Set default values before validation if this is a new instance
-        if not self.pk:
-            if not hasattr(self, 'accessible_verticals') or not self.accessible_verticals:
-                self.accessible_verticals = [v[0] for v in self.get_default_verticals()]
-        
+        # Set default accessible_verticals if not set or empty
+        if not hasattr(self, 'accessible_verticals') or not self.accessible_verticals:
+            self.accessible_verticals = self.get_available_verticals()
+        else:
+            # Ensure accessible_verticals is a list of strings
+            if isinstance(self.accessible_verticals, str):
+                self.accessible_verticals = [self.accessible_verticals]
+                
+            # Filter out any invalid verticals
+            valid_verticals = set(self.get_available_verticals())
+            self.accessible_verticals = [v[0] if isinstance(v, (list, tuple)) else v 
+                                       for v in self.accessible_verticals 
+                                       if (v[0] if isinstance(v, (list, tuple)) else v) in valid_verticals]
+            
         # Only run full_clean if we're not in a migration
         if not kwargs.get('raw', False):
             self.full_clean()
@@ -353,19 +357,69 @@ class EnterpriseQuestion(models.Model):
         Validate that:
         1. The vertical is allowed for the enterprise
         2. The question text is unique within the same enterprise/vertical/gender
-        3. For media training, set a random gender if not provided
+        3. For media training, set a random gender if not provided or if current gender is 'N' (Neutral)
         """
         super().clean()
         
         if self.enterprise and self.vertical:
-            # Check if vertical is in the enterprise's accessible_verticals
-            if self.vertical not in self.enterprise.accessible_verticals:
-                raise ValidationError({
-                    'vertical': f"Vertical '{self.vertical}' is not available for this enterprise type"
-                })
+            # Get the actual vertical code from the choices
+            vertical_code = self.vertical
             
-            # For media training, set a random gender if not provided
-            if self.vertical.lower() == 'media_training' and not self.gender:
+            # Convert display name to code if needed
+            if not isinstance(vertical_code, str):
+                vertical_code = str(vertical_code)
+                
+            # Handle case where vertical_code is a display name
+            vertical_map = {v.lower(): k for k, v in dict(Enterprise.Vertical.choices).items()}
+            if vertical_code.lower() in vertical_map:
+                vertical_code = vertical_map[vertical_code.lower()]
+            
+            # Ensure accessible_verticals is properly initialized
+            if not hasattr(self.enterprise, 'accessible_verticals') or not self.enterprise.accessible_verticals:
+                self.enterprise.accessible_verticals = self.enterprise.get_available_verticals()
+            
+            # Get the full vertical name for the error message
+            vertical_choices = dict(Enterprise.Vertical.choices)
+            vertical_display = vertical_choices.get(vertical_code, vertical_code)
+            
+            # Convert accessible_verticals to a set of normalized (lowercase) codes for comparison
+            normalized_accessible = set()
+            vertical_choice_codes = {k.lower(): k for k in vertical_choices.keys()}  # Map lowercase to original case
+            
+            for v in self.enterprise.accessible_verticals:
+                if isinstance(v, (list, tuple)) and len(v) > 0:
+                    v = v[0]  # Get the code from (code, name) tuple
+                normalized_accessible.add(str(v).lower())
+            
+            # Get available verticals for display
+            available_verticals = []
+            for v in self.enterprise.accessible_verticals:
+                if isinstance(v, (list, tuple)) and len(v) > 0:
+                    v = v[0]  # Get the code from (code, name) tuple
+                if v in vertical_choices:
+                    available_verticals.append(vertical_choices[v])
+                elif hasattr(v, 'value') and v.value in vertical_choices:
+                    available_verticals.append(vertical_choices[v.value])
+            
+            # Normalize the vertical code for comparison
+            normalized_vertical_code = vertical_code.lower()
+            
+            # Check if vertical is in the enterprise's accessible_verticals (case-insensitive)
+            if normalized_vertical_code not in normalized_accessible:
+                raise ValidationError({
+                    'vertical': f"Vertical '{vertical_display}' is not available for this enterprise type. "
+                               f"Available verticals: {', '.join(available_verticals) if available_verticals else 'None'}"
+                })
+                
+            # Update the vertical with the correct case from choices
+            vertical_code_lower = vertical_code.lower()
+            self.vertical = next(
+                (k for k in vertical_choices.keys() if k.lower() == vertical_code_lower),
+                vertical_code  # fallback to original if not found (shouldn't happen due to earlier validation)
+            )
+            
+            # For media training, set a random gender if not provided or if current gender is 'N' (Neutral)
+            if self.vertical.lower() == 'media_training' and (not self.gender or self.gender == 'N'):
                 self.gender = random.choice(['M', 'F'])
             
             # Check for duplicate question in the same enterprise/vertical/gender
@@ -386,17 +440,22 @@ class EnterpriseQuestion(models.Model):
                     })
 
     def save(self, *args, **kwargs):
-        # Ensure gender is set for media training questions
-        if hasattr(self, 'vertical') and self.vertical and self.vertical.lower() == 'media_training':
-            if not self.gender or self.gender == 'N':
-                self.gender = random.choice(['M', 'F'])
-                
+        # Ensure the enterprise has accessible_verticals set
+        if not hasattr(self.enterprise, 'accessible_verticals') or not self.enterprise.accessible_verticals:
+            self.enterprise.accessible_verticals = self.enterprise.get_available_verticals()
+            
+            # If we're not in a migration, save the enterprise to persist the verticals
+            if not kwargs.get('raw', False) and not kwargs.get('force_insert', False):
+                self.enterprise.save(update_fields=['accessible_verticals'])
+        
         # Clean and validate before saving
         self.full_clean()
+        
+        # Call the parent's save method
         super().save(*args, **kwargs)
         
         # Refresh from database to ensure we have the latest data
-        if self.pk:
+        if self.pk and not kwargs.get('raw', False):
             self.refresh_from_db()
 
     def __str__(self):

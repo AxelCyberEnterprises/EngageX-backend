@@ -228,7 +228,7 @@ class TrainingGoalAdmin(admin.ModelAdmin):
 
 @admin.register(EnterpriseQuestion)
 class EnterpriseQuestionAdmin(admin.ModelAdmin):
-    list_display = ('truncated_question', 'enterprise_link', 'vertical_badge', 'sport_type_badge', 'audio_url_short', 'is_active', 'created_short')
+    list_display = ('truncated_question', 'enterprise_link', 'vertical_badge', 'gender_badge', 'sport_type_badge', 'audio_url_short', 'is_active', 'created_short')
     list_filter = ('enterprise__enterprise_type', 'vertical', 'sport_type', 'is_active', 'enterprise')
     search_fields = ('question_text', 'enterprise__name')
     list_editable = ('is_active',)
@@ -260,11 +260,11 @@ class EnterpriseQuestionAdmin(admin.ModelAdmin):
         if obj and obj.enterprise:
             available_verticals = obj.enterprise.get_available_verticals()
             form.base_fields['vertical'].choices = [
-                (v.value, v.label) for v in available_verticals
+                (v[0], v[1]) for v in available_verticals  # v is a tuple of (value, label)
             ]
             
             # If the current vertical is not in available_verticals (due to type change), add it
-            if obj.vertical and not any(v.value == obj.vertical for v in available_verticals):
+            if obj.vertical and not any(v[0] == obj.vertical for v in available_verticals):
                 form.base_fields['vertical'].choices.append(
                     (obj.vertical, f"{obj.vertical} (invalid for this enterprise type)")
                 )
@@ -312,7 +312,7 @@ class EnterpriseQuestionAdmin(admin.ModelAdmin):
         vertical_display = dict(Enterprise.Vertical.choices).get(obj.vertical, obj.vertical)
         
         # Check if this vertical is valid for the enterprise
-        is_valid = any(v.value == obj.vertical for v in obj.enterprise.get_available_verticals())
+        is_valid = any(v[0] == obj.vertical for v in obj.enterprise.get_available_verticals())
         
         color = '#4caf50' if is_valid else '#f44336'
         title = "" if is_valid else " (invalid for this enterprise type)"
@@ -367,3 +367,19 @@ class EnterpriseQuestionAdmin(admin.ModelAdmin):
         return obj.created_at.strftime('%Y-%m-%d')
     created_short.short_description = 'Created'
     created_short.admin_order_field = 'created_at'
+    
+    def gender_badge(self, obj):
+        """Display gender as a colored badge"""
+        if not obj.gender:
+            return "-"
+            
+        gender_display = dict(EnterpriseQuestion.Gender.choices).get(obj.gender, obj.gender)
+        color = '#4caf50'  # Green for valid gender
+        
+        return format_html(
+            '<span class="badge" style="background: {color}; color: white; padding: 3px 6px; border-radius: 4px; font-size: 12px;">{text}</span>',
+            color=color,
+            text=gender_display
+        )
+    gender_badge.short_description = 'Gender'
+    gender_badge.admin_order_field = 'gender'

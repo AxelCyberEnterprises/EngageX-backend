@@ -273,15 +273,49 @@ class EnterpriseQuestionSerializer(serializers.ModelSerializer):
         Validate the question data including vertical for media training.
         The gender assignment for media training is now handled in the model's clean method.
         """
-        enterprise = data.get('enterprise')
-        vertical = data.get('vertical')
+        enterprise = data.get('enterprise') or getattr(self.instance, 'enterprise', None)
+        vertical = data.get('vertical') or getattr(self.instance, 'vertical', None)
         
         if enterprise and vertical:
-            # Check if vertical is in the enterprise's accessible_verticals
-            if vertical not in enterprise.accessible_verticals:
+            # Ensure accessible_verticals is properly initialized
+            if not hasattr(enterprise, 'accessible_verticals') or not enterprise.accessible_verticals:
+                enterprise.accessible_verticals = enterprise.get_available_verticals()
+                if not getattr(self, '_enterprise_updated', False):  # Prevent multiple saves
+                    enterprise.save(update_fields=['accessible_verticals'])
+                    self._enterprise_updated = True
+            
+            # Convert both to lowercase for case-insensitive comparison
+            vertical_lower = vertical.lower()
+            accessible_verticals_lower = [str(v).lower() for v in enterprise.accessible_verticals]
+            
+            # Check if vertical is in the enterprise's accessible_verticals (case-insensitive)
+            if vertical_lower not in accessible_verticals_lower:
+                # Get the display names of available verticals for the error message
+                vertical_choices = dict(enterprise.Vertical.choices)
+                available_verticals = []
+                
+                for v in enterprise.accessible_verticals:
+                    if isinstance(v, (list, tuple)) and len(v) > 0:
+                        v = v[0]  # Get the code from (code, name) tuple
+                    if hasattr(v, 'value'):
+                        v = v.value  # Handle enum values if needed
+                    if v in vertical_choices:
+                        available_verticals.append(vertical_choices[v])
+                
                 raise serializers.ValidationError({
-                    'vertical': f"Vertical '{vertical}' is not available for this enterprise type"
+                    'vertical': f"Vertical '{vertical}' is not available for this enterprise type. "
+                              f"Available verticals: {', '.join(available_verticals) if available_verticals else 'None'}"
                 })
+            
+            # Update the vertical with the correct case from the enterprise's accessible_verticals
+            if vertical not in enterprise.accessible_verticals:
+                # Find the correct case from the accessible_verticals
+                for v in enterprise.accessible_verticals:
+                    if isinstance(v, (list, tuple)) and len(v) > 0:
+                        v = v[0]  # Get the code from (code, name) tuple
+                    if str(v).lower() == vertical_lower:
+                        data['vertical'] = v
+                        break
         
         return data
 
