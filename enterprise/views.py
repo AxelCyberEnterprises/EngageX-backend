@@ -164,6 +164,144 @@ class EnterpriseViewSet(viewsets.ModelViewSet):
         # Get the updated instance with all fields
         updated_instance = self.get_queryset().get(pk=instance.pk)
         return Response(EnterpriseSerializer(updated_instance, context={'request': request}).data)
+        
+    @action(detail=True, methods=['get'], url_path='dashboard-analytics')
+    def dashboard_analytics(self, request, pk=None):
+        """
+        Get analytics data for the enterprise admin dashboard.
+        
+        Query Parameters:
+            time_range: str - Time range for the data (day, week, month, year, all)
+            start_date: str - Start date in YYYY-MM-DD format (overrides time_range if provided)
+            end_date: str - End date in YYYY-MM-DD format (overrides time_range if provided)
+        
+        Returns:
+            Response: JSON containing:
+            - sessions: Session counts over time by vertical
+            - user_growth: User growth metrics
+            - user_status: Active/inactive user counts
+        """
+        from django.db.models.functions import TruncDate, TruncWeek, TruncMonth, TruncYear
+        from django.db.models import Count, Q, F, Case, When, IntegerField
+        from django.utils.timezone import now, make_aware
+        from datetime import timedelta
+        import datetime as dt
+        
+        enterprise = self.get_object()
+        
+        # Get time range parameters
+        time_range = request.query_params.get('time_range', 'month').lower()
+        start_date_str = request.query_params.get('start_date')
+        end_date_str = request.query_params.get('end_date')
+        
+        # Set date range
+        end_date = now().date()
+        if end_date_str:
+            end_date = make_aware(dt.datetime.strptime(end_date_str, '%Y-%m-%d')).date()
+        
+        if start_date_str:
+            start_date = make_aware(dt.datetime.strptime(start_date_str, '%Y-%m-%d')).date()
+        else:
+            # Set default start date based on time_range
+            if time_range == 'day':
+                start_date = end_date
+            elif time_range == 'week':
+                start_date = end_date - timedelta(days=7)
+            elif time_range == 'month':
+                start_date = end_date - timedelta(days=30)
+            elif time_range == 'year':
+                start_date = end_date - timedelta(days=365)
+            else:  # all time
+                start_date = None
+        
+        # Get all practice sessions for this enterprise
+        from practice_sessions.models import PracticeSession, EnterpriseSpecialtySession
+        
+        sessions_qs = PracticeSession.objects.filter(
+            user__enterprise_profile__enterprise=enterprise,
+            date__isnull=False
+        )
+        
+        if start_date:
+            sessions_qs = sessions_qs.filter(date__date__gte=start_date)
+        if end_date:
+            sessions_qs = sessions_qs.filter(date__date__lte=end_date)
+        
+        # Get session counts by vertical over time
+        sessions_by_vertical = sessions_qs.annotate(
+            vertical=Case(
+                When(session_type='enterprise', then=F('enterprise_settings__rookie_type')),
+                default='session_type',
+                output_field=models.CharField()
+            )
+        ).values('vertical').annotate(
+            count=Count('id')
+        ).order_by('-count')
+        
+        # Get sessions over time (grouped by time period)
+        trunc_map = {
+            'day': TruncDate('date'),
+            'week': TruncWeek('date'),
+            'month': TruncMonth('date'),
+            'year': TruncYear('date')
+        }
+        
+        trunc_func = trunc_map.get(time_range, TruncMonth('date'))
+        
+        sessions_over_time = sessions_qs.annotate(
+            period=trunc_func,
+            vertical=Case(
+                When(session_type='enterprise', then=F('enterprise_settings__rookie_type')),
+                default='session_type',
+                output_field=models.CharField()
+            )
+        ).values('period', 'vertical').annotate(
+            count=Count('id')
+        ).order_by('period')
+        
+        # Format sessions data for the response
+        verticals = set(item['vertical'] for item in sessions_by_vertical if item['vertical'])
+        sessions_data = {
+            'by_vertical': list(sessions_by_vertical),
+            'over_time': list(sessions_over_time),
+            'verticals': list(verticals)
+        }
+        
+        # Get user growth data
+        users_qs = User.objects.filter(enterprise_profile__enterprise=enterprise)
+        
+        if start_date:
+            users_created = users_qs.filter(date_joined__date__gte=start_date)
+        else:
+            users_created = users_qs
+        
+        user_growth = users_created.annotate(
+            period=TruncDate('date_joined')
+        ).values('period').annotate(
+            count=Count('id')
+        ).order_by('period')
+        
+        # Get active/inactive users
+        active_threshold = now() - timedelta(days=30)  # Active within last 30 days
+        active_users = users_qs.filter(last_login__gte=active_threshold).count()
+        total_users = users_qs.count()
+        inactive_users = total_users - active_users
+        
+        user_status = {
+            'total': total_users,
+            'active': active_users,
+            'inactive': inactive_users
+        }
+        
+        return Response({
+            'sessions': sessions_data,
+            'user_growth': list(user_growth),
+            'user_status': user_status,
+            'time_range': {
+                'start_date': start_date.isoformat() if start_date else None,
+                'end_date': end_date.isoformat()
+            }
+        })
     
     @action(detail=True, methods=['get'], url_path='overview-stats')
     def overview_stats(self, request, pk=None):
