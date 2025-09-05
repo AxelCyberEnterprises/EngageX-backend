@@ -507,6 +507,8 @@ class UserProfile(models.Model):
         ("entrepreneur", "Entrepreneurs"),
         ("athlete", "Major League Sports Athlete"),
         ("executive", "Major League Sports Executive"),
+        ("professional_organization", "Professional Organization"),
+        ("major_league_sports_athlete_executive", "Major league sports athlete/executive"),
     ]
     user_intent = models.CharField(
         max_length=50,
