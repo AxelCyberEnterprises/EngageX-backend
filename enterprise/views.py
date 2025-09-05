@@ -165,29 +165,58 @@ class EnterpriseViewSet(viewsets.ModelViewSet):
         updated_instance = self.get_queryset().get(pk=instance.pk)
         return Response(EnterpriseSerializer(updated_instance, context={'request': request}).data)
         
-    @action(detail=True, methods=['get'], url_path='dashboard-analytics')
-    def dashboard_analytics(self, request, pk=None):
+    @action(detail=False, methods=['get'])
+    def dashboard_analytics(self, request, enterprise_id=None):
         """
-        Get analytics data for the enterprise admin dashboard.
+        Get analytics data for the admin dashboard.
+        
+        When enterprise_id is provided in query params, returns data for that specific enterprise.
+        When no enterprise_id is provided (admin only), returns data for the entire application.
         
         Query Parameters:
             time_range: str - Time range for the data (day, week, month, year, all)
             start_date: str - Start date in YYYY-MM-DD format (overrides time_range if provided)
             end_date: str - End date in YYYY-MM-DD format (overrides time_range if provided)
+            enterprise_id: int - Optional enterprise ID to filter by
         
         Returns:
             Response: JSON containing:
             - sessions: Session counts over time by vertical
             - user_growth: User growth metrics
             - user_status: Active/inactive user counts
+            - scope: 'enterprise' or 'application' indicating the data scope
         """
         from django.db.models.functions import TruncDate, TruncWeek, TruncMonth, TruncYear
         from django.db.models import Count, Q, F, Case, When, IntegerField
         from django.utils.timezone import now, make_aware
         from datetime import timedelta
         import datetime as dt
+        from rest_framework import status
         
-        enterprise = self.get_object()
+        # Get enterprise ID from method parameter or query params
+        enterprise_id = enterprise_id or request.query_params.get('enterprise_id')
+        if enterprise_id:
+            try:
+                from .models import Enterprise
+                enterprise = Enterprise.objects.get(pk=enterprise_id)
+                user_filter = Q(user__enterprise_profile__enterprise=enterprise)
+                sessions_filter = Q(user__enterprise_profile__enterprise=enterprise)
+                scope = 'enterprise'
+            except Enterprise.DoesNotExist:
+                return Response(
+                    {"detail": "Enterprise not found"},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+        else:
+            # Check admin access for application-wide analytics
+            if not (request.user.is_staff or request.user.is_superuser):
+                return Response(
+                    {"detail": "Administrator privileges required for application-wide analytics."},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+            user_filter = Q()
+            sessions_filter = Q()
+            scope = 'application'
         
         # Get time range parameters
         time_range = request.query_params.get('time_range', 'month').lower()
@@ -214,13 +243,16 @@ class EnterpriseViewSet(viewsets.ModelViewSet):
             else:  # all time
                 start_date = None
         
-        # Get all practice sessions for this enterprise
+        # Get practice sessions based on scope
         from practice_sessions.models import PracticeSession, EnterpriseSpecialtySession
         
         sessions_qs = PracticeSession.objects.filter(
-            user__enterprise_profile__enterprise=enterprise,
+            user__enterprise_profile__isnull=False,  # Only users with enterprise profiles
             date__isnull=False
         )
+        
+        if enterprise_id:
+            sessions_qs = sessions_qs.filter(user_filter)
         
         if start_date:
             sessions_qs = sessions_qs.filter(date__date__gte=start_date)
@@ -267,8 +299,10 @@ class EnterpriseViewSet(viewsets.ModelViewSet):
             'verticals': list(verticals)
         }
         
-        # Get user growth data
-        users_qs = User.objects.filter(enterprise_profile__enterprise=enterprise)
+        # Get user growth data based on scope
+        users_qs = User.objects.filter(enterprise_profile__isnull=False)  # Only enterprise users
+        if enterprise_id:
+            users_qs = users_qs.filter(user_filter)
         
         if start_date:
             users_created = users_qs.filter(date_joined__date__gte=start_date)
@@ -293,15 +327,25 @@ class EnterpriseViewSet(viewsets.ModelViewSet):
             'inactive': inactive_users
         }
         
-        return Response({
+        response_data = {
             'sessions': sessions_data,
             'user_growth': list(user_growth),
             'user_status': user_status,
+            'scope': scope,
             'time_range': {
                 'start_date': start_date.isoformat() if start_date else None,
                 'end_date': end_date.isoformat()
             }
-        })
+        }
+        
+        # Add enterprise info if scope is specific to an enterprise
+        if enterprise_id:
+            response_data['enterprise'] = {
+                'id': enterprise.id,
+                'name': enterprise.name
+            }
+            
+        return Response(response_data)
     
     @action(detail=True, methods=['get'], url_path='overview-stats')
     def overview_stats(self, request, pk=None):

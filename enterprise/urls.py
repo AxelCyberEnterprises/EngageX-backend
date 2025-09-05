@@ -28,5 +28,13 @@ urlpatterns = [
     path('sso/verify-login/', SSOLoginVerifyView.as_view(), name='sso-verify-login'),
     
     # Admin Endpoints
-    path('admin/manual-upload/', ManualUserUploadView.as_view(), name='admin-manual-upload'),
+    path('admin/manual-user-upload/', ManualUserUploadView.as_view(), name='manual-user-upload'),
+    
+    # Dashboard Analytics Endpoints
+    path('dashboard-analytics/', 
+         views.EnterpriseViewSet.as_view({'get': 'dashboard_analytics'}), 
+         name='app-dashboard-analytics'),
+    path('<int:enterprise_id>/dashboard-analytics/', 
+         views.EnterpriseViewSet.as_view({'get': 'dashboard_analytics'}), 
+         name='enterprise-dashboard-analytics'),
 ]
