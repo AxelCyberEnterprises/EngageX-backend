@@ -204,11 +204,19 @@ class PracticeSessionSerializer(serializers.ModelSerializer):
                         "credit": "Insufficient credits. Please purchase more credits to continue."
                     })
 
-            # Create the session
+            # Remove slide_preview from validated_data to avoid duplicate
+            if 'slide_preview' in validated_data:
+                del validated_data['slide_preview']
+                
+            # Create the session with the slide_preview if provided
             session = PracticeSession.objects.create(
-                slide_preview=slide_preview,
                 **validated_data
             )
+            
+            # If we have a slide_preview, set it after creation
+            if slide_preview:
+                session.slide_preview = slide_preview
+                session.save()
 
             # Handle slide preview if exists
             if slide_preview:
