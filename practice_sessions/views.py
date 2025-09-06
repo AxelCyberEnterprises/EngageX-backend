@@ -41,10 +41,10 @@ from rest_framework.exceptions import PermissionDenied
 from django.utils.decorators import method_decorator
 from django.core.files.uploadedfile import UploadedFile
 from django.db.models.fields.files import FieldFile
-from django.db.models.functions import Round
+from django.db.models.functions import Round, Coalesce
 from django.conf import settings
 from django.db.models import (Count, Avg, Case, When, Value, CharField, Sum, IntegerField, Q,
-                              ExpressionWrapper, FloatField,
+                              ExpressionWrapper, FloatField, DurationField
                               )
 from django.utils.timezone import now
 from django.shortcuts import get_object_or_404
@@ -2648,53 +2648,61 @@ class PerformanceAnalyticsView(APIView):
         user = request.user
         user_id = request.query_params.get('user_id')
         
-        # If user_id is provided and the requester is an admin, filter by that user
+        # Base queryset with user filtering
+        base_queryset = PracticeSession.objects.all()
         if user_id and (user.is_staff or user.is_superuser):
-            session = PracticeSession.objects.filter(user_id=user_id)
+            base_queryset = base_queryset.filter(user_id=user_id)
         else:
-            # Otherwise, only show the current user's data
-            session = PracticeSession.objects.filter(user=user)
+            base_queryset = base_queryset.filter(user=user)
 
+        # Handle date filtering
         start_date = request.query_params.get("start_date")
         end_date = request.query_params.get("end_date")
-        sort = request.query_params.get("sort")
-        sort_type = {"max-date":"-date",'min-date':"date",'max-impact':'-impact','min-impact':"impact",'max-duration':"-duration", 'min-duration':'duration'}
-
+        
         if start_date and end_date:
-            # Strip any whitespace from the date strings before parsing
-            parsed_start = datetime.strptime(start_date.strip(), "%Y-%m-%d").date()
-            parsed_end = datetime.strptime(end_date.strip(), "%Y-%m-%d").date()
+            try:
+                parsed_start = datetime.strptime(start_date.strip(), "%Y-%m-%d").date()
+                parsed_end = datetime.strptime(end_date.strip(), "%Y-%m-%d").date()
+                base_queryset = base_queryset.filter(date__date__range=(parsed_start, parsed_end))
+            except (ValueError, TypeError):
+                pass  # Handle invalid date format
 
-            graph_session = PracticeSession.objects.filter(user=user, date__date__range=(parsed_start, parsed_end))
-        else:
-            graph_session = PracticeSession.objects.filter(user=user)
-
-        if sort and sort in sort_type.keys():
-            recent_session = PracticeSession.objects.filter(user=user).order_by(sort_type[sort])[:5]
-        else:
-            recent_session = PracticeSession.objects.filter(user=user).order_by("-date")[:5]
-
-        card_data = session.aggregate(
-            speaking_time=Sum("duration"),
+        # Get overview card data
+        card_data = base_queryset.aggregate(
+            speaking_time=Coalesce(Sum("duration"), timedelta(0), output_field=DurationField()),
             total_session=Count("id"),
-            impact=Round(Avg("impact")),
-            transformative_communication=Round(Avg("transformative_communication"))
+            impact=Coalesce(Round(Avg("impact")), 0, output_field=FloatField()),
+            transformative_communication=Coalesce(Round(Avg("transformative_communication")), 0, output_field=FloatField())
         )
-        # Convert timedelta to HH:MM:SS
-        if card_data["speaking_time"]:
-            card_data["speaking_time"] = str(card_data["speaking_time"])
 
-        recent_data = (
-            recent_session.annotate(
+        # Get recent sessions
+        sort = request.query_params.get("sort")
+        sort_type = {
+            "max-date": "-date",
+            "min-date": "date",
+            "max-impact": "-impact",
+            "min-impact": "impact",
+            "max-duration": "-duration", 
+            "min-duration": "duration"
+        }
+        
+        recent_queryset = base_queryset
+        if sort and sort in sort_type:
+            recent_queryset = recent_queryset.order_by(sort_type[sort])
+        else:
+            recent_queryset = recent_queryset.order_by("-date")
+            
+        recent_data = list(
+            recent_queryset[:5].annotate(
                 session_type_display=Case(
                     When(session_type="pitch", then=Value("Pitch Practice")),
                     When(session_type="public", then=Value("Public Speaking")),
                     When(session_type="presentation", then=Value("Presentation")),
+                    default=Value("Practice Session"),
                     output_field=CharField(),
                 ),
                 formatted_duration=Cast("duration", output_field=CharField()),
-            )
-            .values(
+            ).values(
                 "id",
                 "session_name",
                 "session_type_display",
@@ -2704,29 +2712,31 @@ class PerformanceAnalyticsView(APIView):
             )
         )
 
-        graph_data = (
-            graph_session
+        # Get graph data
+        graph_data = list(
+            base_queryset.annotate(day=TruncDay("date"))
+            .values("day")
             .annotate(
-                day=TruncDay("date"),
+                trigger_response=Coalesce(Avg("trigger_response", output_field=FloatField()), 0, output_field=FloatField()),
+                impact=Coalesce(Avg("impact", output_field=FloatField()), 0, output_field=FloatField()),
+                conviction=Coalesce(Avg("conviction", output_field=FloatField()), 0, output_field=FloatField()),
             )
-            .values("day", "trigger_response","impact","conviction")
             .order_by("day")
+            .values("day", "trigger_response", "impact", "conviction")
         )
 
-        result = (
-            {
-                "date": item["day"],
-                "trigger_response": item["trigger_response"] or 0,
-                "impact": item["impact"] or 0,
-                "conviction": item["conviction"] or 0,
-            }
-            for item in graph_data
-        )
+        # Format the response
         data = {
-            "overview_card": dict(card_data),
-            "recent_session": list(recent_data),
-            "graph_data": result,
+            "overview_card": {
+                "speaking_time": str(card_data["speaking_time"]),
+                "total_session": card_data["total_session"],
+                "impact": float(card_data["impact"] or 0),
+                "transformative_communication": float(card_data["transformative_communication"] or 0)
+            },
+            "recent_session": recent_data,
+            "graph_data": graph_data,
         }
+        
         return Response(data)
 
 
