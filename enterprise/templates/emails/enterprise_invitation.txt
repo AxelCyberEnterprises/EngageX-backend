@@ -5,9 +5,9 @@ Welcome to EngageX! We've set up your account under {{ enterprise.name }}, and y
 Email: {{ user.email }}
 Temporary Password: {{ password }}
 
-🔑 For security, you'll be asked to enter a One-Time Password (OTP) on login. After logging in, we strongly recommend changing your password from the randomly generated one above to something more personal and secure.
+For security, you'll be asked to enter a One-Time Password (OTP) on login. After logging in, we strongly recommend changing your password from the randomly generated one above to something more personal and secure.
 
-👉 You can log in here:
+You can log in here:
 {{ login_url }}
 
 If the link doesn't work, copy and paste this URL into your browser:

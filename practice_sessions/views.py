@@ -463,6 +463,7 @@ class PracticeSessionViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         # Get the slide_preview_id from the request data if it exists
         slide_preview_id = self.request.data.get('slide_preview_id')
+        print(f"slide_preview_id: {slide_preview_id}")
         
         # If slide_preview_id is provided, get the SlidePreview instance
         slide_preview = None
@@ -470,6 +471,7 @@ class PracticeSessionViewSet(viewsets.ModelViewSet):
             try:
                 slide_preview = SlidePreview.objects.get(id=slide_preview_id, user=self.request.user)
                 # Mark the preview as linked
+                print(f"slide_preview: {slide_preview}")
                 slide_preview.is_linked = True
                 slide_preview.save()
             except SlidePreview.DoesNotExist:
