@@ -461,7 +461,23 @@ class PracticeSessionViewSet(viewsets.ModelViewSet):
         return context
 
     def perform_create(self, serializer):
-        serializer.save(user=self.request.user)
+        # Get the slide_preview_id from the request data if it exists
+        slide_preview_id = self.request.data.get('slide_preview_id')
+        
+        # If slide_preview_id is provided, get the SlidePreview instance
+        slide_preview = None
+        if slide_preview_id:
+            try:
+                slide_preview = SlidePreview.objects.get(id=slide_preview_id, user=self.request.user)
+                # Mark the preview as linked
+                slide_preview.is_linked = True
+                slide_preview.save()
+            except SlidePreview.DoesNotExist:
+                from rest_framework.exceptions import ValidationError
+                raise ValidationError({"slide_preview_id": "Invalid slide preview ID or you don't have permission to access it."})
+        
+        # Save the session with the user and slide_preview
+        serializer.save(user=self.request.user, slide_preview=slide_preview)
 
     # Helper methods for S3 operations
     async def _download_file_from_s3_async(self, s3_client, bucket_name, s3_key, local_path, is_encrypted=False):
