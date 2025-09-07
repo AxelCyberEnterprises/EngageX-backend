@@ -2345,7 +2345,16 @@ class SessionReportView(APIView):
     def get(self, request, session_id):
         try:
             user = request.user
-            session = PracticeSession.objects.get(id=session_id, user=request.user)
+            # First get the session by ID only
+            session = PracticeSession.objects.get(id=session_id)
+            
+            # Check permissions - allow admin access to any session
+            if not (user.is_staff or user.is_superuser) and session.user != user:
+                return Response(
+                    {"error": "You don't have permission to access this session"},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+                
             session_serializer = PracticeSessionSerializer(session)
 
             # Get related chunk sentiment analysis
