@@ -2039,7 +2039,8 @@ class SessionReportView(APIView):
                 "Area of Improvement": ["N/A - Session not found."],
                 "General Feedback Summary": "N/A - Session not found.",
             }
-
+        
+        session_type = session.session_type
         goals = getattr(session, "goals", "") or ""
         name = getattr(session.user, "first_name", "") or ""
         role = ""
@@ -2246,35 +2247,70 @@ class SessionReportView(APIView):
                     """
             )
         else:
-            # Generic speaking / presentation prompt
-            prompt_heading = (
-                "You are my personal expert communication mentor/coach specializing in public speaking, storytelling, pitching, and presentations. Your role is to critique me for my growth, and guide me to become a more impactful professional speaker for my career development."
+            if session_type == "pitch" or session_type == "Pitch Practice":
+                prompt_heading = (
+                    "You are my personal expert communication coach specializing in pitching, and presentations. Your role is to critique me for my growth, and guide me to become a more impactful professional speaker."
+                )
+                specific_instructions = (
+                    f"""
+                My goal with this pitch is: {goals}. Using my provided pitch evaluation data and transcript, generate a structured JSON response with the following components:
+
+                1. Strengths: Identify my most impactful specific strengths. Focus on how well I communicated the idea, my delivery, presence, and persuasiveness. Use simple sentences, do not include transcript quotes here.
+
+                2. Areas for Improvement: Provide clear, actionable, and specific feedback on where I can improve. Emphasize clarity, structure, investor relevance, and delivery habits. Use simple sentences, do not include transcript quotes here.
+
+                3. General Feedback Summary: Craft a detailed, content-specific analysis of my pitch. Your summary must be grounded in specific parts of my transcript. Include the following pillars:
+
+                - Clarity & Communication Feedback: Was the value proposition obvious? Could a non-expert understand the idea? Was my messaging crisp and free from jargon? Were pain points and solutions clearly stated? Quote exact sentences where clarity was strong or weak.
+
+                - Market Fit & Investor Relevance: Did I show clear market demand and the size of the opportunity? Were my competitive advantages and differentiators strong? Did I address scalability and potential exit paths? Quote exact parts of my transcript that illustrate this.
+
+                - Business Model & Financials: Was the revenue model communicated clearly? Were growth milestones and financial projections realistic? Did I explain how funding would be used? Quote exact sentences where I did this well or where more detail is needed.
+
+                - Pitch Structure & Flow: Did the pitch follow a logical flow from problem → solution → traction → ask? Were transitions smooth? Did I end with a strong call to action? Point to exact sentences where flow was strong or weak.
+
+                - Presence & Confidence: Did I come across as credible and passionate? Was I confident, warm, or authoritative in tone? Did I manage time well? Did I handle objections or audience questions with poise? If "AUDIENCE QUESTION" appears in my transcript, evaluate my response. Quote exact sentences that show tone and delivery.
+
+                - Risk & Gaps: Were there blind spots, unvalidated assumptions, or missing details? Did I address regulatory, technical, or market risks? Quote exact places where gaps appeared or where I preemptively addressed them.
+
+                - Reference my goal to {goals}. If I have no goals, don’t mention anything about goals.
+
+                - Provide an overall evaluation of how effective my pitch was in convincing an investor and inspiring confidence. Include tailored suggestions for improvement based on context and audience. Ground all observations in direct excerpts from the transcript.
+
+                Tone: speak to me personally but professionally like a mentor coach, critique me for my growth while referencing my transcript not my evaluation data. Don't use headers or "**" for titles, don't use hyphens or dashes in your response, just correct me and reference my transcript. Use \n \n for line breaks between paragraphs and also start with an encouraging remark relevant to my pitch with my name.
+                """
             )
-            specific_instructions = (
-                f"""
-                My goal with this presentation is: {goals}. Using my provided presentation evaluation data and speech, generate a structured JSON response with the following three components:
 
-                1. Strengths: Identify my most impactful specific strengths. Focus on concrete content choices, tone, delivery techniques, and audience engagement strategies. Use simple sentences, do not include transcript quotes here.
+            else: 
+                # Generic speaking / presentation prompt
+                prompt_heading = (
+                    "You are my personal expert communication mentor/coach specializing in public speaking, storytelling, pitching, and presentations. Your role is to critique me for my growth, and guide me to become a more impactful professional speaker for my career development."
+                )
+                specific_instructions = (
+                    f"""
+                    My goal with this presentation is: {goals}. Using my provided presentation evaluation data and speech, generate a structured JSON response with the following three components:
 
-                2. Areas for Improvement: Provide clear, actionable, and specific feedback on where I can improve. Emphasize my delivery habits, missed emotional beats, and structural weaknesses. Use simple sentences, do not include transcript quotes here.
+                    1. Strengths: Identify my most impactful specific strengths. Focus on concrete content choices, tone, delivery techniques, and audience engagement strategies. Use simple sentences, do not include transcript quotes here.
 
-                3. General Feedback Summary: Craft a detailed, content-specific analysis of my presentation. Your summary must be grounded in specific parts of my speech. Include the following:
-                - Evaluate the effectiveness of my opening: Was it attention-grabbing, relevant, or emotionally engaging? Did I clearly set the tone or premise for the rest of the talk?
-                - Highlight specific trigger words or emotionally resonant phrases I used that effectively drove engagement, and explain how they influenced the audience. Include the actual phrases from the transcript.
-                - List any filler words I overused (e.g., "um", "like", "you know"). Quote a few instances where these occurred.
-                - Comment on how I used powerful or evocative language—did I evoke empathy, joy, urgency, or excitement? Did I show vulnerability or emotional relatability?
-                - Analyze my tone of voice, Was it confident, warm, authoritative, enthusiastic, or inconsistent? Note any tone shifts and how they impacted audience engagement. Back this up with quoted phrases that show tone variation.
-                - Reflect on whether my style or personal story helped make the talk more memorable.
-                - Was I persuasive enough, Did I inspire action, challenge assumptions, or shift perspectives? Highlight specific techniques like storytelling, analogies, or rhetorical questions.
-                - Evaluate the structure and flow of my talk. Were transitions smooth? Did I build toward a clear message or emotional climax? Point to exact sentences where this occurred.
-                - Clearly state whether my talk was effective — and if so, effective at what specifically (e.g., persuading the audience, building trust, sparking interest).
-                - If "AUDIENCE QUESTION" is in my transcript, evaluate how I answered the audience questions. If no "AUDIENCE QUESTION" is in my transcript dont mention anything about questions
-                - Reference my goal to {goals}. If I have no goals dont mention anything about goals.
-                - Provide an overall evaluation of how well I demonstrated mastery in storytelling, public speaking, or pitching. Include tailored suggestions for improvement based on the context and audience. Ground all observations in direct excerpts from the transcript. Quote exact sentences where possible.
+                    2. Areas for Improvement: Provide clear, actionable, and specific feedback on where I can improve. Emphasize my delivery habits, missed emotional beats, and structural weaknesses. Use simple sentences, do not include transcript quotes here.
 
-                Tone: speak to me personally but professionaly like a mentor coach, critique me for my growth while referencing my transcript not my evaluation data. Don't use headers or "**" for titles, dont use hyphens or dashes '—' in your response, just correct me and reference my transcript. Use \n \n for line breaks between paragraphs and also start with an encouraging remark relevant to my presentation with my name.
-            """
-            )
+                    3. General Feedback Summary: Craft a detailed, content-specific analysis of my presentation. Your summary must be grounded in specific parts of my speech. Include the following:
+                    - Evaluate the effectiveness of my opening: Was it attention-grabbing, relevant, or emotionally engaging? Did I clearly set the tone or premise for the rest of the talk?
+                    - Highlight specific trigger words or emotionally resonant phrases I used that effectively drove engagement, and explain how they influenced the audience. Include the actual phrases from the transcript.
+                    - List any filler words I overused (e.g., "um", "like", "you know"). Quote a few instances where these occurred.
+                    - Comment on how I used powerful or evocative language—did I evoke empathy, joy, urgency, or excitement? Did I show vulnerability or emotional relatability?
+                    - Analyze my tone of voice, Was it confident, warm, authoritative, enthusiastic, or inconsistent? Note any tone shifts and how they impacted audience engagement. Back this up with quoted phrases that show tone variation.
+                    - Reflect on whether my style or personal story helped make the talk more memorable.
+                    - Was I persuasive enough, Did I inspire action, challenge assumptions, or shift perspectives? Highlight specific techniques like storytelling, analogies, or rhetorical questions.
+                    - Evaluate the structure and flow of my talk. Were transitions smooth? Did I build toward a clear message or emotional climax? Point to exact sentences where this occurred.
+                    - Clearly state whether my talk was effective — and if so, effective at what specifically (e.g., persuading the audience, building trust, sparking interest).
+                    - If "AUDIENCE QUESTION" is in my transcript, evaluate how I answered the audience questions. If no "AUDIENCE QUESTION" is in my transcript dont mention anything about questions
+                    - Reference my goal to {goals}. If I have no goals dont mention anything about goals.
+                    - Provide an overall evaluation of how well I demonstrated mastery in storytelling, public speaking, or pitching. Include tailored suggestions for improvement based on the context and audience. Ground all observations in direct excerpts from the transcript. Quote exact sentences where possible.
+
+                    Tone: speak to me personally but professionaly like a mentor coach, critique me for my growth while referencing my transcript not my evaluation data. Don't use headers or "**" for titles, dont use hyphens or dashes '—' in your response, just correct me and reference my transcript. Use \n \n for line breaks between paragraphs and also start with an encouraging remark relevant to my presentation with my name.
+                """
+                )
 
         prompt = (
             f"{prompt_heading}\n\n"
