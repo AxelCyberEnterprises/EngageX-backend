@@ -316,8 +316,8 @@ class EnterpriseViewSet(viewsets.ModelViewSet):
         ).order_by('period')
         
         # Get active/inactive users
-        active_threshold = now() - timedelta(days=30)  # Active within last 30 days
-        active_users = users_qs.filter(last_login__gte=active_threshold).count()
+        # A user is considered active if their is_active flag is True
+        active_users = users_qs.filter(is_active=True).count()
         total_users = users_qs.count()
         inactive_users = total_users - active_users
         
