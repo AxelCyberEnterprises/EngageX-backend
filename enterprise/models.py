@@ -107,11 +107,10 @@ class Enterprise(models.Model):
         
         Returns:
             list: List of vertical codes for the enterprise type
-            - All enterprises: media_training, coaching, pitch, presentation, public_speaking
-            - Sport enterprises also include: coach, gm
+            - Sport enterprises: media_training, coaching, pitch, presentation, public_speaking, coach, gm
+            - General enterprises: coaching, pitch, presentation, public_speaking
         """
         verticals = [
-            'media_training',
             'coaching',
             'pitch',
             'presentation',
@@ -119,7 +118,7 @@ class Enterprise(models.Model):
         ]
         
         if self.enterprise_type == self.EnterpriseType.SPORT:
-            verticals.extend(['coach', 'gm'])
+            verticals.extend(['media_training', 'coach', 'gm'])
             
         return verticals
     
