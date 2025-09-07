@@ -1,9 +1,28 @@
 from django.contrib import admin
 from django.utils.translation import gettext_lazy as _
+from django.db import transaction
+from django.utils.html import format_html
+from django.urls import reverse
+from django.utils.safestring import mark_safe
+from payments.models import Credit, CreditTransaction
 from django import forms
 from django.core.exceptions import ValidationError
 from django.utils.html import format_html
 from .models import Enterprise, EnterpriseUser, EnterpriseQuestion, TrainingGoal
+
+class CreditInline(admin.StackedInline):
+    model = Credit
+    can_delete = False
+    verbose_name_plural = 'Credit Balance'
+    fields = ('total_credits', 'credits_used', 'balance', 'updated_at')
+    readonly_fields = ('balance', 'updated_at')
+    extra = 1
+    max_num = 1
+    min_num = 1
+    
+    def has_delete_permission(self, request, obj=None):
+        return False
+
 
 class EnterpriseQuestionInline(admin.TabularInline):
     model = EnterpriseQuestion
@@ -21,15 +40,25 @@ class EnterpriseQuestionInline(admin.TabularInline):
                 if obj:  # Only if we're editing an existing enterprise
                     # Get available verticals for the enterprise
                     available_verticals = obj.get_available_verticals()
-                    # Update the vertical choices
-                    self.fields['vertical'].choices = [
-                        (v.value, v.label) for v in available_verticals
-                    ]
+                    
+                    # Update the vertical choices with proper display labels
+                    from enterprise.models import Enterprise
+                    vertical_choices = []
+                    for code in available_verticals:
+                        try:
+                            # Try to get the display label from the Vertical choices
+                            label = dict(Enterprise.Vertical.choices).get(code, code)
+                            vertical_choices.append((code, label))
+                        except (ValueError, AttributeError):
+                            # Fallback to using the code as both value and label
+                            vertical_choices.append((code, code))
+                    
+                    self.fields['vertical'].choices = vertical_choices
                     
                     # If there's an existing instance, ensure its vertical is in the choices
                     if self.instance and self.instance.pk:
                         current_vertical = self.instance.vertical
-                        if not any(v.value == current_vertical for v in available_verticals):
+                        if not any(v[0] == current_vertical for v in vertical_choices):
                             self.fields['vertical'].choices.append(
                                 (current_vertical, f"{current_vertical} (invalid for this enterprise type)")
                             )
@@ -44,7 +73,7 @@ class EnterpriseAdmin(admin.ModelAdmin):
     search_fields = ('name',)
     readonly_fields = ('created_at', 'updated_at', 'available_verticals_display', 'current_credits_display')
     list_editable = ('is_active',)
-    inlines = [EnterpriseQuestionInline]
+    inlines = [CreditInline, EnterpriseQuestionInline]
     
     fieldsets = (
         (None, {
@@ -94,12 +123,20 @@ class EnterpriseAdmin(admin.ModelAdmin):
         verticals = ", ".join([str(v.label) for v in obj.get_available_verticals()])
         return verticals if verticals else "-"
     available_verticals_display.short_description = 'Available Verticals'
-    available_verticals_display.admin_order_field = 'enterprise_type'  # Add this line to make the column sortable
+    available_verticals_display.admin_order_field = 'enterprise_type'  
     
     def current_credits_display(self, obj):
-        return f"{obj.current_credits} credits"
+        credit = Credit.objects.filter(enterprise=obj).first()
+        if credit:
+            return format_html(
+                '<a href="{}?enterprise__id__exact={}">{:.2f} credits</a>',
+                reverse('admin:payments_credittransaction_changelist'),
+                obj.id,
+                credit.balance
+            )
+        return "0.00"
     current_credits_display.short_description = 'Available Credits'
-    current_credits_display.admin_order_field = 'current_credits'
+    current_credits_display.allow_tags = True
     
     def enterprise_type_display(self, obj):
         """Color code the enterprise type"""
@@ -211,13 +248,10 @@ class TrainingGoalAdmin(admin.ModelAdmin):
     is_completed_display.short_description = 'Completed?'
     
     def save_model(self, request, obj, form, change):
-        # Set default values if not provided
-        if obj.target_sessions is None:
-            obj.target_sessions = 0
-            
-        # Ensure only one active goal per room per enterprise
-        if obj.is_active:
-            TrainingGoal.objects.filter(
+        with transaction.atomic():
+            super().save_model(request, obj, form, change)
+            # Create a credit record if it doesn't exist
+            Credit.objects.get_or_create(
                 enterprise=obj.enterprise,
                 room=obj.room,
                 is_active=True
