@@ -2254,33 +2254,28 @@ class SessionReportView(APIView):
                     "You are my personal expert communication coach specializing in pitching, and presentations. Your role is to critique me for my growth, and guide me to become a more impactful professional speaker."
                 )
                 specific_instructions = (
-                    f"""
-                My goal with this pitch is: {goals}. Using my provided pitch evaluation data and transcript, generate a structured JSON response with the following components:
+                f"""
+                    My goal with this pitch is: {goals}. Using my provided pitch evaluation data and transcript, generate a structured JSON response with the following components:
 
-                1. Strengths: Identify my most impactful specific strengths. Focus on how well I communicated the idea, my delivery, presence, and persuasiveness. Use simple sentences, do not include transcript quotes here.
+                    1. Strengths: Identify my most impactful specific strengths. Focus on how well I communicated the idea, my delivery, presence, and persuasiveness. Use simple sentences, do not include transcript quotes here.
 
-                2. Areas for Improvement: Provide clear, actionable, and specific feedback on where I can improve. Emphasize clarity, structure, investor relevance, and delivery habits. Use simple sentences, do not include transcript quotes here.
+                    2. Areas for Improvement: Provide clear, actionable, and specific feedback on where I can improve. Emphasize clarity, structure, audience relevance, and delivery habits. Use simple sentences, do not include transcript quotes here.
 
-                3. General Feedback Summary: Craft a detailed, content-specific analysis of my pitch. Your summary must be grounded in specific parts of my transcript. Include the following pillars:
+                    3. General Feedback Summary: Craft a detailed, content-specific analysis of my pitch. Your summary must be grounded in specific parts of my transcript. Evaluate both universal presentation skills and context-relevant aspects of my pitch. Include the following pillars:
 
-                - Clarity & Communication Feedback: Was the value proposition obvious? Could a non-expert understand the idea? Was my messaging crisp and free from jargon? Were pain points and solutions clearly stated? Quote exact sentences where clarity was strong or weak.
+                    - Presenter’s Goals: What was the stated purpose of the pitch (e.g., funding, buy-in, awareness, grant approval)? Did the pitch clearly align with and serve those goals? Was the desired outcome (funding, adoption, support) clearly articulated? Quote transcript sections that show alignment or lack of clarity.
+                    - Structure & Flow: Was there a clear beginning (hook), middle (evidence/details), and end (ask/next steps)? Did the narrative flow logically and build momentum? Were transitions smooth, or did any sections feel abrupt or disconnected? Quote exact sentences where flow was strong or weak.
+                    - Communication Clarity: Was the main message easy to grasp and repeatable? Did the presenter avoid jargon or explain technical terms effectively? Were visuals/slides, if used, supporting the story rather than distracting? Quote specific examples.
+                    - Hook & Engagement: Did the opening capture attention with a thought-provoking hook, compelling story, or striking fact? Was the pitch engaging throughout, or did attention lag at certain points? Did the presenter invite audience interaction, questions, or reflection? Quote transcript examples.
+                    - Relevance to the Audience: Did the presenter tailor the pitch to the audience’s interests (e.g., investors, grant reviewers, stakeholders)? Was the market, social, or strategic relevance clearly established? For funding-related pitches: did they highlight why this matters now? Quote transcript examples.
+                    - Business Model / Milestones (as applicable): Was the business model or value proposition explained clearly? Were milestones, traction, or metrics provided to build credibility? For grants/ideas: was there a clear pathway for execution and measurable impact? Quote transcript examples.
+                    - Confidence & Delivery: Did the presenter project confidence and credibility? Was the tone persuasive but not overbearing? Did they handle questions smoothly and demonstrate subject mastery? Quote transcript examples, especially around tone and Q&A.
+                    - Overall Impression & Next Steps: Did the pitch achieve its intended purpose? Would you recommend moving forward (investment, support, approval)? Suggest immediate next steps for the presenter. Quote transcript lines where relevant.
+                    - Reference my goal to {goals}. If I have no goals, don’t mention anything about goals.
+                    - Provide an overall evaluation of how effective my pitch was in persuading and inspiring confidence in the intended audience. Include tailored suggestions for improvement based on context and audience. Ground all observations in direct excerpts from the transcript.
 
-                - Market Fit & Investor Relevance: Did I show clear market demand and the size of the opportunity? Were my competitive advantages and differentiators strong? Did I address scalability and potential exit paths? Quote exact parts of my transcript that illustrate this.
-
-                - Business Model & Financials: Was the revenue model communicated clearly? Were growth milestones and financial projections realistic? Did I explain how funding would be used? Quote exact sentences where I did this well or where more detail is needed.
-
-                - Pitch Structure & Flow: Did the pitch follow a logical flow from problem → solution → traction → ask? Were transitions smooth? Did I end with a strong call to action? Point to exact sentences where flow was strong or weak.
-
-                - Presence & Confidence: Did I come across as credible and passionate? Was I confident, warm, or authoritative in tone? Did I manage time well? Did I handle objections or audience questions with poise? If "AUDIENCE QUESTION" appears in my transcript, evaluate my response. Quote exact sentences that show tone and delivery.
-
-                - Risk & Gaps: Were there blind spots, unvalidated assumptions, or missing details? Did I address regulatory, technical, or market risks? Quote exact places where gaps appeared or where I preemptively addressed them.
-
-                - Reference my goal to {goals}. If I have no goals, don’t mention anything about goals.
-
-                - Provide an overall evaluation of how effective my pitch was in convincing an investor and inspiring confidence. Include tailored suggestions for improvement based on context and audience. Ground all observations in direct excerpts from the transcript.
-
-                Tone: speak to me personally but professionally like a mentor coach, critique me for my growth while referencing my transcript not my evaluation data. Don't use headers or "**" for titles, don't use hyphens or dashes in your response, just correct me and reference my transcript. Use \n \n for line breaks between paragraphs and also start with an encouraging remark relevant to my pitch with my name.
-                """
+                    Tone: speak to me personally but professionally like a mentor coach, critique me for my growth while referencing my transcript not my evaluation data. Don't use headers or "**" for titles, don't use hyphens or dashes in your response, just correct me and reference my transcript. Use \n \n for line breaks between paragraphs and also start with an encouraging remark relevant to my pitch with my name.
+                    """
             )
 
             else: 
