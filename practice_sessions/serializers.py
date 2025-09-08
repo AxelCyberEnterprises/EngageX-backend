@@ -56,14 +56,12 @@ class PracticeSessionSerializer(serializers.ModelSerializer):
     full_name = serializers.SerializerMethodField()
     session_type_display = serializers.SerializerMethodField()
     latest_score = serializers.SerializerMethodField()
-    slide_preview_id = serializers.CharField(allow_null=True, allow_blank=True, required=False)
     
     slide_preview = SlidePreviewSerializer(read_only=True)
-    slide_preview_id = serializers.PrimaryKeyRelatedField(
-        queryset=SlidePreview.objects.all(),
-        source='slide_preview',
+    slide_preview_id = serializers.IntegerField(
         write_only=True,
-        required=False
+        required=False,
+        allow_null=True
     )
 
     # Enterprise Specialty fields
@@ -109,6 +107,11 @@ class PracticeSessionSerializer(serializers.ModelSerializer):
         
         user = validated_data.get('user')
         slide_preview_id = validated_data.pop('slide_preview_id', None)
+        if slide_preview_id is not None:
+            try:
+                validated_data['slide_preview'] = SlidePreview.objects.get(id=slide_preview_id)
+            except SlidePreview.DoesNotExist:
+                raise ValidationError({"slide_preview_id": "Invalid slide preview ID"})
         enterprise_settings_data = validated_data.pop('enterprise_settings', None)
         
         logger.info(f"Creating session for user: {user.email}")
