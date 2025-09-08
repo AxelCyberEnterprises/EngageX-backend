@@ -2083,10 +2083,14 @@ class SessionReportView(APIView):
         # -- Determine the correct "vertical" for this session --
         enterprise_vertical = None
 
-        # 1) Prefer session-level rookie_type if it exists
+        # 1) First check for enterprise_type, then fall back to rookie_type
         try:
-            if hasattr(session, "enterprise_settings") and getattr(session.enterprise_settings, "rookie_type", None):
-                enterprise_vertical = session.enterprise_settings.rookie_type
+            if hasattr(session, "enterprise_settings"):
+                # First try to get enterprise_type
+                enterprise_vertical = getattr(session.enterprise_settings, "enterprise_type", None)
+                # If enterprise_type is not set, fall back to rookie_type
+                if not enterprise_vertical:
+                    enterprise_vertical = getattr(session.enterprise_settings, "rookie_type", None)
         except Exception as e:
             print(f"[generate_full_summary] error reading session.enterprise_settings: {e}")
 

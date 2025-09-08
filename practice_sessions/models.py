@@ -97,6 +97,7 @@ class EnterpriseSpecialtySession(models.Model):
     ENTERPRISE_TYPE_CHOICES = [
         ("rookie", "Rookie"),
         ("pharmahq", "PharmaHQ"),
+        ("coaching", "Coaching"),
     ]
     
     ROOKIE_TYPE_CHOICES = [
@@ -160,7 +161,7 @@ class PracticeSession(models.Model):
         ("pitch", "Pitch Practice"),
         ("public", "Public Speaking"),
         ("presentation", "Presentation"),
-        ("enterprise", "Rookie"),
+        ("enterprise", "Enterprise"),
     ]
     # The user who created this session.
     user = models.ForeignKey(

@@ -16,12 +16,27 @@ class CreditInline(admin.StackedInline):
     verbose_name_plural = 'Credit Balance'
     fields = ('total_credits', 'credits_used', 'balance', 'updated_at')
     readonly_fields = ('balance', 'updated_at')
-    extra = 1
+    extra = 0  # Set to 0 since we're using max_num=1
     max_num = 1
     min_num = 1
     
     def has_delete_permission(self, request, obj=None):
         return False
+        
+    def get_formset(self, request, obj=None, **kwargs):
+        formset = super().get_formset(request, obj, **kwargs)
+        
+        class CreditForm(formset.form):
+            def save(self, commit=True):
+                instance = super().save(commit=False)
+                if not instance.pk:  # Only for new instances
+                    instance.enterprise = obj
+                if commit:
+                    instance.save()
+                return instance
+                
+        formset.form = CreditForm
+        return formset
 
 
 class EnterpriseQuestionInline(admin.TabularInline):
@@ -250,14 +265,14 @@ class TrainingGoalAdmin(admin.ModelAdmin):
     def save_model(self, request, obj, form, change):
         with transaction.atomic():
             super().save_model(request, obj, form, change)
-            # Create a credit record if it doesn't exist
+            # Ensure a credit record exists for this enterprise
             Credit.objects.get_or_create(
-                enterprise=obj.enterprise,
-                room=obj.room,
-                is_active=True
-            ).exclude(pk=obj.pk if obj.pk else None).update(is_active=False)
-            
-        super().save_model(request, obj, form, change)
+                enterprise=obj,
+                defaults={
+                    'total_credits': 0,
+                    'credits_used': 0
+                }
+            )
 
 
 @admin.register(EnterpriseQuestion)
