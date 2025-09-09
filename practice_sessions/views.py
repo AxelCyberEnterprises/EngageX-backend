@@ -1949,7 +1949,7 @@ class SessionReportView(APIView):
         else:
             if session_type == "pitch" or session_type == "Pitch Practice":
                 prompt_heading = (
-                    "You are my personal expert communication coach specializing in pitching, and presentations. Your role is to critique me for my growth, and guide me to become a more impactful professional speaker."
+                    "You are my personal expert communication coach specializing in pitching. Your role is to critique me for my growth, and guide me to become a more impactful professional speaker."
                 )
                 specific_instructions = (
                 f"""
