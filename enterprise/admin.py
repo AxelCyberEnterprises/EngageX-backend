@@ -143,15 +143,18 @@ class EnterpriseAdmin(admin.ModelAdmin):
     def current_credits_display(self, obj):
         credit = Credit.objects.filter(enterprise=obj).first()
         if credit:
-            return format_html(
-                '<a href="{}?enterprise__id__exact={}">{:.2f} credits</a>',
+            url = '{}?enterprise__id__exact={}'.format(
                 reverse('admin:payments_credittransaction_changelist'),
-                obj.id,
-                credit.balance
+                obj.id
+            )
+            balance = '{:.2f}'.format(float(credit.balance))
+            return format_html(
+                '<a href="{}">{} credits</a>',
+                url,
+                balance
             )
         return "0.00"
     current_credits_display.short_description = 'Available Credits'
-    current_credits_display.allow_tags = True
     
     def enterprise_type_display(self, obj):
         """Color code the enterprise type"""
