@@ -8,6 +8,7 @@ from payments.models import Credit, CreditTransaction
 from django import forms
 from django.core.exceptions import ValidationError
 from django.utils.html import format_html
+from django.db import transaction
 from .models import Enterprise, EnterpriseUser, EnterpriseQuestion, TrainingGoal
 
 class CreditInline(admin.StackedInline):
@@ -16,10 +17,10 @@ class CreditInline(admin.StackedInline):
     verbose_name_plural = 'Credit Balance'
     fields = ('total_credits', 'credits_used', 'balance', 'updated_at')
     readonly_fields = ('balance', 'updated_at')
-    extra = 0  # Set to 0 since we're using max_num=1
+    extra = 0
     max_num = 1
     min_num = 1
-    
+
     def has_delete_permission(self, request, obj=None):
         return False
         
@@ -27,14 +28,21 @@ class CreditInline(admin.StackedInline):
         formset = super().get_formset(request, obj, **kwargs)
         
         class CreditForm(formset.form):
-            def save(self, commit=True):
-                instance = super().save(commit=False)
-                if not instance.pk:  # Only for new instances
-                    instance.enterprise = obj
-                if commit:
-                    instance.save()
-                return instance
+            def clean(self):
+                cleaned_data = super().clean()
+                credits_used = cleaned_data.get('credits_used', 0)
+                total_credits = cleaned_data.get('total_credits', 0)
                 
+                if credits_used < 0:
+                    raise ValidationError({
+                        'credits_used': 'Credits used cannot be negative.'
+                    })
+                if credits_used > total_credits: # Changed from total_used
+                    raise ValidationError({
+                        'credits_used': 'Credits used cannot exceed total credits.'
+                    })
+                return cleaned_data
+        
         formset.form = CreditForm
         return formset
 
@@ -52,25 +60,19 @@ class EnterpriseQuestionInline(admin.TabularInline):
         class EnterpriseQuestionForm(formset.form):
             def __init__(self, *args, **kwargs):
                 super().__init__(*args, **kwargs)
-                if obj:  # Only if we're editing an existing enterprise
-                    # Get available verticals for the enterprise
+                if obj:
                     available_verticals = obj.get_available_verticals()
-                    
-                    # Update the vertical choices with proper display labels
                     from enterprise.models import Enterprise
                     vertical_choices = []
                     for code in available_verticals:
                         try:
-                            # Try to get the display label from the Vertical choices
                             label = dict(Enterprise.Vertical.choices).get(code, code)
                             vertical_choices.append((code, label))
                         except (ValueError, AttributeError):
-                            # Fallback to using the code as both value and label
                             vertical_choices.append((code, code))
                     
                     self.fields['vertical'].choices = vertical_choices
                     
-                    # If there's an existing instance, ensure its vertical is in the choices
                     if self.instance and self.instance.pk:
                         current_vertical = self.instance.vertical
                         if not any(v[0] == current_vertical for v in vertical_choices):
@@ -111,21 +113,24 @@ class EnterpriseAdmin(admin.ModelAdmin):
     )
     
     def get_readonly_fields(self, request, obj=None):
-        # Make enterprise_type read-only if there are existing questions
         if obj and obj.questions.exists():
             return self.readonly_fields + ('enterprise_type',)
         return self.readonly_fields
     
+    def save_model(self, request, obj, form, change):
+        """Handle saving the Enterprise model"""
+        super().save_model(request, obj, form, change)
+    
     def save_formset(self, request, form, formset, change):
         """Validate that questions' verticals are valid for the enterprise type"""
         if formset.model == EnterpriseQuestion:
-            for form in formset.forms:
-                if form.cleaned_data and not form.cleaned_data.get('DELETE', False):
-                    vertical = form.cleaned_data.get('vertical')
+            for f in formset.forms:
+                if f.cleaned_data and not f.cleaned_data.get('DELETE', False):
+                    vertical = f.cleaned_data.get('vertical')
                     if vertical:
-                        available_verticals = [v.value for v in form.instance.enterprise.get_available_verticals()]
+                        available_verticals = f.instance.enterprise.get_available_verticals()
                         if vertical not in available_verticals:
-                            form.add_error('vertical', 
+                            f.add_error('vertical', 
                                 f"Vertical '{vertical}' is not available for this enterprise type"
                             )
                             raise ValidationError(
@@ -134,11 +139,10 @@ class EnterpriseAdmin(admin.ModelAdmin):
         super().save_formset(request, form, formset, change)
     
     def available_verticals_display(self, obj):
-        """Display available verticals in a more readable format"""
         verticals = ", ".join([str(v.label) for v in obj.get_available_verticals()])
         return verticals if verticals else "-"
     available_verticals_display.short_description = 'Available Verticals'
-    available_verticals_display.admin_order_field = 'enterprise_type'  
+    available_verticals_display.admin_order_field = 'enterprise_type'
     
     def current_credits_display(self, obj):
         credit = Credit.objects.filter(enterprise=obj).first()
@@ -157,7 +161,6 @@ class EnterpriseAdmin(admin.ModelAdmin):
     current_credits_display.short_description = 'Available Credits'
     
     def enterprise_type_display(self, obj):
-        """Color code the enterprise type"""
         color = '#4caf50' if obj.enterprise_type == 'sport' else '#2196f3'
         return format_html(
             '<span style="color: {}; font-weight: 500;">{}</span>',
@@ -168,21 +171,16 @@ class EnterpriseAdmin(admin.ModelAdmin):
     enterprise_type_display.admin_order_field = 'enterprise_type'
     
     def sport_type_display(self, obj):
-        """Display sport type as a colored badge"""
         if not obj.sport_type:
             return "-"
-            
-        # Get the display value for the sport type
         sport_type_display = dict(Enterprise._meta.get_field('sport_type').choices).get(obj.sport_type, obj.sport_type)
-        
-        # Choose a color based on sport type
         sport_colors = {
-            'nfl': '#013369',  # NFL blue
-            'nba': '#1D428A',  # NBA blue
-            'wnba': '#FFCD34', # WNBA yellow
-            'mlb': '#002D62'   # MLB navy blue
+            'nfl': '#013369',
+            'nba': '#1D428A',
+            'wnba': '#FFCD34',
+            'mlb': '#002D62'
         }
-        color = sport_colors.get(obj.sport_type, '#757575')  # Default gray
+        color = sport_colors.get(obj.sport_type, '#757575')
         
         return format_html(
             '<span class="badge" style="background: {color}; color: white; padding: 3px 6px; border-radius: 4px; font-size: 12px;">{text}</span>',
@@ -268,7 +266,6 @@ class TrainingGoalAdmin(admin.ModelAdmin):
     def save_model(self, request, obj, form, change):
         with transaction.atomic():
             super().save_model(request, obj, form, change)
-            # Ensure a credit record exists for this enterprise
             Credit.objects.get_or_create(
                 enterprise=obj,
                 defaults={
@@ -303,34 +300,25 @@ class EnterpriseQuestionAdmin(admin.ModelAdmin):
     
     def get_form(self, request, obj=None, **kwargs):
         form = super().get_form(request, obj, **kwargs)
-        
-        # If we're adding a new question, we'll handle verticals in the form's __init__
         if obj is None:
             return form
-            
-        # For existing questions, limit vertical choices based on enterprise type
         if obj and obj.enterprise:
             available_verticals = obj.enterprise.get_available_verticals()
             form.base_fields['vertical'].choices = [
-                (v[0], v[1]) for v in available_verticals  # v is a tuple of (value, label)
+                (v[0], v[1]) for v in available_verticals
             ]
-            
-            # If the current vertical is not in available_verticals (due to type change), add it
             if obj.vertical and not any(v[0] == obj.vertical for v in available_verticals):
                 form.base_fields['vertical'].choices.append(
                     (obj.vertical, f"{obj.vertical} (invalid for this enterprise type)")
                 )
-        
         return form
     
     def formfield_for_foreignkey(self, db_field, request, **kwargs):
         if db_field.name == 'enterprise':
-            # Order enterprises by name in the dropdown
             kwargs['queryset'] = Enterprise.objects.order_by('name')
         return super().formfield_for_foreignkey(db_field, request, **kwargs)
     
     def save_model(self, request, obj, form, change):
-        # Ensure the vertical is valid for the enterprise
         if obj.enterprise and obj.vertical:
             available_verticals = [v.value for v in obj.enterprise.get_available_verticals()]
             if obj.vertical not in available_verticals:
@@ -339,9 +327,7 @@ class EnterpriseQuestionAdmin(admin.ModelAdmin):
                 )
         super().save_model(request, obj, form, change)
     
-    # Custom display methods for list view
     def truncated_question(self, obj):
-        """Display a truncated version of the question text"""
         max_length = 100
         if len(obj.question_text) > max_length:
             return f"{obj.question_text[:max_length]}..."
@@ -349,26 +335,18 @@ class EnterpriseQuestionAdmin(admin.ModelAdmin):
     truncated_question.short_description = 'Question'
     
     def enterprise_link(self, obj):
-        """Display enterprise as a link to its admin page"""
         url = f"/admin/enterprise/enterprise/{obj.enterprise.id}/change/"
         return format_html('<a href="{}">{}</a>', url, obj.enterprise.name)
     enterprise_link.short_description = 'Enterprise'
     enterprise_link.admin_order_field = 'enterprise__name'
     
     def vertical_badge(self, obj):
-        """Display vertical as a colored badge"""
         if not obj.vertical:
             return "-"
-            
-        # Get the display value for the vertical
         vertical_display = dict(Enterprise.Vertical.choices).get(obj.vertical, obj.vertical)
-        
-        # Check if this vertical is valid for the enterprise
         is_valid = any(v[0] == obj.vertical for v in obj.enterprise.get_available_verticals())
-        
         color = '#4caf50' if is_valid else '#f44336'
         title = "" if is_valid else " (invalid for this enterprise type)"
-        
         return format_html(
             '<span class="badge" style="background: {color}; color: white; padding: 3px 6px; border-radius: 4px; font-size: 12px;" title="{title}">{text}{title}</span>',
             color=color,
@@ -379,22 +357,16 @@ class EnterpriseQuestionAdmin(admin.ModelAdmin):
     vertical_badge.admin_order_field = 'vertical'
     
     def sport_type_badge(self, obj):
-        """Display sport type as a colored badge"""
         if not obj.sport_type:
             return "-"
-            
-        # Get the display value for the sport type
         sport_type_display = dict(EnterpriseQuestion._meta.get_field('sport_type').choices).get(obj.sport_type, obj.sport_type)
-        
-        # Choose a color based on sport type
         sport_colors = {
-            'nfl': '#013369',  # NFL blue
-            'nba': '#1D428A',  # NBA blue
-            'wnba': '#FFCD34', # WNBA yellow
-            'mlb': '#002D62'   # MLB navy blue
+            'nfl': '#013369',
+            'nba': '#1D428A',
+            'wnba': '#FFCD34',
+            'mlb': '#002D62'
         }
-        color = sport_colors.get(obj.sport_type, '#757575')  # Default gray
-        
+        color = sport_colors.get(obj.sport_type, '#757575')
         return format_html(
             '<span class="badge" style="background: {color}; color: white; padding: 3px 6px; border-radius: 4px; font-size: 12px;">{text}</span>',
             color=color,
@@ -404,7 +376,6 @@ class EnterpriseQuestionAdmin(admin.ModelAdmin):
     sport_type_badge.admin_order_field = 'sport_type'
     
     def audio_url_short(self, obj):
-        """Display a truncated version of the audio URL"""
         if not obj.audio_url:
             return "-"
         return format_html(
@@ -415,19 +386,15 @@ class EnterpriseQuestionAdmin(admin.ModelAdmin):
     audio_url_short.allow_tags = True
     
     def created_short(self, obj):
-        """Display a shorter version of the created timestamp"""
         return obj.created_at.strftime('%Y-%m-%d')
     created_short.short_description = 'Created'
     created_short.admin_order_field = 'created_at'
     
     def gender_badge(self, obj):
-        """Display gender as a colored badge"""
         if not obj.gender:
             return "-"
-            
         gender_display = dict(EnterpriseQuestion.Gender.choices).get(obj.gender, obj.gender)
-        color = '#4caf50'  # Green for valid gender
-        
+        color = '#4caf50'
         return format_html(
             '<span class="badge" style="background: {color}; color: white; padding: 3px 6px; border-radius: 4px; font-size: 12px;">{text}</span>',
             color=color,
