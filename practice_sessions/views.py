@@ -1959,12 +1959,14 @@ class SessionReportView(APIView):
 
                     2. Areas for Improvement: Provide clear, actionable, and specific feedback on where I can improve. Emphasize clarity, structure, audience relevance, and delivery habits. Use simple sentences, do not include transcript quotes here.
 
-                    3. General Feedback Summary: Craft a detailed, content-specific analysis of my pitch. Your summary must be grounded in specific parts of my transcript. Evaluate both universal presentation skills and context-relevant aspects of my pitch. Include the following pillars:
-
-                    - Presenter’s Goals: What was the stated purpose of the pitch (e.g., funding, buy-in, awareness, grant approval)? Did the pitch clearly align with and serve those goals? Was the desired outcome (funding, adoption, support) clearly articulated? Quote transcript sections that show alignment or lack of clarity.
+                    3. General Feedback Summary: Craft a detailed, content-specific analysis of my pitch. Your summary must be grounded in specific parts of my transcript. Evaluate context-relevant aspects of my pitch. Include the following pillars:
+                
+                    - Hook & Engagement: Did the opening capture attention with a thought-provoking hook, compelling story, or striking fact? Was the pitch engaging throughout, or did attention lag at certain points? Did the presenter invite audience interaction, questions, or reflection? Quote transcript examples.
+                    - Purpose: What was the goal of the pitch, Did the I clearly state this purpose early in the pitch?
                     - Structure & Flow: Was there a clear beginning (hook), middle (evidence/details), and end (ask/next steps)? Did the narrative flow logically and build momentum? Were transitions smooth, or did any sections feel abrupt or disconnected? Quote exact sentences where flow was strong or weak.
                     - Communication Clarity: Was the main message easy to grasp and repeatable? Did the presenter avoid jargon or explain technical terms effectively? Were visuals/slides, if used, supporting the story rather than distracting? Quote specific examples.
-                    - Hook & Engagement: Did the opening capture attention with a thought-provoking hook, compelling story, or striking fact? Was the pitch engaging throughout, or did attention lag at certain points? Did the presenter invite audience interaction, questions, or reflection? Quote transcript examples.
+                    - Engagement: Beyond the opening, did the pitch stay engaging throughout? Were there moments where attention lagged? Did the presenter invite audience interaction, reflection, or questions?
+                    - Presenter’s Goals: What was the stated purpose of the pitch (e.g., funding, buy-in, awareness, grant approval)? Did the pitch clearly align with and serve those goals? Was the desired outcome (funding, adoption, support) clearly articulated? Quote transcript sections that show alignment or lack of clarity.
                     - Relevance to the Audience: Did the presenter tailor the pitch to the audience’s interests (e.g., investors, grant reviewers, stakeholders)? Was the market, social, or strategic relevance clearly established? For funding-related pitches: did they highlight why this matters now? Quote transcript examples.
                     - Business Model / Milestones (as applicable): Was the business model or value proposition explained clearly? Were milestones, traction, or metrics provided to build credibility? For grants/ideas: was there a clear pathway for execution and measurable impact? Quote transcript examples.
                     - Confidence & Delivery: Did the presenter project confidence and credibility? Was the tone persuasive but not overbearing? Did they handle questions smoothly and demonstrate subject mastery? Quote transcript examples, especially around tone and Q&A.
@@ -1972,7 +1974,7 @@ class SessionReportView(APIView):
                     - Reference my goal to {goals}. If I have no goals, don’t mention anything about goals.
                     - Provide an overall evaluation of how effective my pitch was in persuading and inspiring confidence in the intended audience. Include tailored suggestions for improvement based on context and audience. Ground all observations in direct excerpts from the transcript.
 
-                    Tone: speak to me personally but professionally like a mentor coach, critique me for my growth while referencing my transcript not my evaluation data. Don't use headers or "**" for titles, don't use hyphens or dashes in your response, just correct me and reference my transcript. Use \n \n for line breaks between paragraphs and also start with an encouraging remark relevant to my pitch with my name.
+                    Tone: speak to me personally but professionally like a mentor coach, critique me for my growth while referencing my transcript not my evaluation data. Don't use headers or "**" for titles, don't use hyphens or dashes in your response, just correct me and reference my transcript. Use \n \n for line breaks between paragraphs and also start with Stating my presenter’s name (e.g., “Yinks, let’s see how you fared”) and break down my pitch into the key performance areas.
                     """
             )
 

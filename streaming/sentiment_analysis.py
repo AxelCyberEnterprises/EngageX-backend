@@ -607,14 +607,23 @@ def analyze_sentiment(transcript, metrics, posture_data):
         parsed_response = {}
         parsed_response['Feedback'] = json.loads(response)
         feedback = parsed_response['Feedback']
+        # Updating the scores to be more realistic 
+        
+        # Adjust scores in-place
+        for key in ["Conviction", "Transformative Potential", "Trigger Response"]:
+            score = feedback[key]
+            if 50 < score <= 60:
+                feedback[key] = score + 5
+            elif 60 < score <= 80:
+                feedback[key] = score + 10
+            
+
+        # Now recalc average Impact
+        feedback["Impact"] = round(
+            (feedback["Conviction"] + feedback["Transformative Potential"] + feedback["Trigger Response"]) / 3
+        )
+
         general_feedback_summary = f"""Chunk analysis: The dominant audience emotion perceived was '{feedback['Audience Emotion']}'. Chunk Transcript: {transcript}\n"""
-
-        # general_feedback_summary = f"""Speaker grades: conviction:{feedback['Conviction']}, clarity:{feedback['Clarity']}, impact: {feedback['Impact']}. 
-        # Brevity: {feedback['Brevity']}, transformative potential: {feedback['Transformative Potential']}. The audience's trigger response: {feedback['Trigger Response']}, filler words usage score: {feedback['Filler Words']}, 
-        # and grammar:{feedback['Grammar']}. The dominant audience emotion perceived was '{feedback['Audience Emotion']}'."""
-
-        # Body posture score: {mean_body_posture}, Body movement score: {range_body_posture} Speaker Transcript: {transcript}\n Volume_score: {metrics["Metrics"]["Volume"]}, pitch_variability_score: {metrics["Scores"]["Pitch Variability Score"]}. pace score: {metrics["Scores"]["Pace Score"]}, pauses score: {metrics["Scores"]["Pause Score"]}, Hand Motion: {is_hand_present}"""
-        # Speaker Transcript: {transcript}\n Body Language rationale: {mean_back_rationale}, {mean_neck_rationale}, {range_back_rationale}, {range_neck_rationale}. Volume rationale: {metrics['Metrics']['Volume Rationale']}. Pitch variability rationale: {metrics['Metrics']['Pitch Variability Rationale']}. Pace rationale: {metrics['Metrics']['Pace Rationale']}. Pause rationale: {metrics['Metrics']['Pause Metric Rationale']}."""
         parsed_response['Feedback']["General Feedback Summary"] = general_feedback_summary
         parsed_response['Feedback']["Impact"] = round((parsed_response['Feedback']["Conviction"] + parsed_response['Feedback']["Transformative Potential"] + parsed_response['Feedback']["Trigger Response"]) / 3 )
         parsed_response['Posture Scores'] = {
