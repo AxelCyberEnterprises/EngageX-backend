@@ -1783,7 +1783,7 @@ class SessionReportView(APIView):
                 # First try to get enterprise_type
                 enterprise_vertical = getattr(session.enterprise_settings, "enterprise_type", None)
                 # If enterprise_type is not set, fall back to rookie_type
-                if not enterprise_vertical:
+                if not enterprise_vertical or enterprise_vertical == "rookie":
                     enterprise_vertical = getattr(session.enterprise_settings, "rookie_type", None)
         except Exception as e:
             print(f"[generate_full_summary] error reading session.enterprise_settings: {e}")
