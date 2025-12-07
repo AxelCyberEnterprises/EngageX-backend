@@ -363,9 +363,10 @@ class LiveSessionConsumer(AsyncWebsocketConsumer):
                         if self.pending_audience_question:
                             # Decorate this transcript with the question/answer prompt as requested
                             chunk_transcript = (
-                                f"AUDIENCE QUESTION: '{self.pending_audience_question.question_text}' "
+                                f"AUDIENCE QUESTION: '{self.pending_audience_question['question_text']}' "
                                 f"SPEAKER ANSWER: {chunk_transcript}"
                             )
+                            print(f"WS: Decorated transcript for audience question: {chunk_transcript}")
                             # Reset so only next chunk is affected
                             self.pending_audience_question = None
                         # ==== END audience question logic ====

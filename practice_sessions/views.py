@@ -1759,6 +1759,8 @@ class SessionReportView(APIView):
             general_feedback_summaries = []
 
         combined_feedback = "\n\n".join(general_feedback_summaries).strip()
+        print(f"[generate_full_summary]: length of general_feedback_summaries : {len(general_feedback_summaries_qs)} Transcript (or transcript excerpts): {combined_feedback}")
+
         if not combined_feedback:
             combined_feedback = "No chunk-level feedback summaries available."
 
@@ -1828,9 +1830,10 @@ class SessionReportView(APIView):
             f"Role: {role}\n"
             f"Session Goals: {goals}\n"
             f"Metrics Summary: {metrics_string}\n\n"
-            f"Chunk-level feedback summaries (if any):\n{combined_feedback}\n\n"
-            f"Transcript (or transcript excerpts):\n{transcript_text}\n\n"
+            f"Chunk-level feedback summaries/Transcripts: {combined_feedback}\n\n"
+            # f" (or transcript excerpts): {transcript_text}"
         )
+        print(f"[generate_full_summary] Transcript (or transcript excerpts): {combined_feedback}")
 
         if ev == "media_training" or ev == "media-training" or ev == "media training":
             prompt_heading = (
@@ -2049,6 +2052,7 @@ class SessionReportView(APIView):
 
             raw_content = completion.choices[0].message.content
             print(f"[generate_full_summary] Prompt: {prompt}")
+            logger.info(f"[generate_full_summary] Prompt: {prompt}")
 
             print(f"[generate_full_summary] OpenAI raw response: {raw_content}")
 
