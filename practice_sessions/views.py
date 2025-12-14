@@ -3,7 +3,7 @@ import concurrent.futures
 import openai
 import os
 import json
-from enterprise.models import Enterprise
+from enterprise.models import Enterprise, TrainingGoal
 import traceback
 import boto3
 from botocore.exceptions import ClientError
@@ -2487,6 +2487,89 @@ class PerformanceAnalyticsView(APIView):
             .values("day", "trigger_response", "impact", "conviction")
         )
 
+        # Get Enterprise Data
+        enterprise_data = None
+        target_user = user
+        if user_id and (user.is_staff or user.is_superuser):
+             try:
+                 target_user = User.objects.get(id=user_id)
+             except User.DoesNotExist:
+                 pass
+
+        if target_user.is_enterprise_user():
+            enterprise = target_user.get_enterprise()
+            if enterprise:
+                goals = TrainingGoal.objects.filter(enterprise=enterprise, is_active=True)
+                goals_data = []
+                for goal in goals:
+                    goals_data.append({
+                        "room": goal.get_room_display(),
+                        "target_sessions": goal.target_sessions,
+                        "completed_sessions": goal.completed_sessions,
+                        "progress_percent": goal.progress_percent,
+                        "due_date": goal.due_date,
+                        "is_completed": goal.is_completed
+                    })
+                
+                
+                # Mapping from TrainingGoal room to PracticeSession session_type
+                room_to_session_type = {
+                    "pitch": "pitch",
+                    "presentation": "presentation",
+                    "public_speaking": "public",
+                    "media_training": "enterprise", # Assuming media_training might be under enterprise
+                    "coach": "enterprise",
+                    "general_manager": "enterprise",
+                    "coaching": "enterprise"
+                }
+
+                enterprise_data = {
+                    "name": enterprise.name,
+                    "id": enterprise.id,
+                    "type": enterprise.get_enterprise_type_display() if hasattr(enterprise, 'get_enterprise_type_display') else enterprise.enterprise_type,
+                    "logo": enterprise.logo.url if enterprise.logo else None,
+                    "primary_color": enterprise.primary_color,
+                    "training_goals": []
+                }
+                
+                for goal in goals:
+                    # Calculate user progress
+                    current_user_sessions = 0
+                    mapped_type = room_to_session_type.get(goal.room)
+                    
+                    if mapped_type:
+                        # Base query for the user and mapped session type
+                        user_sessions_query = PracticeSession.objects.filter(user=target_user, session_type=mapped_type)
+                        
+                        # Refined filtering for Enterprise subtypes
+                        if mapped_type == "enterprise":
+                            if goal.room == "coaching":
+                                user_sessions_query = user_sessions_query.filter(enterprise_settings__enterprise_type="coaching")
+                            elif goal.room == "media_training":
+                                user_sessions_query = user_sessions_query.filter(enterprise_settings__rookie_type="media_training")
+                            elif goal.room == "coach":
+                                user_sessions_query = user_sessions_query.filter(enterprise_settings__rookie_type="coach")
+                            elif goal.room == "general_manager":
+                                user_sessions_query = user_sessions_query.filter(enterprise_settings__rookie_type="gm")
+                        
+                        # Count the matching sessions
+                        current_user_sessions = user_sessions_query.count()
+
+                    user_progress_percent = 0
+                    if goal.target_sessions > 0:
+                        user_progress_percent = min(100, int((current_user_sessions / goal.target_sessions) * 100))
+
+                    enterprise_data["training_goals"].append({
+                        "room": goal.get_room_display(),
+                        "target_sessions": goal.target_sessions,
+                        "completed_sessions": current_user_sessions, # Changed to user specific
+                        "user_completed_sessions": current_user_sessions,
+                        "user_progress_percent": user_progress_percent,
+                        "progress_percent": user_progress_percent, # Changed to user specific
+                        "due_date": goal.due_date,
+                        "is_completed": current_user_sessions >= goal.target_sessions
+                    })
+
         # Format the response
         data = {
             "overview_card": {
@@ -2497,6 +2580,7 @@ class PerformanceAnalyticsView(APIView):
             },
             "recent_session": recent_data,
             "graph_data": graph_data,
+            "enterprise_data": enterprise_data
         }
         
         return Response(data)
