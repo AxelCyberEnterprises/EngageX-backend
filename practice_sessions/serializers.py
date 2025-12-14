@@ -186,9 +186,7 @@ class PracticeSessionSerializer(serializers.ModelSerializer):
                             "credit": "Enterprise credit account not properly configured. Please contact your administrator."
                         })
                 else:
-                    raise ValidationError({
-                        "credit": "Insufficient enterprise credits. Please contact your administrator."
-                    })
+                    logger.info("Insufficient enterprise credits, attempting fallback to user personal credits.")
             
             # If no enterprise credits were used, try user credits
             if credit_used_from == 'user':
