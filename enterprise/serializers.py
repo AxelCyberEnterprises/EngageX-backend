@@ -327,6 +327,7 @@ class TrainingGoalSerializer(serializers.ModelSerializer):
     Serializer for the TrainingGoal model.
     Handles validation and serialization of training goals.
     """
+    completed_sessions = serializers.SerializerMethodField()
     progress_percent = serializers.SerializerMethodField()
     is_completed = serializers.SerializerMethodField()
     room_display = serializers.CharField(source='get_room_display', read_only=True)
@@ -339,14 +340,70 @@ class TrainingGoalSerializer(serializers.ModelSerializer):
             'due_date', 'is_active', 'created_at', 'updated_at'
         ]
         read_only_fields = ('id', 'created_at', 'updated_at', 'progress_percent', 'is_completed', 'enterprise')
+
+    def get_completed_sessions(self, obj):
+        """
+        Calculate total sessions completed by all users in the enterprise
+        for this goal's specific room type.
+        """
+        # Mapping from TrainingGoal room to PracticeSession session_type
+        room_to_session_type = {
+            "pitch": "pitch",
+            "presentation": "presentation",
+            "public_speaking": "public",
+            "media_training": "enterprise",
+            "coach": "enterprise",
+            "general_manager": "enterprise",
+            "coaching": "enterprise"
+        }
+        
+        mapped_type = room_to_session_type.get(obj.room)
+        if not mapped_type:
+            return 0
+            
+        # Base query: All sessions by users in this enterprise matching the mapped type
+        # We use user__enterprise_profile__enterprise to filter by the goal's enterprise
+        # Use ID filtering to avoid object instance mismatch issues
+        sessions_query = PracticeSession.objects.filter(
+            user__enterprise_profile__enterprise__id=obj.enterprise_id,
+            session_type=mapped_type
+        )
+        
+        # Refined filtering for Enterprise subtype
+        if mapped_type == "enterprise":
+            if obj.room == "coaching":
+                sessions_query = sessions_query.filter(enterprise_settings__enterprise_type="coaching")
+            elif obj.room == "media_training":
+                sessions_query = sessions_query.filter(enterprise_settings__rookie_type="media_training")
+            elif obj.room == "coach":
+                sessions_query = sessions_query.filter(enterprise_settings__rookie_type="coach")
+            elif obj.room == "general_manager":
+                sessions_query = sessions_query.filter(enterprise_settings__rookie_type="gm")
+                
+        return sessions_query.count()
     
     def get_progress_percent(self, obj):
-        """Calculate and return the progress percentage."""
-        return obj.progress_percent
+        """
+        Calculate progress percentage based on:
+        (Total Sessions Done) / (Target Per User * Total Users)
+        """
+        total_completed = self.get_completed_sessions(obj)
+        user_count = obj.enterprise.users.count()
+        
+        if user_count == 0 or obj.target_sessions == 0:
+            return 0
+            
+        total_target = obj.target_sessions * user_count
+        
+        # Calculate percentage
+        return min(100, int((total_completed / total_target) * 100))
     
     def get_is_completed(self, obj):
-        """Return whether the goal is completed."""
-        return obj.is_completed
+        """
+        For enterprise-wide view, 'is_completed' is ambiguous.
+        We returned True if the overall progress is 100%.
+        """
+        return self.get_progress_percent(obj) >= 100
     
     def validate(self, data):
         """
