@@ -57,7 +57,6 @@ class Enterprise(models.Model):
     # Enterprise settings
     one_on_one_coaching_link = models.URLField(
         max_length=500,
-        default=True,
         blank=True,
         null=True,
         help_text="Link for 1-on-1 coaching booking"
@@ -407,7 +406,7 @@ class EnterpriseQuestion(models.Model):
             if normalized_vertical_code not in normalized_accessible:
                 raise ValidationError({
                     'vertical': f"Vertical '{vertical_display}' is not available for this enterprise type. "
-                               f"Available verticals: {', '.join(available_verticals) if available_verticals else 'None'}"
+                               f"Available verticals: {', '.join([str(v) for v in available_verticals]) if available_verticals else 'None'}"
                 })
                 
             # Update the vertical with the correct case from choices

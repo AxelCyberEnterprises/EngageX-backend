@@ -1803,6 +1803,7 @@ class EnterpriseUserViewSet(viewsets.ModelViewSet):
                 user_progress = UserProgressSerializer(user_data).data
                 total_sessions += user_progress['sessions_completed']
                 total_completion += user_progress['overall_goal_completion']
+                all_goals.extend(user_progress['assigned_goals'])
             
             # Calculate goal summaries
             goal_summary = {}

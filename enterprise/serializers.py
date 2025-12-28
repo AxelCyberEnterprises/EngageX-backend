@@ -89,25 +89,52 @@ class UserProgressSerializer(serializers.Serializer):
         enterprise = obj.enterprise
         goals = []
         
-        logger.info(f"[DEBUG] Getting goals for user {obj.user_id} in enterprise {enterprise.id}")
+        # Mapping from TrainingGoal room to PracticeSession session_type
+        room_to_session_type = {
+            "pitch": "pitch",
+            "presentation": "presentation",
+            "public_speaking": "public",
+            "media_training": "enterprise",
+            "coach": "enterprise",
+            "general_manager": "enterprise",
+            "coaching": "enterprise"
+        }
         
         # Get all active goals for the enterprise
         active_goals = TrainingGoal.objects.filter(enterprise=enterprise, is_active=True)
-        logger.info(f"[DEBUG] Found {active_goals.count()} active goals for enterprise {enterprise.id}")
+        
+        # Date threshold (30 days ago)
+        date_threshold = (timezone.now() - timedelta(days=30)).date()
         
         for goal in active_goals:
-            # Calculate user's completed sessions for this goal in the last 30 days
-            query = PracticeSession.objects.filter(
-                user=obj.user,
-                session_type=goal.room,
-                created_at__gte=timezone.now() - timedelta(days=30)
-            )
-            completed_sessions = query.count()
+            mapped_type = room_to_session_type.get(str(goal.room))
             
-            # Log the query details
-            logger.info(f"[DEBUG] Goal {goal.id} ({goal.room}): "
-                      f"target={goal.target_sessions}, "
-                      f"completed_sessions={completed_sessions}")
+            if not mapped_type:
+                logger.warning(f"Unknown room type {goal.room} for goal {goal.id}")
+                completed_sessions = 0
+            else:
+                # Calculate user's completed sessions for this goal in the last 30 days
+                # explicit date comparison for DateField
+                query = PracticeSession.objects.filter(
+                    user=obj.user,
+                    session_type=mapped_type,
+                    created_at__gte=date_threshold
+                )
+                
+                # Refined filtering for Enterprise subtype
+                if mapped_type == "enterprise":
+                    if goal.room == "coaching":
+                        query = query.filter(enterprise_settings__enterprise_type="coaching")
+                    elif goal.room == "media_training":
+                        query = query.filter(enterprise_settings__rookie_type="media_training")
+                    elif goal.room == "coach":
+                        query = query.filter(enterprise_settings__rookie_type="coach")
+                    elif goal.room == "general_manager":
+                        query = query.filter(enterprise_settings__rookie_type="gm")
+                
+                completed_sessions = query.count()
+                if completed_sessions > 0:
+                    logger.info(f"User {obj.user.id} - Goal {goal.room} (Mapped: {mapped_type}): {completed_sessions} sessions")
             
             # Calculate progress percentage
             target = goal.target_sessions
@@ -124,10 +151,8 @@ class UserProgressSerializer(serializers.Serializer):
                 'is_active': goal.is_active
             }
             
-            logger.info(f"[DEBUG] Goal data: {goal_data}")
             goals.append(goal_data)
         
-        logger.info(f"[DEBUG] Total goals found: {len(goals)}")
         return goals
 
     def get_sessions_completed(self, obj):

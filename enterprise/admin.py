@@ -1,4 +1,5 @@
 from django.contrib import admin
+from django.db import models
 from django.utils.translation import gettext_lazy as _
 from django.db import transaction
 from django.utils.html import format_html
@@ -29,18 +30,22 @@ class CreditInline(admin.StackedInline):
         
         class CreditForm(formset.form):
             def clean(self):
+                print("DEBUG: CreditForm.clean called")
                 cleaned_data = super().clean()
                 credits_used = cleaned_data.get('credits_used', 0)
                 total_credits = cleaned_data.get('total_credits', 0)
                 
                 if credits_used < 0:
+                    print("DEBUG: CreditForm validation failed - negative credits")
                     raise ValidationError({
                         'credits_used': 'Credits used cannot be negative.'
                     })
                 if credits_used > total_credits: # Changed from total_used
+                    print("DEBUG: CreditForm validation failed - credits > total")
                     raise ValidationError({
                         'credits_used': 'Credits used cannot exceed total credits.'
                     })
+                print("DEBUG: CreditForm.clean success")
                 return cleaned_data
         
         formset.form = CreditForm
@@ -92,6 +97,10 @@ class EnterpriseAdmin(admin.ModelAdmin):
     list_editable = ('is_active',)
     inlines = [CreditInline, EnterpriseQuestionInline]
     
+    formfield_overrides = {
+        models.URLField: {'widget': forms.TextInput},
+    }
+    
     fieldsets = (
         (None, {
             'fields': ('name', 'enterprise_type', 'sport_type', 'logo', 'is_active')
@@ -103,7 +112,7 @@ class EnterpriseAdmin(admin.ModelAdmin):
         }),
         ('Settings', {
             'fields': ('one_on_one_coaching_link',),
-            'classes': ('collapse',),
+            'classes': (),
             'description': _('Enterprise authentication settings')
         }),
         ('Timestamps', {
@@ -119,10 +128,13 @@ class EnterpriseAdmin(admin.ModelAdmin):
     
     def save_model(self, request, obj, form, change):
         """Handle saving the Enterprise model"""
+        print(f"DEBUG: EnterpriseAdmin.save_model called for {obj.name}")
         super().save_model(request, obj, form, change)
+        print("DEBUG: EnterpriseAdmin.save_model completed")
     
     def save_formset(self, request, form, formset, change):
         """Validate that questions' verticals are valid for the enterprise type"""
+        print(f"DEBUG: EnterpriseAdmin.save_formset called for formset model: {formset.model}")
         if formset.model == EnterpriseQuestion:
             for f in formset.forms:
                 if f.cleaned_data and not f.cleaned_data.get('DELETE', False):
@@ -130,6 +142,7 @@ class EnterpriseAdmin(admin.ModelAdmin):
                     if vertical:
                         available_verticals = f.instance.enterprise.get_available_verticals()
                         if vertical not in available_verticals:
+                            print(f"DEBUG: Invalid vertical found: {vertical}")
                             f.add_error('vertical', 
                                 f"Vertical '{vertical}' is not available for this enterprise type"
                             )
@@ -137,6 +150,7 @@ class EnterpriseAdmin(admin.ModelAdmin):
                                 f"Cannot save: One or more questions have invalid verticals for this enterprise type"
                             )
         super().save_formset(request, form, formset, change)
+        print("DEBUG: EnterpriseAdmin.save_formset completed")
     
     def available_verticals_display(self, obj):
         verticals = ", ".join([str(v.label) for v in obj.get_available_verticals()])
@@ -189,6 +203,9 @@ class EnterpriseAdmin(admin.ModelAdmin):
         )
     sport_type_display.short_description = 'Sport Type'
     sport_type_display.admin_order_field = 'sport_type'
+    
+    class Media:
+        js = ('enterprise/js/admin_debug.js',)
 
 @admin.register(EnterpriseUser)
 class EnterpriseUserAdmin(admin.ModelAdmin):
@@ -303,13 +320,21 @@ class EnterpriseQuestionAdmin(admin.ModelAdmin):
         if obj is None:
             return form
         if obj and obj.enterprise:
+            # Get the vertical choices from the model
+            vertical_choices = dict(Enterprise.Vertical.choices)
+            # Get the available verticals for this enterprise
             available_verticals = obj.enterprise.get_available_verticals()
+            # Filter the choices to only include available verticals
             form.base_fields['vertical'].choices = [
-                (v[0], v[1]) for v in available_verticals
+                (v, vertical_choices.get(v, v)) 
+                for v in available_verticals
+                if v in vertical_choices
             ]
-            if obj.vertical and not any(v[0] == obj.vertical for v in available_verticals):
+            # If the current vertical is not in available_verticals, add it with a warning
+            if obj.vertical and obj.vertical not in available_verticals:
+                current_display = vertical_choices.get(obj.vertical, obj.vertical)
                 form.base_fields['vertical'].choices.append(
-                    (obj.vertical, f"{obj.vertical} (invalid for this enterprise type)")
+                    (obj.vertical, f"{current_display} (invalid for this enterprise type)")
                 )
         return form
     

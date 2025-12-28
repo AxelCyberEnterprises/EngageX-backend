@@ -2500,24 +2500,12 @@ class PerformanceAnalyticsView(APIView):
             enterprise = target_user.get_enterprise()
             if enterprise:
                 goals = TrainingGoal.objects.filter(enterprise=enterprise, is_active=True)
-                goals_data = []
-                for goal in goals:
-                    goals_data.append({
-                        "room": goal.get_room_display(),
-                        "target_sessions": goal.target_sessions,
-                        "completed_sessions": goal.completed_sessions,
-                        "progress_percent": goal.progress_percent,
-                        "due_date": goal.due_date,
-                        "is_completed": goal.is_completed
-                    })
-                
-                
                 # Mapping from TrainingGoal room to PracticeSession session_type
                 room_to_session_type = {
                     "pitch": "pitch",
                     "presentation": "presentation",
                     "public_speaking": "public",
-                    "media_training": "enterprise", # Assuming media_training might be under enterprise
+                    "media_training": "enterprise",
                     "coach": "enterprise",
                     "general_manager": "enterprise",
                     "coaching": "enterprise"
@@ -2532,14 +2520,22 @@ class PerformanceAnalyticsView(APIView):
                     "training_goals": []
                 }
                 
+                # Date threshold (30 days ago) - Consistent with UserProgressSerializer
+                date_threshold = (now() - timedelta(days=30)).date()
+
                 for goal in goals:
                     # Calculate user progress
                     current_user_sessions = 0
-                    mapped_type = room_to_session_type.get(goal.room)
+                    mapped_type = room_to_session_type.get(str(goal.room))
                     
                     if mapped_type:
                         # Base query for the user and mapped session type
-                        user_sessions_query = PracticeSession.objects.filter(user=target_user, session_type=mapped_type)
+                        # Added explicit date comparison for robust filtering
+                        user_sessions_query = PracticeSession.objects.filter(
+                            user=target_user, 
+                            session_type=mapped_type,
+                            created_at__gte=date_threshold
+                        )
                         
                         # Refined filtering for Enterprise subtypes
                         if mapped_type == "enterprise":
@@ -2562,10 +2558,10 @@ class PerformanceAnalyticsView(APIView):
                     enterprise_data["training_goals"].append({
                         "room": goal.get_room_display(),
                         "target_sessions": goal.target_sessions,
-                        "completed_sessions": current_user_sessions, # Changed to user specific
+                        "completed_sessions": current_user_sessions,
                         "user_completed_sessions": current_user_sessions,
                         "user_progress_percent": user_progress_percent,
-                        "progress_percent": user_progress_percent, # Changed to user specific
+                        "progress_percent": user_progress_percent,
                         "due_date": goal.due_date,
                         "is_completed": current_user_sessions >= goal.target_sessions
                     })
