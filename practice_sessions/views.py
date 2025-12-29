@@ -547,8 +547,11 @@ class PracticeSessionViewSet(viewsets.ModelViewSet):
     def _clear_session_media_urls_sync(self, session, chunks):
         """Synchronously clears media URLs in the database. Intended to be wrapped by sync_to_async."""
         session.compiled_video_url = None
-        session.slides_file = None
-        session.save(update_fields=['compiled_video_url', 'slides_file'])
+        session.save(update_fields=['compiled_video_url'])
+        
+        if session.slide_preview:
+            session.slide_preview.slides_file = None
+            session.slide_preview.save(update_fields=['slides_file'])
 
         for chunk in chunks:
             chunk.video_file = None
@@ -886,8 +889,8 @@ class PracticeSessionViewSet(viewsets.ModelViewSet):
                         print(f"Error parsing chunk video_file {chunk.video_file}: {e}")
 
             # Handle slides file deletion
-            if session.slides_file and session.slides_file.name:
-                slide_s3_key = session.slides_file.name
+            if session.slide_preview and session.slide_preview.slides_file and session.slide_preview.slides_file.name:
+                slide_s3_key = session.slide_preview.slides_file.name
                 # More robust checks for user-specific slide paths
                 # Adjust these prefixes based on how your slides are actually stored in S3
                 expected_slide_path_prefixes = [
