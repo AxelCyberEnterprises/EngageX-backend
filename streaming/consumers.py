@@ -118,6 +118,8 @@ class LiveSessionConsumer(AsyncWebsocketConsumer):
         self.analysis_window_counter = 0
         self.ai_questions_enabled = True  # Default to True, will be updated in connect
         self.pending_audience_question = None # Holds question waiting for answer/transcript
+        self._last_chunk_received_time = None  # Unix timestamp of previous chunk arrival
+        self._active_analysis_count = 0  # Concurrent analyze_windowed_media tasks in flight
 
     # Make connect asynchronous to allow DB query
     async def connect(self):
@@ -275,9 +277,23 @@ class LiveSessionConsumer(AsyncWebsocketConsumer):
                 message_type = data.get("type")
                 if message_type == "media":
                     self.chunk_counter += 1
+                    chunk_arrival_time = time.time()
+
+                    # ── Inter-chunk gap ──────────────────────────────────────────────
+                    if self._last_chunk_received_time is not None:
+                        gap = chunk_arrival_time - self._last_chunk_received_time
+                        print(f"WS: ⏱ CHUNK GAP: {gap:.2f}s since previous chunk (chunk {self.chunk_counter - 1} → {self.chunk_counter})")
+                    else:
+                        print(f"WS: ⏱ First chunk received at {chunk_arrival_time:.3f}")
+                    self._last_chunk_received_time = chunk_arrival_time
+
                     media_blob = data.get("data")
                     if media_blob:
                         media_bytes = b64decode(media_blob)
+
+                        # ── Chunk size ───────────────────────────────────────────────
+                        print(f"WS: 📦 Chunk {self.chunk_counter} size: {len(media_bytes) / 1024:.1f} KB decoded ({len(media_blob) / 1024:.1f} KB base64)")
+
                         # Create a temporary file for the media chunk
                         media_path = os.path.join(TEMP_MEDIA_ROOT, f"{self.session_id}_{self.chunk_counter}_media.webm")
                         with open(media_path, "wb") as mf:
@@ -286,12 +302,21 @@ class LiveSessionConsumer(AsyncWebsocketConsumer):
                             f"WS: Received media chunk {self.chunk_counter} for Session {self.session_id}. Saved to {media_path}")
                         self.media_buffer.append(media_path)
 
+                        # ── Buffer fill status ───────────────────────────────────────
+                        needed = ANALYSIS_WINDOW_SIZE - len(self.media_buffer)
+                        if needed > 0:
+                            print(f"WS: 🗂 Buffer: {len(self.media_buffer)}/{ANALYSIS_WINDOW_SIZE} chunks — need {needed} more before first analysis window")
+                        else:
+                            print(f"WS: 🗂 Buffer: {len(self.media_buffer)}/{ANALYSIS_WINDOW_SIZE} chunks — window READY (active analyses: {self._active_analysis_count})")
+
                         # Start processing the media chunk (audio extraction, transcription)
                         # This part is still awaited to ensure audio/transcript are in buffers
                         # S3 upload and DB save are initiated as background tasks within process_media_chunk
                         print(
                             f"WS: Starting processing (audio/transcript) for chunk {self.chunk_counter} and WAITING for it to complete.")
+                        t0 = time.time()
                         await self.process_media_chunk(media_path)
+                        print(f"WS: ✅ process_media_chunk done for chunk {self.chunk_counter} in {time.time() - t0:.2f}s")
 
                         # Trigger windowed analysis if buffer size is sufficient
                         # analyze_windowed_media will run concurrently
@@ -300,7 +325,7 @@ class LiveSessionConsumer(AsyncWebsocketConsumer):
                             # Take the last ANALYSIS_WINDOW_SIZE chunks for the sliding window
                             window_paths = list(self.media_buffer[-ANALYSIS_WINDOW_SIZE:])
                             print(
-                                f"WS: Triggering windowed analysis for sliding window (chunks ending with {self.chunk_counter})")
+                                f"WS: 🔬 Triggering analysis window ending at chunk {self.chunk_counter} (active analyses BEFORE trigger: {self._active_analysis_count})")
                             # Pass the list of media paths in the window and the latest chunk number
                             asyncio.create_task(self.analyze_windowed_media(window_paths, self.chunk_counter))
 
@@ -463,12 +488,13 @@ class LiveSessionConsumer(AsyncWebsocketConsumer):
         Awaits the background chunk save for the last chunk in the window before saving analysis.
         Also triggers AI audience question generation at specified intervals if enabled.
         """
+        self._active_analysis_count += 1
         start_time = time.time()
         last_media_path = window_paths[-1]
         window_chunk_number = latest_chunk_number  # Refers to the number of the last chunk in the window
 
         print(
-            f"WS: analyze_windowed_media started for window ending with {last_media_path} (chunk {window_chunk_number}) at {start_time}")
+            f"WS: 🔬 [Window@{window_chunk_number}] STARTED. Active analyses now: {self._active_analysis_count}. t={start_time:.3f}")
 
         # --- Add Logging Here ---
         print(f"WS: DEBUG: Current media_buffer: {[os.path.basename(p) for p in self.media_buffer]}", flush=True)
@@ -533,10 +559,12 @@ class LiveSessionConsumer(AsyncWebsocketConsumer):
                     ["-filter_complex", f"concat=n={len(valid_audio_paths)}:a=1:v=0", "-acodec", "libmp3lame", "-b:a",
                      "128k", "-nostats", "-loglevel", "0", combined_audio_path])
 
-                print(f"WS: Running FFmpeg audio concatenation command: {' '.join(concat_command)}")
+                print(f"WS: [Window@{window_chunk_number}] Running FFmpeg audio concat for {len(valid_audio_paths)} files")
+                _ffmpeg_t0 = time.time()
                 process = subprocess.Popen(concat_command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                 stdout, stderr = await asyncio.to_thread(process.communicate)  # Run blocking communicate in a thread
                 returncode = await asyncio.to_thread(lambda p: p.returncode, process)  # Get return code in thread
+                print(f"WS: [Window@{window_chunk_number}] FFmpeg concat took {time.time() - _ffmpeg_t0:.2f}s")
 
                 if returncode != 0:
                     error_output = stderr.decode()
@@ -560,7 +588,7 @@ class LiveSessionConsumer(AsyncWebsocketConsumer):
             # Analysis should still run even if AI questions are disabled, as it provides other feedback.
             if combined_transcript_text.strip() and client and combined_audio_path and os.path.exists(
                     combined_audio_path):
-                print(f"WS: Running analyze_results for combined transcript and audio.")
+                print(f"WS: [Window@{window_chunk_number}] Calling analyze_results (Praat + OpenAI). Active analyses: {self._active_analysis_count}")
                 analysis_start_time = time.time()
                 try:
                     # Using asyncio.to_thread for blocking OpenAI/Analysis call
@@ -569,7 +597,7 @@ class LiveSessionConsumer(AsyncWebsocketConsumer):
                     analysis_result = await asyncio.to_thread(analyze_results, combined_transcript_text,
                                                               window_paths[0], combined_audio_path)
                     print(
-                        f"WS: Analysis Result: {analysis_result} after {time.time() - analysis_start_time:.2f} seconds")
+                        f"WS: [Window@{window_chunk_number}] analyze_results took {time.time() - analysis_start_time:.2f}s")
 
                     # Check if the result is a dictionary and contains an error (as implemented previously for robustness)
                     if analysis_result is None or (isinstance(analysis_result, dict) and 'error' in analysis_result):
@@ -682,17 +710,18 @@ class LiveSessionConsumer(AsyncWebsocketConsumer):
                 wait_timeout = 30.0  # Increased timeout to wait for the task to appear/complete
                 max_retries = 3  # Maximum number of retries to find the task
                 retry_count = 0
+                print(f"WS: [Window@{window_chunk_number}] Waiting for DB save task of last chunk ({os.path.basename(last_media_path)})...")
 
                 while (time.time() - wait_start_time) < wait_timeout and retry_count < max_retries:
                     last_chunk_save_task = self.background_chunk_save_tasks.get(last_media_path)
                     if last_chunk_save_task:
-                        print(f"WS: Background save task found for {last_media_path}. Waiting for it to complete...")
+                        print(f"WS: [Window@{window_chunk_number}] DB save task found after {time.time() - wait_start_time:.2f}s. Awaiting completion...")
                         try:
                             # Wait for the specific task to finish (with the remaining timeout)
                             await asyncio.wait_for(last_chunk_save_task,
                                                    timeout=wait_timeout - (time.time() - wait_start_time))
                             print(
-                                f"WS: Background save task for {last_media_path} completed. Proceeding to save window analysis.")
+                                f"WS: [Window@{window_chunk_number}] DB save task done. Total wait: {time.time() - wait_start_time:.2f}s")
 
                             # --- Initiate Saving Analysis data in the BACKGROUND ---
                             # Only create the analysis save task if the chunk save completed
@@ -746,6 +775,10 @@ class LiveSessionConsumer(AsyncWebsocketConsumer):
             print(f"WS: Error during windowed media analysis ending with chunk {window_chunk_number}: {e}")
             traceback.print_exc()  # Print traceback for general analyze_windowed_media errors
         finally:
+            self._active_analysis_count -= 1
+            elapsed = time.time() - start_time
+            print(f"WS: 🏁 [Window@{window_chunk_number}] FINISHED in {elapsed:.2f}s. Active analyses now: {self._active_analysis_count}")
+
             # Clean up the temporary combined audio file if it was created
             # This cleanup happens regardless of whether the analysis or save succeeded.
             if combined_audio_path and os.path.exists(combined_audio_path):
