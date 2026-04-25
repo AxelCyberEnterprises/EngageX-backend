@@ -18,6 +18,26 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Set env vars before collectstatic so decouple can load settings
+ENV POSTGRESQL_DATABASE_NAME="" \
+    POSTGRESQL_USERNAME="" \
+    POSTGRESQL_PASSWORD="" \
+    POSTGRESQL_SERVER_NAME="" \
+    OPENAI_API_KEY="" \
+    DEEPGRAM_API_KEY="" \
+    EMAIL_HOST="" \
+    EMAIL_PORT="" \
+    EMAIL_USE_TLS="" \
+    EMAIL_HOST_USER="" \
+    EMAIL_HOST_PASSWORD="" \
+    DEFAULT_FROM_EMAIL="" \
+    AWS_ACCESS_KEY_ID="" \
+    AWS_SECRET_ACCESS_KEY="" \
+    USE_S3="" \
+    AWS_STORAGE_BUCKET_NAME="" \
+    AWS_S3_REGION_NAME="" \
+    AUTH_TOKEN_FOR_WEBSOCKET=""
+
 # Copy application files last (reduces build invalidation)
 COPY . .
 
@@ -33,37 +53,8 @@ RUN python manage.py collectstatic --noinput && echo "Static files collected"
 # Expose port
 EXPOSE $PORT
 
-# Environment variables (should be set at runtime)
-# PostgreSQL Config
-ENV POSTGRESQL_DATABASE_NAME=""
-ENV POSTGRESQL_USERNAME=""
-ENV POSTGRESQL_PASSWORD=""
-ENV POSTGRESQL_SERVER_NAME=""
-ENV PORT=""
-
-# # OpenAI config
-ENV OPENAI_API_KEY=""
-ENV DEEPGRAM_API_KEY=""
-
-
-# # AWS SES config
-ENV EMAIL_HOST=""
-ENV EMAIL_PORT=""
-ENV EMAIL_USE_TLS=""
-ENV EMAIL_HOST_USER=""
-ENV EMAIL_HOST_PASSWORD=""
-ENV DEFAULT_FROM_EMAIL=""
-
-# # AWS S3
-ENV USE_S3=""
-ENV AWS_STORAGE_BUCKET_NAME=""
-ENV AWS_S3_REGION_NAME=""
-
-ENV AWS_ACCESS_KEY_ID=""
-ENV AWS_SECRET_ACCESS_KEY=""
-ENV AUTH_TOKEN_FOR_WEBSOCKET=""
-
-ENV DJANGO_SETTINGS_MODULE="EngageX.settings"
+ENV PORT="" \
+    DJANGO_SETTINGS_MODULE="EngageX.settings"
 
 
 # Command to run the application
