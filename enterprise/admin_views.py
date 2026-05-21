@@ -4,7 +4,6 @@ from rest_framework import status
 from rest_framework.permissions import IsAdminUser
 from django.contrib.auth import get_user_model
 from django.conf import settings
-from django.core.mail import send_mail
 from django.template.loader import render_to_string
 from django.utils import timezone
 from datetime import timedelta
@@ -110,15 +109,18 @@ class ManualUserUploadView(APIView):
     
     def _send_invitation_email(self, user, enterprise, is_new_user=False):
         """Send an invitation email to the user."""
+        import logging
+        import os
+        from django.contrib.auth.tokens import default_token_generator
+        from django.utils.encoding import force_bytes
+        from django.utils.http import urlsafe_base64_encode
+        from django.core.mail import EmailMultiAlternatives
+
+        logger = logging.getLogger(__name__)
         try:
-            # Generate a one-time password reset token
-            from django.contrib.auth.tokens import default_token_generator
-            from django.utils.encoding import force_bytes
-            from django.utils.http import urlsafe_base64_encode
-            
             token = default_token_generator.make_token(user)
             uid = urlsafe_base64_encode(force_bytes(user.pk))
-            
+
             context = {
                 'user': user,
                 'enterprise': enterprise,
@@ -128,28 +130,31 @@ class ManualUserUploadView(APIView):
                 'expiry_days': 7,
                 'site_name': settings.SITE_NAME,
             }
-            
+
             subject = f"Invitation to join {enterprise.name}" if is_new_user else f"New account created for {enterprise.name}"
-            
-            # Render both HTML and plain text versions
+
             message = render_to_string('emails/enterprise_invitation.txt', context)
             html_message = render_to_string('emails/enterprise_invitation.html', context)
-            
-            # Send the email
-            send_mail(
+
+            email = EmailMultiAlternatives(
                 subject=subject,
-                message=message,
+                body=message,
                 from_email=settings.DEFAULT_FROM_EMAIL,
-                recipient_list=[user.email],
-                html_message=html_message,
-                fail_silently=False,
+                to=[user.email],
             )
-            
+            email.attach_alternative(html_message, 'text/html')
+
+            # Attach onboarding PDF if it exists
+            pdf_path = os.path.join(settings.BASE_DIR, 'enterprise', 'static', 'onboarding_guide.pdf')
+            if os.path.exists(pdf_path):
+                with open(pdf_path, 'rb') as f:
+                    email.attach('EngageX_Onboarding_Guide.pdf', f.read(), 'application/pdf')
+            else:
+                logger.warning(f"Onboarding PDF not found at {pdf_path}, sending email without attachment")
+
+            email.send(fail_silently=False)
             return True
-            
+
         except Exception as e:
-            # Log the error but don't fail the request
-            import logging
-            logger = logging.getLogger(__name__)
             logger.error(f"Failed to send invitation email to {user.email}: {str(e)}")
             return False
