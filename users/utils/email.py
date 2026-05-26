@@ -103,7 +103,7 @@ def send_email_via_ses(subject, body, to_emails, from_email=None, html_body=None
                     # If it's a file-like object, read its content
                     content = content.read()
                 
-                email.attach(filename, content)
+                email.attach(filename, content, attachment.get('mimetype', 'application/octet-stream'))
         
         # Send the email
         email.send(fail_silently=False)

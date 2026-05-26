@@ -2094,6 +2094,11 @@ class EnterpriseUserViewSet(viewsets.ModelViewSet):
                         # Don't set unusable password - we want them to use the generated one
                         created = True
                         logger.info(f"Created new user {email} with generated password")
+                        pdf_path = os.path.join(settings.BASE_DIR, 'enterprise', 'static', 'onboarding_guide.pdf')
+                        if os.path.exists(pdf_path):
+                            logger.info(f"[PDF] Onboarding PDF found at {pdf_path} — will attach to invitation email")
+                        else:
+                            logger.warning(f"[PDF] Onboarding PDF NOT found at {pdf_path} — invitation email will be sent without attachment")
                     except IntegrityError as e:
                         if 'unique constraint' in str(e).lower():
                             raise ValueError(f"A user with email {email} already exists")
@@ -2285,11 +2290,28 @@ class EnterpriseUserViewSet(viewsets.ModelViewSet):
                 logger.debug(f"- AWS_SECRET_ACCESS_KEY: {'Set' if hasattr(settings, 'AWS_SECRET_ACCESS_KEY') else 'Not set'}")
                 logger.debug(f"- AWS_DEFAULT_REGION: {getattr(settings, 'AWS_DEFAULT_REGION', 'Not set')}")
                 
+                # Build PDF attachment
+                attachments = []
+                pdf_path = os.path.join(settings.BASE_DIR, 'enterprise', 'static', 'onboarding_guide.pdf')
+                if os.path.exists(pdf_path):
+                    print(f"[EMAIL] Attaching onboarding PDF from {pdf_path}")
+                    logger.info(f"[EMAIL] Attaching onboarding PDF to email for {user.email}")
+                    with open(pdf_path, 'rb') as f:
+                        attachments.append({
+                            'filename': 'EngageX_Onboarding_Guide.pdf',
+                            'content': f.read(),
+                            'mimetype': 'application/pdf',
+                        })
+                else:
+                    print(f"[EMAIL] WARNING: Onboarding PDF not found at {pdf_path}, sending without attachment")
+                    logger.warning(f"[EMAIL] Onboarding PDF not found at {pdf_path}")
+
                 response = send_email_via_ses(
                     subject=subject,
                     body=text_content,
                     to_emails=[user.email],
-                    from_email=settings.DEFAULT_FROM_EMAIL
+                    from_email=settings.DEFAULT_FROM_EMAIL,
+                    attachments=attachments or None
                 )
                 
                 if not response:
