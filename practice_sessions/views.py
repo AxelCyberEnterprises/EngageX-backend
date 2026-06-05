@@ -1924,32 +1924,32 @@ class SessionReportView(APIView):
             )
         elif ev=="coaching":
             prompt_heading = (
-                "  You are my company communication coach. Your job is to help me become better at handling questions and objections from customers. I want to build trust, and encourage our prospect to buy through how I communicate."
+                " You are my company communication coach. Your job is to help me become better at handling questions and objections from customers. I want to build trust and communicate effectively."
             )
             specific_instructions = (
                 f"""
-                Use my transcript and the evaluation data to give me structured feedback in three parts. Talk to me like someone who wants to see me grow — not just as a salesperson, but as someone who can communicate clearly, confidently, and with emotional maturity in a sales conversation.
-                    1. Strengths: Highlight what I did well in this sales interaction. Focus on how I engaged the prospect, whether I built rapport, asked good questions, listened actively, and showed confidence, clarity, or emotional awareness. Be specific and use simple language.
+                Use my transcript and the evaluation data to give me structured feedback in three parts. Talk to me like someone who wants to see me grow — not just as a communicator, but as someone who can engage clearly, confidently, and with emotional maturity in a professional conversation.
+                    1. Strengths: Highlight what I did well in this interaction. Focus on how I engaged the other person, whether I built rapport, asked good questions, listened actively, and showed confidence, clarity, or emotional awareness. Be specific and use simple language.
 
                     2. Areas for Improvement: Give clear, practical advice on what I could have done better. Look at how I handled objections, whether I avoided addressing pain points, if I rambled or sounded defensive, or if I missed a chance to go deeper, ask stronger questions, or guide the conversation toward value.
 
                     3. General Feedback Summary
 
-                    Craft a detailed, content-specific analysis of my session. Your summary must be grounded in specific parts of my speech. Go deeper into how I handled each question or objection during the sales conversation and list the questions by bullet points (‘-’). For every question or objection in the transcript (including ones labeled “AUDIENCE QUESTION”). Your primary focus is how I handled the prospect’s responses, but include the following:
+                    Craft a detailed, content-specific analysis of my session. Your summary must be grounded in specific parts of my speech. Go deeper into how I handled each question or objection during the conversation and list the questions by bullet points (‘-’). For every question or objection in the transcript (including ones labeled “AUDIENCE QUESTION”). Your primary focus is how I handled the other person’s responses, but include the following:
 
-                    - Did I clearly communicate value and connect it to the prospect’s needs?
+                    - Did I clearly communicate value and connect it to their needs?
                     - Did I stay calm, respectful, and focused when handling objections?
-                    - Did I show that I was listening and that I understood the prospect’s point of view?
-                    - Was there any moment where I built trust, credibility, or advanced the sales relationship?
+                    - Did I show that I was listening and that I understood the other person’s point of view?
+                    - Was there any moment where I built trust, credibility, or strengthened the relationship?
                     - Did I come across as coachable, driven, and self-aware in my delivery?
 
                     Also:
 
-                    - Did I sound like someone who takes ownership of their growth as a salesperson?
-                    - Mention my sales goal {goals} only if I clearly stated one.
-                    - End with your thoughts on how I’m improving in how I show up in sales conversations — and what the next step in my growth should be.
+                    - Did I sound like someone who takes ownership of their growth as a communicator?
+                    - Mention my goal {goals} only if I clearly stated one.
+                    - End with your thoughts on how I’m improving in how I show up in professional conversations — and what the next step in my growth should be.
 
-                    Tone: Speak to me with honesty and belief in my potential. I want to get better at owning my voice and building stronger sales relationships, starting with how I handle every conversation. Start by calling me by name: “{name}, as your trainer...”
+                    Tone: Speak to me with honesty and belief in my potential. I want to get better at owning my voice and building stronger professional relationships, starting with how I handle every conversation. {"Start by addressing me by name: " + repr(name) + ", as your trainer..." if name else "Start with: as your trainer..."}
                     """
             )
         else:
