@@ -16,16 +16,16 @@ TIER_CREDITS = {
     "starter": 4,
     "growth": 6,
     "pro": 8,
-    "ultimate": 12,
+    "ultimate": 10,
 }
 
 # Stripe Price IDs for each tier (test/live keys must match the mode)
 TIER_PRICE_IDS = {
     "tester": "price_1RLSZhP8pRFcBjQOnnj0BECI",
-    "starter": "price_1RNEHkP8pRFcBjQO3qYk2oIj",  # replace with your test/live IDs
-    "growth": "price_1RNEIoP8pRFcBjQOjXXY45nG",
-    "pro": "price_1RNEMRP8pRFcBjQOf8PAjb8M",
-    "ultimate": "price_1RNEOcP8pRFcBjQOGgQPcRsO",
+    "starter": "price_1TwMLTP8pRFcBjQOYz8kPx4z",  # $100
+    "growth": "price_1TwMMOP8pRFcBjQOTjRWfLLU",  # $150
+    "pro": "price_1TwMMQP8pRFcBjQOCNgZDefe",  # $200
+    "ultimate": "price_1TwMMSP8pRFcBjQOlroKKyQD",  # $300
 }
 
 User = get_user_model()
