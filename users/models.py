@@ -522,7 +522,7 @@ class UserProfile(models.Model):
     available_credits = models.DecimalField(
         max_digits=10,
         decimal_places=2,
-        default=1.00,
+        default=0.00,
         help_text="Available credits on the user dashboard.",
     )
 
