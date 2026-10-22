@@ -2701,15 +2701,17 @@ class ImproveNewSequence(APIView):
     def post(self, request, session_id):
         sequence_serializer = PracticeSequenceSerializer(data=request.data)
         if sequence_serializer.is_valid():
-            sequence = sequence_serializer.save(user=request.user)
-
+            # Find the session, and check it is the caller's own, before creating the sequence.
+            # A rejected request then leaves no empty sequence behind.
             try:
-                session = PracticeSession.objects.get(id=session_id)
-                if session.sequence:
-                    return Response(data={"error": "Session already in a seqeunce"}, status=404)
+                session = PracticeSession.objects.get(id=session_id, user=request.user)
             except PracticeSession.DoesNotExist:
                 return Response({"error": "Session not found"}, status=404)
 
+            if session.sequence:
+                return Response(data={"error": "Session already in a seqeunce"}, status=404)
+
+            sequence = sequence_serializer.save(user=request.user)
             session.sequence = sequence
             session.save()
 
