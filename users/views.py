@@ -338,9 +338,6 @@ class CustomTokenCreateView(TokenCreateView):
         },
     )
     def post(self, request, *args, **kwargs):
-        # Log the incoming request for debugging
-        print("Login attempt with data:", request.data)
-
         # Check for required fields in the request
         email = request.data.get("email")
         password = request.data.get("password")
@@ -620,9 +617,6 @@ class PasswordResetConfirmView(APIView):
                 if user.id == data.get("_auth_user_id"):
                     session.delete()
             print("User sessions invalidated")
-
-            # Log the password hash for verification
-            print(f"Password hash: {user.password}")
 
             # Success response
             return Response(
