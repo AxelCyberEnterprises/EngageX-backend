@@ -124,6 +124,28 @@ Respond only with the emotion. (thinking, sorrow, excitement, laughter, surprise
     return JsonResponse(response.json(), status=response.status_code)
 
 
+def delete_session_slides(session):
+    """
+    Delete the uploaded slide deck from storage, keeping the SlidePreview row.
+
+    Slides are only needed while a session is being practiced: their scores are
+    worked out when the session starts and stored on the session, so the report
+    does not need the file. The row stays because the report uses it to know that
+    the session had slides, and only its file is cleared.
+    """
+    preview = session.slide_preview
+    if not preview or not preview.slides_file:
+        return
+
+    try:
+        # Deletes the object through the slides storage, so the real S3 key is used,
+        # then clears the field and saves the row.
+        preview.slides_file.delete(save=True)
+        logger.info(f"Deleted slides for session {session.id}")
+    except Exception as e:
+        logger.warning(f"Could not delete slides for session {session.id}: {e}")
+
+
 def generate_slide_summary(pdf_file):
     logger.info(f"TYPE OF pdf_file: {type(pdf_file)}")
     logger.info("🔍 Starting slide summary generation...")
@@ -888,29 +910,8 @@ class PracticeSessionViewSet(viewsets.ModelViewSet):
                     except Exception as e:
                         print(f"Error parsing chunk video_file {chunk.video_file}: {e}")
 
-            # Handle slides file deletion
-            if session.slide_preview and session.slide_preview.slides_file and session.slide_preview.slides_file.name:
-                slide_s3_key = session.slide_preview.slides_file.name
-                # More robust checks for user-specific slide paths
-                # Adjust these prefixes based on how your slides are actually stored in S3
-                expected_slide_path_prefixes = [
-                    f"slides/{session.user.id}/", # New typical path
-                    f"{BASE_FOLDER}slides/{session.user.id}/", # If BASE_FOLDER is used for slides
-                    f"{session.user.id}_slides/", # Older direct user ID prefix
-                    f"slides/{session.user.id}_slides/", # Older "slides/user_id_slides/"
-                ]
-                
-                is_safe_to_delete_slide = False
-                for prefix in expected_slide_path_prefixes:
-                    if slide_s3_key.startswith(prefix):
-                        is_safe_to_delete_slide = True
-                        break
-
-                if is_safe_to_delete_slide:
-                    s3_keys_to_delete.append(slide_s3_key)
-                    print(f"Added slides file key for deletion: {slide_s3_key}")
-                else:
-                    print(f"WARNING: Slides file {slide_s3_key} not in expected S3 user path, skipping S3 delete for slides.")
+            # Handle slides file deletion (through the slides storage, which knows the real S3 key)
+            delete_session_slides(session)
 
             # Perform S3 deletions concurrently using ThreadPoolExecutor for blocking S3 calls
             if s3_keys_to_delete:
@@ -2160,6 +2161,9 @@ class SessionReportView(APIView):
         try:
             session = get_object_or_404(PracticeSession, id=session_id, user=request.user)
             print(f"Session found: {session.session_name}")
+
+            # The session has ended, so the uploaded slide deck is no longer needed.
+            delete_session_slides(session)
 
             # --- Update Duration ---
             if duration_seconds is not None:
