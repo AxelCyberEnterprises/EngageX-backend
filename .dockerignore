@@ -4,6 +4,7 @@
 .vscode/
 .gitignore
 venv/
+meeting-notes/
 error.log
 DEPLOY.md
 README.md
