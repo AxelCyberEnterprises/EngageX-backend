@@ -113,7 +113,7 @@ class EnterpriseAdmin(admin.ModelAdmin):
         ('Settings', {
             'fields': ('one_on_one_coaching_link',),
             'classes': (),
-            'description': _('Enterprise authentication settings')
+            'description': _('Set a booking link to give this org the "Speak with a Coach" button; leave blank to hide it')
         }),
         ('Timestamps', {
             'fields': ('created_at', 'updated_at'),

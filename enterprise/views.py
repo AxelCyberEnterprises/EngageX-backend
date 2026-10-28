@@ -394,7 +394,8 @@ class EnterpriseViewSet(viewsets.ModelViewSet):
             'total_members': total_members,
             'credits_left': credits_left,
             'goals_completion_percent': goals_completion_percent,
-            'coaching_sessions_booked': enterprise.coaching_sessions_booked
+            'coaching_sessions_booked': enterprise.coaching_sessions_booked,
+            'one_on_one_coaching_activated': one_on_one_coaching_activated
         })
         
     @action(detail=True, methods=['post'], url_path='book-coaching-session')
@@ -571,126 +572,21 @@ class EnterpriseViewSet(viewsets.ModelViewSet):
             })
             
         elif request.method == 'PUT':
-            one_on_one_coaching_link = request.data.get('one_on_one_coaching_link')
-            
-            if not one_on_one_coaching_link:
+            if 'one_on_one_coaching_link' not in request.data:
                 return Response(
                     {'error': 'one_on_one_coaching_link is required'},
                     status=status.HTTP_400_BAD_REQUEST
                 )
-                
+
+            # An empty/null value clears the link, revoking coach access for this org.
+            one_on_one_coaching_link = request.data.get('one_on_one_coaching_link') or None
             enterprise.one_on_one_coaching_link = one_on_one_coaching_link
             enterprise.save()
-            
+
             return Response({
                 'message': 'Coaching settings updated successfully',
-                'one_on_one_coaching_link': enterprise.one_on_one_coaching_link,
-                'one_on_one_coaching_activated': True
-            })
-    
-    @action(detail=False, methods=['get'])
-    def verticals(self, request):
-        """
-        List all available verticals across all enterprise types.
-        Frontend can filter based on enterprise_type if needed.
-        """
-        from .models import Enterprise
-        
-        verticals = []
-        for choice in Enterprise.Vertical.choices:
-            verticals.append({
-                'id': choice[0],
-                'name': choice[1],
-                'enterprise_types': [
-                    'sport' if choice[0] in ['media_training', 'coach', 'gm'] else 'general'
-                ]
-            })
-        
-        return Response(verticals)
-    
-    @action(detail=True, methods=['get'], url_path='verticals')
-    def enterprise_verticals(self, request, pk=None):
-        """
-        Get currently enabled verticals for this enterprise.
-        Returns list of vertical IDs from Enterprise.accessible_verticals.
-        """
-        enterprise = self.get_object()
-        
-        try:
-            from payments.models import Credit, CreditTransaction
-            
-            # Get current balance
-            credits = Credit.objects.filter(enterprise=enterprise).first()
-            if not credits:
-                return Response({
-                    'total_credits': 0,
-                    'credits_used': 0,
-                    'credits_remaining': 0,
-                    'transactions': []
-                })
-            
-            # Get recent transactions
-            transactions = CreditTransaction.objects.filter(
-                enterprise=enterprise
-            ).order_by('-created_at')[:10]  # Get 10 most recent transactions
-            
-            transaction_data = [{
-                'id': str(t.id),
-                'amount': float(t.amount),
-                'type': t.get_transaction_type_display(),
-                'description': t.description,
-                'date': t.created_at.isoformat(),
-                'balance_after': float(t.balance_after)
-            } for t in transactions]
-            
-            return Response({
-                'total_credits': credits.total_credits,
-                'credits_used': credits.credits_used,
-                'credits_remaining': credits.balance,
-                'transactions': transaction_data
-            })
-            
-        except ImportError:
-            return Response(
-                {'error': 'Credits module not found'},
-                status=status.HTTP_501_NOT_IMPLEMENTED
-            )
-    
-        
-    @action(detail=True, methods=['get', 'put'], url_path='coaching-settings')
-    def coaching_settings(self, request, pk=None):
-        """
-        GET: Get current coaching settings
-        PUT: Update coaching settings
-        Expected payload for PUT:
-        {
-            "one_on_one_coaching_link": "https://calendly.com/..."
-        }
-        """
-        enterprise = self.get_object()
-        
-        if request.method == 'GET':
-            return Response({
                 'one_on_one_coaching_link': enterprise.one_on_one_coaching_link,
                 'one_on_one_coaching_activated': bool(enterprise.one_on_one_coaching_link)
-            })
-            
-        elif request.method == 'PUT':
-            one_on_one_coaching_link = request.data.get('one_on_one_coaching_link')
-            
-            if not one_on_one_coaching_link:
-                return Response(
-                    {'error': 'one_on_one_coaching_link is required'},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-                
-            enterprise.one_on_one_coaching_link = one_on_one_coaching_link
-            enterprise.save()
-            
-            return Response({
-                'message': 'Coaching settings updated successfully',
-                'one_on_one_coaching_link': enterprise.one_on_one_coaching_link,
-                'one_on_one_coaching_activated': True
             })
         
     @action(detail=False, methods=['get'])
