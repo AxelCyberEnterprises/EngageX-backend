@@ -552,7 +552,7 @@ class PracticeSessionViewSet(viewsets.ModelViewSet):
             print(f"Error uploading {local_path} to s3://{bucket_name}/{s3_key}: {str(e)}")
             raise
 
-    def _delete_single_s3_object(self, bucket_name, s3_key):
+    def _delete_single_s3_object(self, s3_client_sync, bucket_name, s3_key):
         """Synchronously deletes a single S3 object. Intended to be called by ThreadPoolExecutor."""
         try:
             s3_client_sync.delete_object(Bucket=bucket_name, Key=s3_key)
@@ -709,6 +709,9 @@ class PracticeSessionViewSet(viewsets.ModelViewSet):
             
             # 3. Build the FFmpeg command with concat filter for better compatibility
             ffmpeg_cmd = [
+                # Lowest CPU priority: the encode takes all of the container's CPU, and without this
+                # the web server starves (requests hang, the health check fails and ECS restarts the task).
+                'nice', '-n', '19',
                 'ffmpeg',
                 '-y',  # Overwrite output file if it exists
                 '-loglevel', 'info',  # More detailed logging
@@ -730,7 +733,7 @@ class PracticeSessionViewSet(viewsets.ModelViewSet):
                 '-map', '[outv]',
                 '-map', '[outa]',
                 '-c:v', 'libx264',  # H.264 video codec
-                '-preset', 'medium',
+                '-preset', 'veryfast',  # was 'medium'; several times quicker for a small increase in file size
                 '-crf', '23',
                 '-pix_fmt', 'yuv420p',
                 '-c:a', 'aac',  # AAC audio codec
