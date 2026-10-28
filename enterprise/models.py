@@ -506,7 +506,8 @@ class TrainingGoal(models.Model):
     
     class Meta:
         ordering = ['-is_active', 'due_date', 'room']
-    
+        unique_together = {('enterprise', 'room')}
+
     def __str__(self):
         return f"{self.get_room_display()} - {self.completed_sessions}/{self.target_sessions} (Enterprise: {self.enterprise.name})"
     

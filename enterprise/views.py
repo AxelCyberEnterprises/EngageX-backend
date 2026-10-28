@@ -25,6 +25,7 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, IsAdminUser
 from rest_framework.decorators import action
 from rest_framework.parsers import MultiPartParser, JSONParser
+from rest_framework.exceptions import ValidationError as DRFValidationError
 from django.conf import settings
 from django_filters.rest_framework import DjangoFilterBackend
 
@@ -1302,7 +1303,20 @@ class TrainingGoalViewSet(viewsets.ModelViewSet):
         """Set the enterprise when creating a new goal"""
         enterprise_id = self.kwargs.get('enterprise_pk')
         enterprise = Enterprise.objects.get(pk=enterprise_id)
-        serializer.save(enterprise=enterprise)
+        try:
+            serializer.save(enterprise=enterprise)
+        except IntegrityError:
+            raise DRFValidationError(
+                {'room': f"A training goal for '{serializer.validated_data.get('room')}' already exists for this enterprise."}
+            )
+
+    def perform_update(self, serializer):
+        try:
+            serializer.save()
+        except IntegrityError:
+            raise DRFValidationError(
+                {'room': f"A training goal for '{serializer.validated_data.get('room')}' already exists for this enterprise."}
+            )
     
     @action(detail=False, methods=['get'], url_path='options')
     def goal_options(self, request, enterprise_pk=None):
