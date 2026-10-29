@@ -437,6 +437,12 @@ class UserProfile(models.Model):
         settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="user_profile"
     )
     date_of_birth = models.DateField(null=True, blank=True)
+    preferred_name = models.CharField(
+        max_length=100,
+        blank=True,
+        null=True,
+        help_text="Name the user wants to be addressed by in feedback reports; falls back to first name if blank",
+    )
 
     def clean(self):
         if self.date_of_birth and self.date_of_birth > timezone.now().date():

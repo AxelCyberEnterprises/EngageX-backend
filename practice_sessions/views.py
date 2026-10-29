@@ -3,6 +3,7 @@ import concurrent.futures
 import openai
 import os
 import json
+import re
 from enterprise.models import Enterprise, TrainingGoal
 import traceback
 import boto3
@@ -102,21 +103,28 @@ def get_openai_realtime_token(request):
     }
 
     payload = {
-        "model": "gpt-4o-mini-realtime-preview",
-        "modalities": ["text"],  # Only return text, not audio
-        "instructions": """You are an advanced presentation evaluation system. Using the speaker's transcript.
+        "session": {
+            "type": "realtime",
+            "model": "gpt-realtime-2.1-mini",
+            "output_modalities": ["text"],  # Only return text, not audio
+            "instructions": """You are an advanced presentation evaluation system. Using the speaker's transcript.
 
 Select one of these emotions that the audience is feeling most strongly ONLY choose from this list(thinking, sorrow, excitement, laughter, surprised, interested).
 
 Respond only with the emotion. (thinking, sorrow, excitement, laughter, surprised, interested)""",
-        "turn_detection": {
-            "type": "server_vad",  # Use Server VAD
-            "silence_duration_ms": 5  # 100ms silence threshold
+            "audio": {
+                "input": {
+                    "turn_detection": {
+                        "type": "server_vad",  # Use Server VAD
+                        "silence_duration_ms": 5  # 100ms silence threshold
+                    }
+                }
+            }
         }
     }
 
     response = requests.post(
-        "https://api.openai.com/v1/realtime/sessions",
+        "https://api.openai.com/v1/realtime/client_secrets",
         headers=headers,
         json=payload
     )
@@ -188,7 +196,8 @@ def generate_slide_summary(pdf_file):
     try:
         print("🚀 Sending request to OpenAI...")
         response = client.chat.completions.create(
-            model="gpt-4.1",
+            model="gpt-6-luna",
+            reasoning_effort="low",
             messages=[
                 {
                     "role": "user",
@@ -1718,6 +1727,194 @@ class ChunkSentimentAnalysisViewSet(viewsets.ModelViewSet):
         serializer.save()
 
 
+# ---------------------------------------------------------------------------
+# Feedback report coach prompt (replaces the old per-vertical GPT-4.1 prompts).
+# Spec: Jacqui's "EngageX Feedback Report Prompt, Before and After" notes,
+# Oct 28 2026. One template for every vertical; only session_description,
+# goal_line and closing_line vary.
+# ---------------------------------------------------------------------------
+
+CLAUDE_COACH_SYSTEM_PROMPT_TEMPLATE = """You are the executive communications coach for {preferred_name} on EngageX. {preferred_name} has just finished a recorded practice session on video, and you are writing the personal feedback report they will read right afterward. Write the way a seasoned executive coach speaks to a respected professional, with warmth, directness and high standards, as someone who watched every minute and wants this person to succeed.
+
+ABOUT THE SESSION
+{session_description}
+{goal_line}
+
+Scores and what each one measures
+{scores}
+
+Everything the person said
+{transcript}
+
+BEFORE YOU WRITE
+Privately decide the single most valuable change this person could make, and find the moment in the session that shows it most clearly. Build the whole report around that one priority.
+
+THE OPENING
+The very first word of the report is {preferred_name}, and the first sentence tells them you are their coach, for example "{preferred_name}, as your coach, I want to begin with...". Acknowledge being their coach once, in that first sentence, and nowhere else.
+
+THE SUMMARY
+Write five to seven paragraphs totaling 450 to 700 words. Begin with the most important thing that happened in the session. Describe the central pattern that showed up, using one or two exact fragments of what the person said. Slow down on the hardest or most revealing moment, explain why it landed the way it did, and give a concrete way to handle it next time. Add no more than two secondary observations, each ending in a specific detail the person can add or change. Mention two or three scores at most, and only inside a sentence that explains what a listener experienced. Close with one structure to practice, and where it helps, offer a model sentence built from the person's own best line, presented as a suggestion. {closing_line} If the session was strong, do not invent problems. Say plainly what worked and raise the standard with a single refinement.
+
+STRENGTHS AND AREAS FOR IMPROVEMENT
+Write three to five strengths and three to five areas for improvement. Each one is one or two complete sentences anchored to something the person actually said or did, with no greeting and no mention of being their coach. Each area says what to do instead.
+
+HOW TO WRITE
+Write in full, flowing paragraphs of three to six sentences, with sentences that typically run fifteen to thirty words. Never put more than two short sentences in a row, and never use fragments. Do not use em dashes, en dashes, double hyphens or colons anywhere in the report. Speak in the first person to one person, the way a coach would. Do not assume the person's gender, and use the second person instead of he or she. Avoid contrast constructions such as "not X but Y" and "less about X, more about Y", rhetorical triplets used only for rhythm, and stock phrases such as "honest read", "journey", "unlock" and "elevate". Quote the person's words sparingly, in fragments of fewer than twelve words, exactly as they appear. If a word or the end of an answer looks like a speech capture error, treat it as a limit of the recording and not a fault of the speaker.
+
+NEVER
+Never refer to earlier sessions, the platform, the recording, the transcript, a model, or anything you cannot observe. Never describe gestures, facial expressions, eye contact or slides unless data about them appears above. Never invent a client story, a number, a credential, an outcome or a detail about the person's role or background. If an example would strengthen an answer, ask the person to draw on a real one of their own. Write in the language the person spoke."""
+
+_SESSION_DESCRIPTION_BY_CATEGORY = {
+    "avatar": (
+        "This was a conversation in which the platform's avatar asked questions and the "
+        "person answered. Refer to the questions and to how each answer opened and closed."
+    ),
+    "speech": (
+        "This was a speech or talk delivered without questions. Refer to the opening, the "
+        "structure, the key message and the close. Never refer to questions."
+    ),
+    "pitch": (
+        "This was a pitch delivered without questions. Refer to the problem, the ask, the "
+        "proof and what makes the offer different. Never refer to questions."
+    ),
+    "presentation": (
+        "This was a presentation delivered without questions. Refer to the flow of ideas, "
+        "the key messages and the transitions. Never comment on slides, because their "
+        "content has not been supplied."
+    ),
+}
+
+# (model field, display label, what it measures)
+_SCORE_FIELD_DESCRIPTIONS = [
+    ("volume", "Volume", "how loud and clearly audible you were"),
+    ("pitch_variability", "Pitch variability", "how much your pitch varied instead of staying flat"),
+    ("pace", "Pace", "how well paced your speech was"),
+    ("pauses", "Pauses", "how effectively you used pauses"),
+    ("conviction", "Conviction", "how much belief and conviction came through"),
+    ("clarity", "Clarity", "how clear and easy to follow your points were"),
+    ("impact", "Impact", "how much impact your words had on a listener"),
+    ("brevity", "Brevity", "how concise your answers were"),
+    ("trigger_response", "Trigger response", "how well you handled key moments in the session"),
+    ("filler_words", "Filler words", "how free of filler words like um and like your speech was"),
+    ("grammar", "Grammar", "how grammatically clean your speech was"),
+    ("transformative_potential", "Transformative potential", "how much potential your message had to change how a listener thinks or acts"),
+]
+
+
+def _session_description_for(ev, session_type):
+    """Map EngageX's actual vertical/session_type onto Jacqui's four session categories."""
+    avatar_verticals = (
+        "coach", "gm", "general_manager", "general-manager", "coaching",
+        "media_training", "media-training", "media training",
+    )
+    if ev in avatar_verticals or session_type == "enterprise":
+        return _SESSION_DESCRIPTION_BY_CATEGORY["avatar"]
+    if session_type in ("pitch", "Pitch Practice"):
+        return _SESSION_DESCRIPTION_BY_CATEGORY["pitch"]
+    if session_type == "public":
+        return _SESSION_DESCRIPTION_BY_CATEGORY["speech"]
+    # "presentation" and any unrecognized session_type fall back to the presentation framing.
+    return _SESSION_DESCRIPTION_BY_CATEGORY["presentation"]
+
+
+def _format_goal_text(goals):
+    if isinstance(goals, (list, tuple)):
+        parts = [str(g).strip().rstrip(".") for g in goals if str(g).strip()]
+        return "; ".join(parts)
+    return str(goals).strip().rstrip(".") if goals else ""
+
+
+def _goal_line_for(goals):
+    goal_text = _format_goal_text(goals)
+    if goal_text:
+        return (
+            f"The person set this goal for the session, in their own words: {goal_text}. "
+            "Let it shape your opening and your closing, and translate it into behaviors "
+            "they can practice."
+        )
+    return (
+        "The person did not set a goal. Infer the most likely aim from the session type "
+        "and from what they were trying to do, let that aim shape the report, and never "
+        "mention that no goal was set."
+    )
+
+
+def _scores_block_and_low_flag(session):
+    """
+    Builds the human-readable scores block and decides whether this session's scores
+    are "low" per Jacqui's starting rule: overall average below 70, or 3+ individual
+    scores below 70. There's no single stored "overall" score, so overall here is the
+    plain average of the same component scores already surfaced elsewhere (metrics_string).
+    """
+    lines = []
+    values = []
+    for field, label, description in _SCORE_FIELD_DESCRIPTIONS:
+        value = getattr(session, field, None)
+        if value is None:
+            continue
+        values.append(value)
+        lines.append(f"{label} ({value} out of 100): {description}.")
+    scores_block = "\n".join(lines) if lines else "No scores are available for this session."
+    if values:
+        overall = sum(values) / len(values)
+        low_count = sum(1 for v in values if v < 70)
+        scores_low = overall < 70 or low_count >= 3
+    else:
+        scores_low = False
+    return scores_block, scores_low
+
+
+def _closing_line_for(scores_low):
+    if scores_low:
+        return (
+            "Because this session's scores leave real room to grow, end the closing "
+            "paragraph with a warm invitation to take this same session again after "
+            "practicing the structure you have just given, presenting the retake as the "
+            "quickest way to watch the scores move."
+        )
+    return (
+        "Do not suggest retaking the session. Close with what to practice next and return "
+        "to the goal or the aim you inferred."
+    )
+
+
+def _clean_avatar_question_punctuation(transcript_text):
+    """
+    Avatar questions are embedded in the transcript as AUDIENCE QUESTION: '...' blocks
+    (see streaming/consumers.py). Replace em dashes / double hyphens inside the quoted
+    question text only, so the model never echoes that punctuation back despite being
+    told not to use it anywhere in the report.
+    """
+    if not transcript_text:
+        return transcript_text
+
+    def _clean_question(match):
+        question_text = match.group(2)
+        question_text = question_text.replace("—", ",").replace("–", ",").replace("--", ",")
+        return f"{match.group(1)}{question_text}{match.group(3)}"
+
+    return re.sub(r"(AUDIENCE QUESTION: ')([^']*)(')", _clean_question, transcript_text)
+
+
+def _build_claude_coach_prompt(preferred_name, ev, session_type, goals, session, transcript_text):
+    session_description = _session_description_for(ev, session_type)
+    goal_line = _goal_line_for(goals)
+    scores_block, scores_low = _scores_block_and_low_flag(session)
+    closing_line = _closing_line_for(scores_low)
+    cleaned_transcript = (
+        _clean_avatar_question_punctuation(transcript_text) or "No transcript available for this session."
+    )
+
+    return CLAUDE_COACH_SYSTEM_PROMPT_TEMPLATE.format(
+        preferred_name=preferred_name,
+        session_description=session_description,
+        goal_line=goal_line,
+        scores=scores_block,
+        transcript=cleaned_transcript,
+        closing_line=closing_line,
+    )
+
+
 class SessionReportView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -1746,30 +1943,15 @@ class SessionReportView(APIView):
         session_type = session.session_type
         goals = getattr(session, "goals", "") or ""
         name = getattr(session.user, "first_name", "") or ""
-        role = ""
+        preferred_name = ""
         try:
-            role = session.user.user_profile.user_intent or ""
+            preferred_name = session.user.user_profile.preferred_name or ""
         except Exception:
-            # defensive: missing user_profile or user_intent
-            role = ""
+            # defensive: missing user_profile or preferred_name
+            preferred_name = ""
+        preferred_name = preferred_name or name or "there"
 
-        print(f"[generate_full_summary] firstname={name!r}, role={role!r}, session_id={session_id}")
-
-        # -- Collect existing chunk-level general feedback summaries --
-        try:
-            general_feedback_summaries_qs = ChunkSentimentAnalysis.objects.filter(
-                chunk__session__id=session_id
-            ).values_list("general_feedback_summary", flat=True)
-            general_feedback_summaries = [s for s in general_feedback_summaries_qs if s]
-        except Exception as e:
-            print(f"[generate_full_summary] error fetching ChunkSentimentAnalysis: {e}")
-            general_feedback_summaries = []
-
-        combined_feedback = "\n\n".join(general_feedback_summaries).strip()
-        print(f"[generate_full_summary]: length of general_feedback_summaries : {len(general_feedback_summaries_qs)} Transcript (or transcript excerpts): {combined_feedback}")
-
-        if not combined_feedback:
-            combined_feedback = "No chunk-level feedback summaries available."
+        print(f"[generate_full_summary] preferred_name={preferred_name!r}, firstname={name!r}, session_id={session_id}")
 
         # -- Collect session transcript (join chunk transcripts) --
         try:
@@ -1830,212 +2012,90 @@ class SessionReportView(APIView):
 
         print(f"[generate_full_summary] chosen vertical (normalized) = {ev!r}")
 
-        # -- Build the prompt based on vertical --
-        # Keep prompts concise and include: goals, metrics_string, combined_feedback, transcript_text, name, role.
-        base_context = (
-            f"Name: {name}\n"
-            f"Role: {role}\n"
-            f"Session Goals: {goals}\n"
-            f"Metrics Summary: {metrics_string}\n\n"
-            f"Chunk-level feedback summaries/Transcripts: {combined_feedback}\n\n"
-            # f" (or transcript excerpts): {transcript_text}"
+        # -- Build the unified coach-voice prompt (Jacqui's Oct 2026 spec) --
+        # session_description/goal_line/scores/closing_line all vary by session;
+        # the template itself is the same for every vertical now.
+        claude_prompt = _build_claude_coach_prompt(
+            preferred_name=preferred_name,
+            ev=ev,
+            session_type=session_type,
+            goals=goals,
+            session=session,
+            transcript_text=transcript_text,
         )
-        print(f"[generate_full_summary] Transcript (or transcript excerpts): {combined_feedback}")
+        print(f"[generate_full_summary] Coach prompt: {claude_prompt}")
+        logger.info(f"[generate_full_summary] Coach prompt: {claude_prompt}")
 
-        if ev == "media_training" or ev == "media-training" or ev == "media training":
-            prompt_heading = (
-                "You are a professional media trainer coaching this speaker on public interviews, "
-                "press conferences, and media appearances."
-            )
-            specific_instructions = (
-                f"""Use my transcript and the evaluation data to give me detailed, structured feedback in three parts. Talk to me like a coach who genuinely wants to see me grow — not just as an athlete, but as a communicator and role model.
+        # -- Primary: Claude (current Sonnet). Fallback: GPT-6 Sol on the same prompt. --
+        if settings.ANTHROPIC_API_KEY:
+            try:
+                import anthropic
 
-               1. Strengths: Highlight what I did well in this appearance. Focus on how I handled questions, the way I carried myself, my clarity, tone, and any standout responses. Keep the language simple and encouraging. Be specific.
+                anthropic_client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
+                report_tool = {
+                    "name": "submit_feedback_report",
+                    "description": "Submit the structured EngageX feedback report.",
+                    "input_schema": {
+                        "type": "object",
+                        "properties": {
+                            "Strength": {"type": "array", "items": {"type": "string"}},
+                            "Area of Improvement": {"type": "array", "items": {"type": "string"}},
+                            "General Feedback Summary": {"type": "string"},
+                        },
+                        "required": ["Strength", "Area of Improvement", "General Feedback Summary"],
+                    },
+                }
+                message = anthropic_client.messages.create(
+                    model="claude-sonnet-5",
+                    max_tokens=2200,
+                    tools=[report_tool],
+                    tool_choice={"type": "tool", "name": "submit_feedback_report"},
+                    messages=[{"role": "user", "content": claude_prompt}],
+                )
+                tool_use_block = next((b for b in message.content if b.type == "tool_use"), None)
+                if tool_use_block is None:
+                    raise ValueError("Claude response had no tool_use block")
 
-               2. Areas for Improvement: Give clear and constructive feedback on where I can get better. Focus on my media presence, how I answered questions, how I framed my thoughts, and whether I stayed composed and on message. Keep the suggestions practical and easy to apply.
+                parsed_summary = tool_use_block.input
+                print(f"[generate_full_summary] Claude parsed response: {parsed_summary}")
 
-               3.  General Feedback Summary: Craft a detailed, content-specific analysis of my session. Your summary must be grounded in specific parts of my speech. Go deeper into how I handled each question during the session and list the questions by bullet points('-'). For every question in the transcript (including ones labeled "AUDIENCE QUESTION"). Your primary focus is how I handled the questions but include the following:
-               - Did I fully answer the question or dodge it?
-               - Did I control the narrative or let the interviewer steer me off message?
-               - Was my answer memorable, respectful, and aligned with my personal or team values?
-               - Did I stay calm and focused, even if the question was tricky?
-               - Was there a moment where I really connected — with a story, perspective, or strong message?
-                Also:
-               - Did it show confidence, presence, or set a clear tone?
-               - Did my message feel organized and lead somewhere meaningful?
-               - Mention my goal {goals} only if I clearly stated one.
-               - Finish with a short reflection on how I’m developing as a public voice — and where I should focus next to elevate my presence.
+                strengths = parsed_summary.get("Strength") or []
+                areas = parsed_summary.get("Area of Improvement") or []
+                general = parsed_summary.get("General Feedback Summary") or ""
+                if not isinstance(strengths, list):
+                    strengths = [str(strengths)]
+                if not isinstance(areas, list):
+                    areas = [str(areas)]
+                if not isinstance(general, str):
+                    general = str(general)
 
-               Tone: Speak to me with respect and belief in my future. I need guidance on how to stand tall, communicate with intention, and leave an impact in every media moment. Start by calling me by name "{name}, as a media journalist...".
-
-                """
-            )
-        elif ev == "coach":
-            prompt_heading = (
-                " You are my personal communication coach. Your job is to help me become better at communicating with my coach — especially when it comes to expressing how I feel, asking for support, giving feedback, or having honest conversations. I want to build trust, show leadership, and strengthen my relationship with my coach through how I communicate."
-            )
-            specific_instructions = (
-                 f"""
-                Use my transcript and the evaluation data to give me structured feedback in three parts. Talk to me like someone who wants to see me grow — not just as an athlete, but as someone who can communicate clearly, confidently, and with emotional maturity.
-
-                1. Strengths: Highlight what I did well in this conversation with my coach. Focus on how I expressed myself, whether I stayed respectful and honest, and if I showed maturity, clarity, or emotional awareness. Be specific and use simple language.
-
-                2. Areas for Improvement: Give clear, practical advice on what I could have done better. Look at how I handled disagreement, whether I avoided tough topics, if I rambled or got defensive, or if I missed a chance to be more open or thoughtful.
-
-                3.  General Feedback Summary: Craft a detailed, content-specific analysis of my session. Your summary must be grounded in specific parts of my speech. Go deeper into how I handled each question during the session and list the questions by bullet points('-'). For every question in the transcript (including ones labeled "AUDIENCE QUESTION"). Your primary focus is how I handled the questions but include the following:
-                - Did I clearly express my thoughts or feelings?
-                - Did I stay calm, respectful, and focused even if the topic was hard?
-                - Did I show that I was listening and that I understood my coach’s point of view?
-                - Was there any moment where I built trust or showed growth as a communicator?
-                - Did I give off the impression of someone who’s coachable, driven, and self-aware?
-
-                Also:
-                - Did I sound like someone who takes ownership of their growth?
-                - Mention my goal {goals} only if I clearly stated one.
-                - End with your thoughts on how I’m improving in how I show up with my coach — and what the next step should be.
-
-                Tone: Speak to me with honesty and belief in my potential. I want to get better at owning my voice and building stronger relationships, starting with the one I have with my coach. Start by calling me by name "{name}, as your coach...".
-
-"""
-            )
-        elif ev in ("gm", "general_manager", "general-manager"):
-            prompt_heading = (
-                "You are advising from a General Manager perspective: how the speaker portrays themselves and their team/organization. Your job is to help me become better at communicating with my General Manager — especially when it comes to expressing how I feel, asking for support, giving feedback, or having honest conversations. I want to build trust, show leadership, and strengthen my relationship with my coach/GM through how I communicate."
-            )
-            specific_instructions = (
-                f"""
-                Use my transcript and the evaluation data to give me structured feedback in three parts. Talk to me like someone who wants to see me grow — not just as an athlete, but as someone who can communicate clearly, confidently, and with emotional maturity.
-
-                1. Strengths: Highlight what I did well in this conversation with my GM. Focus on how I expressed myself, whether I stayed respectful and honest, and if I showed maturity, clarity, or emotional awareness. Be specific and use simple language.
-
-                2. Areas for Improvement: Give clear, practical advice on what I could have done better. Look at how I handled disagreement, whether I avoided tough topics, if I rambled or got defensive, or if I missed a chance to be more open or thoughtful.
-
-                3.  General Feedback Summary: Craft a detailed, content-specific analysis of my session. Your summary must be grounded in specific parts of my speech. Go deeper into how I handled each question during the session and list the questions by bullet points('-'). For every question in the transcript (including ones labeled "AUDIENCE QUESTION"). Your primary focus is how I handled the questions but include the following:
-                - Did I clearly express my thoughts or feelings?
-                - Did I stay calm, respectful, and focused even if the topic was hard?
-                - Did I show that I was listening and that I understood my GM’s point of view?
-                - Was there any moment where I built trust or showed growth as a communicator?
-                - Did I give off the impression of someone who’s coachable, driven, and self-aware?
-
-                Also:
-                - Did I sound like someone who takes ownership of their growth?
-                - Mention my goal {goals} only if I clearly stated one.
-                - End with your thoughts on how I’m improving in how I show up with my GM — and what the next step should be.
-
-                Tone: Speak to me with honesty and belief in my potential. I want to get better at owning my voice and building stronger relationships, starting with the one I have with my coach. Start by calling me by name "{name}, as your GM...".
-
-"""
-            )
-        elif ev=="coaching":
-            prompt_heading = (
-                " You are my company communication coach. Your job is to help me become better at handling questions and objections from customers. I want to build trust and communicate effectively."
-            )
-            specific_instructions = (
-                f"""
-                Use my transcript and the evaluation data to give me structured feedback in three parts. Talk to me like someone who wants to see me grow — not just as a communicator, but as someone who can engage clearly, confidently, and with emotional maturity in a professional conversation.
-                    1. Strengths: Highlight what I did well in this interaction. Focus on how I engaged the other person, whether I built rapport, asked good questions, listened actively, and showed confidence, clarity, or emotional awareness. Be specific and use simple language.
-
-                    2. Areas for Improvement: Give clear, practical advice on what I could have done better. Look at how I handled objections, whether I avoided addressing pain points, if I rambled or sounded defensive, or if I missed a chance to go deeper, ask stronger questions, or guide the conversation toward value.
-
-                    3. General Feedback Summary
-
-                    Craft a detailed, content-specific analysis of my session. Your summary must be grounded in specific parts of my speech. Go deeper into how I handled each question or objection during the conversation and list the questions by bullet points (‘-’). For every question or objection in the transcript (including ones labeled “AUDIENCE QUESTION”). Your primary focus is how I handled the other person’s responses, but include the following:
-
-                    - Did I clearly communicate value and connect it to their needs?
-                    - Did I stay calm, respectful, and focused when handling objections?
-                    - Did I show that I was listening and that I understood the other person’s point of view?
-                    - Was there any moment where I built trust, credibility, or strengthened the relationship?
-                    - Did I come across as coachable, driven, and self-aware in my delivery?
-
-                    Also:
-
-                    - Did I sound like someone who takes ownership of their growth as a communicator?
-                    - Mention my goal {goals} only if I clearly stated one.
-                    - End with your thoughts on how I’m improving in how I show up in professional conversations — and what the next step in my growth should be.
-
-                    Tone: Speak to me with honesty and belief in my potential. I want to get better at owning my voice and building stronger professional relationships, starting with how I handle every conversation. {"Start by addressing me by name: " + repr(name) + ", as your trainer..." if name else "Start with: as your trainer..."}
-                    """
-            )
+                return {
+                    "Strength": strengths,
+                    "Area of Improvement": areas,
+                    "General Feedback Summary": general,
+                }
+            except Exception as e:
+                print(f"[generate_full_summary] Claude call failed, falling back to GPT-6 Sol: {e}")
+                logger.warning(f"[generate_full_summary] Claude call failed, falling back to GPT-6 Sol: {e}")
         else:
-            if session_type == "pitch" or session_type == "Pitch Practice":
-                prompt_heading = (
-                    "You are my personal expert communication coach specializing in pitching. Your role is to critique me for my growth, and guide me to become a more impactful professional speaker."
-                )
-                specific_instructions = (
-                f"""
-                    My goal with this pitch is: {goals}. Using my provided pitch evaluation data and transcript, generate a structured JSON response with the following components:
+            print("[generate_full_summary] ANTHROPIC_API_KEY not configured, using GPT-6 Sol")
 
-                    1. Strengths: Identify my most impactful specific strengths. Focus on how well I communicated the idea, my delivery, presence, and persuasiveness. Use simple sentences, do not include transcript quotes here.
-
-                    2. Areas for Improvement: Provide clear, actionable, and specific feedback on where I can improve. Emphasize clarity, structure, audience relevance, and delivery habits. Use simple sentences, do not include transcript quotes here.
-
-                    3. General Feedback Summary: Craft a detailed, content-specific analysis of my pitch. Your summary must be grounded in specific parts of my transcript. Evaluate context-relevant aspects of my pitch. Include the following pillars:
-                
-                    - Hook & Engagement: Did the opening capture attention with a thought-provoking hook, compelling story, or striking fact? Was the pitch engaging throughout, or did attention lag at certain points? Did the presenter invite audience interaction, questions, or reflection? Quote transcript examples.
-                    - Purpose: What was the goal of the pitch, Did the I clearly state this purpose early in the pitch?
-                    - Structure & Flow: Was there a clear beginning (hook), middle (evidence/details), and end (ask/next steps)? Did the narrative flow logically and build momentum? Were transitions smooth, or did any sections feel abrupt or disconnected? Quote exact sentences where flow was strong or weak.
-                    - Communication Clarity: Was the main message easy to grasp and repeatable? Did the presenter avoid jargon or explain technical terms effectively? Were visuals/slides, if used, supporting the story rather than distracting? Quote specific examples.
-                    - Engagement: Beyond the opening, did the pitch stay engaging throughout? Were there moments where attention lagged? Did the presenter invite audience interaction, reflection, or questions?
-                    - Presenter’s Goals: What was the stated purpose of the pitch (e.g., funding, buy-in, awareness, grant approval)? Did the pitch clearly align with and serve those goals? Was the desired outcome (funding, adoption, support) clearly articulated? Quote transcript sections that show alignment or lack of clarity.
-                    - Relevance to the Audience: Did the presenter tailor the pitch to the audience’s interests (e.g., investors, grant reviewers, stakeholders)? Was the market, social, or strategic relevance clearly established? For funding-related pitches: did they highlight why this matters now? Quote transcript examples.
-                    - Business Model / Milestones (as applicable): Was the business model or value proposition explained clearly? Were milestones, traction, or metrics provided to build credibility? For grants/ideas: was there a clear pathway for execution and measurable impact? Quote transcript examples.
-                    - Confidence & Delivery: Did the presenter project confidence and credibility? Was the tone persuasive but not overbearing? Did they handle questions smoothly and demonstrate subject mastery? Quote transcript examples, especially around tone and Q&A.
-                    - Overall Impression & Next Steps: Did the pitch achieve its intended purpose? Would you recommend moving forward (investment, support, approval)? Suggest immediate next steps for the presenter. Quote transcript lines where relevant.
-                    - Reference my goal to {goals}. If I have no goals, don’t mention anything about goals.
-                    - Provide an overall evaluation of how effective my pitch was in persuading and inspiring confidence in the intended audience. Include tailored suggestions for improvement based on context and audience. Ground all observations in direct excerpts from the transcript.
-
-                    Tone: speak to me personally but professionally like a mentor coach, critique me for my growth while referencing my transcript not my evaluation data. Don't use headers or "**" for titles, don't use hyphens or dashes in your response, just correct me and reference my transcript. Use \n \n for line breaks between paragraphs and also start with Stating my presenter’s name (e.g., “Yinks, let’s see how you fared”) and break down my pitch into the key performance areas.
-                    """
-            )
-
-            else: 
-                # Generic speaking / presentation prompt
-                prompt_heading = (
-                    "You are my personal expert communication mentor/coach specializing in public speaking, storytelling, pitching, and presentations. Your role is to critique me for my growth, and guide me to become a more impactful professional speaker for my career development."
-                )
-                specific_instructions = (
-                    f"""
-                    My goal with this presentation is: {goals}. Using my provided presentation evaluation data and speech, generate a structured JSON response with the following three components:
-
-                    1. Strengths: Identify my most impactful specific strengths. Focus on concrete content choices, tone, delivery techniques, and audience engagement strategies. Use simple sentences, do not include transcript quotes here.
-
-                    2. Areas for Improvement: Provide clear, actionable, and specific feedback on where I can improve. Emphasize my delivery habits, missed emotional beats, and structural weaknesses. Use simple sentences, do not include transcript quotes here.
-
-                    3. General Feedback Summary: Craft a detailed, content-specific analysis of my presentation. Your summary must be grounded in specific parts of my speech. Include the following:
-                    - Evaluate the effectiveness of my opening: Was it attention-grabbing, relevant, or emotionally engaging? Did I clearly set the tone or premise for the rest of the talk?
-                    - Highlight specific trigger words or emotionally resonant phrases I used that effectively drove engagement, and explain how they influenced the audience. Include the actual phrases from the transcript.
-                    - List any filler words I overused (e.g., "um", "like", "you know"). Quote a few instances where these occurred.
-                    - Comment on how I used powerful or evocative language—did I evoke empathy, joy, urgency, or excitement? Did I show vulnerability or emotional relatability?
-                    - Analyze my tone of voice, Was it confident, warm, authoritative, enthusiastic, or inconsistent? Note any tone shifts and how they impacted audience engagement. Back this up with quoted phrases that show tone variation.
-                    - Reflect on whether my style or personal story helped make the talk more memorable.
-                    - Was I persuasive enough, Did I inspire action, challenge assumptions, or shift perspectives? Highlight specific techniques like storytelling, analogies, or rhetorical questions.
-                    - Evaluate the structure and flow of my talk. Were transitions smooth? Did I build toward a clear message or emotional climax? Point to exact sentences where this occurred.
-                    - Clearly state whether my talk was effective — and if so, effective at what specifically (e.g., persuading the audience, building trust, sparking interest).
-                    - If "AUDIENCE QUESTION" is in my transcript, evaluate how I answered the audience questions. If no "AUDIENCE QUESTION" is in my transcript dont mention anything about questions
-                    - Reference my goal to {goals}. If I have no goals dont mention anything about goals.
-                    - Provide an overall evaluation of how well I demonstrated mastery in storytelling, public speaking, or pitching. Include tailored suggestions for improvement based on the context and audience. Ground all observations in direct excerpts from the transcript. Quote exact sentences where possible.
-
-                    Tone: speak to me personally but professionaly like a mentor coach, critique me for my growth while referencing my transcript not my evaluation data. Don't use headers or "**" for titles, dont use hyphens or dashes '—' in your response, just correct me and reference my transcript. Use \n \n for line breaks between paragraphs and also start with an encouraging remark relevant to my presentation with my name.
-                """
-                )
-
-        prompt = (
-            f"{prompt_heading}\n\n"
-            f"{specific_instructions}\n\n"
-            f"CONTEXT:\n{base_context}\n\n"
+        fallback_prompt = (
+            f"{claude_prompt}\n\n"
             "INSTRUCTIONS FOR OUTPUT:\n"
             "Return a JSON object (no extra text) with exactly these keys:\n"
             '  - \"Strength\" (array of short strings),\n'
             '  - \"Area of Improvement\" (array of short strings),\n'
             '  - \"General Feedback Summary\" (string).\n'
-            "Make the strengths and areas concrete (short bullets). The General Feedback Summary should be detailed and content-specific to my transcript.\n"
+            "Make the strengths and areas concrete (short bullets). The General Feedback Summary should be the opening plus the five to seven paragraphs described above.\n"
         )
 
-        # -- Call OpenAI with JSON schema formatting --
+        # -- Fallback: GPT-6 Sol with JSON schema formatting --
         try:
             completion = client.chat.completions.create(
-                model="gpt-4.1",
-                messages=[{"role": "user", "content": prompt}],
+                model="gpt-6-sol",
+                reasoning_effort="low",
+                messages=[{"role": "user", "content": fallback_prompt}],
                 response_format={
                     "type": "json_schema",
                     "json_schema": {
@@ -2053,13 +2113,12 @@ class SessionReportView(APIView):
                         },
                     },
                 },
-                temperature=0.6,
-                max_tokens=2200,
+                max_completion_tokens=2200,
             )
 
             raw_content = completion.choices[0].message.content
-            print(f"[generate_full_summary] Prompt: {prompt}")
-            logger.info(f"[generate_full_summary] Prompt: {prompt}")
+            print(f"[generate_full_summary] GPT-6 Sol fallback prompt: {fallback_prompt}")
+            logger.info(f"[generate_full_summary] GPT-6 Sol fallback prompt: {fallback_prompt}")
 
             print(f"[generate_full_summary] OpenAI raw response: {raw_content}")
 
@@ -2099,7 +2158,7 @@ class SessionReportView(APIView):
             return {
                 "Strength": ["N/A - Error generating detailed summary."],
                 "Area of Improvement": ["N/A - Error generating detailed summary."],
-                "General Feedback Summary": f"Error generating AI summary. Combined feedback: {combined_feedback[:1000]}",
+                "General Feedback Summary": f"Error generating AI summary for session {session_id}.",
             }
 
     def get(self, request, session_id):

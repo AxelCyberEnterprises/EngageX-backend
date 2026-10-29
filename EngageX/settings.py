@@ -262,6 +262,7 @@ if "RDS_HOSTNAME" in os.environ:
         }
     }
     OPENAI_API_KEY = os.environ["OPENAI_API_KEY"]
+    ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY")
     DEEPGRAM_API_KEY = os.environ["DEEPGRAM_API_KEY"]
 
     EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
@@ -295,6 +296,7 @@ else:
     }
 
     OPENAI_API_KEY = config("OPENAI_API_KEY")
+    ANTHROPIC_API_KEY = config("ANTHROPIC_API_KEY", default=None)
     DEEPGRAM_API_KEY = os.environ["DEEPGRAM_API_KEY"]
 
     # INTUIT_CLIENT_ID = os.environ['INTUIT_CLIENT_ID']

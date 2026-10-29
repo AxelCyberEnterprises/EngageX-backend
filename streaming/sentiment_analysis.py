@@ -60,13 +60,13 @@ def ai_audience_question(transcript):
 
     try:
         response = client.chat.completions.create(
-            model="gpt-4.1",  # You can change to gpt-3.5-turbo or another if preferred
+            model="gpt-6-luna",
+            reasoning_effort="low",
             messages=[
                 {"role": "system", "content": "You are a helpful assistant"},
                 {"role": "user", "content": prompt}
             ],
-            temperature=0.7,
-            max_tokens=100,
+            max_completion_tokens=100,
         )
         question = response.choices[0].message.content.strip()
         return question
@@ -557,7 +557,8 @@ def analyze_sentiment(transcript, metrics, posture_data):
     """
 
     completion = client.chat.completions.create(
-        model="gpt-4.1-mini",
+        model="gpt-6-luna",
+        reasoning_effort="low",
         messages=[{
             "role": "user", "content": prompt
         }],

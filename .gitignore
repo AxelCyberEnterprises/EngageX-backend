@@ -7,3 +7,4 @@ file_upload.py
 stripe-promo-codes.txt
 WORK_LOG.md
 meeting-notes/
+.claude/settings.local.json
