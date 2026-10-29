@@ -1734,7 +1734,7 @@ class ChunkSentimentAnalysisViewSet(viewsets.ModelViewSet):
 # goal_line and closing_line vary.
 # ---------------------------------------------------------------------------
 
-CLAUDE_COACH_SYSTEM_PROMPT_TEMPLATE = """You are the executive communications coach for {preferred_name} on EngageX. {preferred_name} has just finished a recorded practice session on video, and you are writing the personal feedback report they will read right afterward. Write the way a seasoned executive coach speaks to a respected professional, with warmth, directness and high standards, as someone who watched every minute and wants this person to succeed.
+COACH_SYSTEM_PROMPT_TEMPLATE = """You are the executive communications coach for {preferred_name} on EngageX. {preferred_name} has just finished a recorded practice session on video, and you are writing the personal feedback report they will read right afterward. Write the way a seasoned executive coach speaks to a respected professional, with warmth, directness and high standards, as someone who watched every minute and wants this person to succeed.
 
 ABOUT THE SESSION
 {session_description}
@@ -1896,7 +1896,7 @@ def _clean_avatar_question_punctuation(transcript_text):
     return re.sub(r"(AUDIENCE QUESTION: ')([^']*)(')", _clean_question, transcript_text)
 
 
-def _build_claude_coach_prompt(preferred_name, ev, session_type, goals, session, transcript_text):
+def _build_coach_prompt(preferred_name, ev, session_type, goals, session, transcript_text):
     session_description = _session_description_for(ev, session_type)
     goal_line = _goal_line_for(goals)
     scores_block, scores_low = _scores_block_and_low_flag(session)
@@ -1905,7 +1905,7 @@ def _build_claude_coach_prompt(preferred_name, ev, session_type, goals, session,
         _clean_avatar_question_punctuation(transcript_text) or "No transcript available for this session."
     )
 
-    return CLAUDE_COACH_SYSTEM_PROMPT_TEMPLATE.format(
+    return COACH_SYSTEM_PROMPT_TEMPLATE.format(
         preferred_name=preferred_name,
         session_description=session_description,
         goal_line=goal_line,
@@ -2015,7 +2015,7 @@ class SessionReportView(APIView):
         # -- Build the unified coach-voice prompt (Jacqui's Oct 2026 spec) --
         # session_description/goal_line/scores/closing_line all vary by session;
         # the template itself is the same for every vertical now.
-        claude_prompt = _build_claude_coach_prompt(
+        coach_prompt = _build_coach_prompt(
             preferred_name=preferred_name,
             ev=ev,
             session_type=session_type,
@@ -2023,65 +2023,11 @@ class SessionReportView(APIView):
             session=session,
             transcript_text=transcript_text,
         )
-        print(f"[generate_full_summary] Coach prompt: {claude_prompt}")
-        logger.info(f"[generate_full_summary] Coach prompt: {claude_prompt}")
+        print(f"[generate_full_summary] Coach prompt: {coach_prompt}")
+        logger.info(f"[generate_full_summary] Coach prompt: {coach_prompt}")
 
-        # -- Primary: Claude (current Sonnet). Fallback: GPT-6 Sol on the same prompt. --
-        if settings.ANTHROPIC_API_KEY:
-            try:
-                import anthropic
-
-                anthropic_client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
-                report_tool = {
-                    "name": "submit_feedback_report",
-                    "description": "Submit the structured EngageX feedback report.",
-                    "input_schema": {
-                        "type": "object",
-                        "properties": {
-                            "Strength": {"type": "array", "items": {"type": "string"}},
-                            "Area of Improvement": {"type": "array", "items": {"type": "string"}},
-                            "General Feedback Summary": {"type": "string"},
-                        },
-                        "required": ["Strength", "Area of Improvement", "General Feedback Summary"],
-                    },
-                }
-                message = anthropic_client.messages.create(
-                    model="claude-sonnet-5",
-                    max_tokens=2200,
-                    tools=[report_tool],
-                    tool_choice={"type": "tool", "name": "submit_feedback_report"},
-                    messages=[{"role": "user", "content": claude_prompt}],
-                )
-                tool_use_block = next((b for b in message.content if b.type == "tool_use"), None)
-                if tool_use_block is None:
-                    raise ValueError("Claude response had no tool_use block")
-
-                parsed_summary = tool_use_block.input
-                print(f"[generate_full_summary] Claude parsed response: {parsed_summary}")
-
-                strengths = parsed_summary.get("Strength") or []
-                areas = parsed_summary.get("Area of Improvement") or []
-                general = parsed_summary.get("General Feedback Summary") or ""
-                if not isinstance(strengths, list):
-                    strengths = [str(strengths)]
-                if not isinstance(areas, list):
-                    areas = [str(areas)]
-                if not isinstance(general, str):
-                    general = str(general)
-
-                return {
-                    "Strength": strengths,
-                    "Area of Improvement": areas,
-                    "General Feedback Summary": general,
-                }
-            except Exception as e:
-                print(f"[generate_full_summary] Claude call failed, falling back to GPT-6 Sol: {e}")
-                logger.warning(f"[generate_full_summary] Claude call failed, falling back to GPT-6 Sol: {e}")
-        else:
-            print("[generate_full_summary] ANTHROPIC_API_KEY not configured, using GPT-6 Sol")
-
-        fallback_prompt = (
-            f"{claude_prompt}\n\n"
+        prompt = (
+            f"{coach_prompt}\n\n"
             "INSTRUCTIONS FOR OUTPUT:\n"
             "Return a JSON object (no extra text) with exactly these keys:\n"
             '  - \"Strength\" (array of short strings),\n'
@@ -2090,12 +2036,12 @@ class SessionReportView(APIView):
             "Make the strengths and areas concrete (short bullets). The General Feedback Summary should be the opening plus the five to seven paragraphs described above.\n"
         )
 
-        # -- Fallback: GPT-6 Sol with JSON schema formatting --
+        # -- Generate the feedback report with GPT-6 Sol --
         try:
             completion = client.chat.completions.create(
                 model="gpt-6-sol",
                 reasoning_effort="low",
-                messages=[{"role": "user", "content": fallback_prompt}],
+                messages=[{"role": "user", "content": prompt}],
                 response_format={
                     "type": "json_schema",
                     "json_schema": {
@@ -2117,8 +2063,8 @@ class SessionReportView(APIView):
             )
 
             raw_content = completion.choices[0].message.content
-            print(f"[generate_full_summary] GPT-6 Sol fallback prompt: {fallback_prompt}")
-            logger.info(f"[generate_full_summary] GPT-6 Sol fallback prompt: {fallback_prompt}")
+            print(f"[generate_full_summary] GPT-6 Sol prompt: {prompt}")
+            logger.info(f"[generate_full_summary] GPT-6 Sol prompt: {prompt}")
 
             print(f"[generate_full_summary] OpenAI raw response: {raw_content}")
 
