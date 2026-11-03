@@ -1530,7 +1530,7 @@ class SessionDashboardView(APIView):
                 if latest_session.session_type == 'enterprise' and hasattr(latest_session, 'enterprise_settings'):
                     enterprise_type = latest_session.enterprise_settings.rookie_type
                     if enterprise_type:
-                        session_type = f"{session_type} - {enterprise_type.title()}"
+                        session_type = f"{session_type} {enterprise_type.replace('_', ' ').title()}"
                 
                 latest_session_dict["session_type"] = session_type
                 latest_session_dict["session_score"] = latest_session.impact
