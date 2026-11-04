@@ -1,135 +1,150 @@
-# EngageX API Deployment to AWS Elastic Beanstalk with CI/CD and Secure Resource Access
+# EngageX API Deployment
 
-## 1. Introduction
+## 1. Overview
 
-This document outlines the deployment process for a Python (EngageX App) API to AWS Elastic Beanstalk, including
-Continuous Integration/Continuous Deployment (CI/CD) via GitHub Actions, secure resource access to Amazon Simple Email
-Service (SES) and Amazon Simple Storage Service (S3), integration with an Amazon Relational Database Service (RDS)
-instance, budget alerts, and future production improvements.
+This document describes how the EngageX backend is actually deployed today. The old
+Elastic Beanstalk-based process this file used to describe is **decommissioned** — there
+are no active Elastic Beanstalk environments left in the account. Ignore any instructions
+elsewhere that reference EB.
 
-## 2. Architecture Overview
+The current pipeline is manual and has two stages:
 
-* **Engage API:** The backend API developed in Python.
-* **AWS Elastic Beanstalk:** Platform as a Service (PaaS) for deploying and managing the API.
-* **GitHub Actions:** CI/CD pipeline for automated deployments.
-* **Amazon RDS:** Relational database service for data persistence.
-* **Amazon SES:** Email sending service for API functionalities (e.g., notifications).
-* **Amazon S3:** Object storage for data persistence, secured for internal access.
-* **IAM Roles:** AWS Identity and Access Management roles for granting permissions.
-* **AWS Budgets:** Cost monitoring and alerting.
+1. **Build & publish** — a Docker image is built and pushed to ECR.
+2. **Rollout** — whatever runs production (ECS) is manually pointed at the new image tag.
+   This repo/process does not automate that second stage.
 
-  ![EngageX Infra](infra.jpeg)
+There is also a checked-in GitHub Actions workflow (`.github/workflows/deploy.yaml`) that
+builds and pushes to Docker Hub (`awarixo/engagex`) on every push to `deploy`. **Nothing in
+production consumes that image** — it's a leftover from an earlier setup. Don't treat its
+presence as evidence of an automated pipeline.
 
-## 3. Prerequisites
+## 2. Why the build isn't done in CI
 
-* An AWS account with appropriate permissions.
-* A GitHub repository containing the Python API code.
-* Python API configured to use environment variables for sensitive data (e.g., AWS credentials, database connections).
-* A valid AWS SES setup, and S3 bucket.
-* A configured and running RDS instance.
+The Docker image is large (~4.5GB uncompressed, ~1.6GB compressed) because the Dockerfile
+installs a heavy dependency stack: `build-essential`, `cmake`, `ffmpeg`, `libreoffice`, and
+several Python ML/media libraries (mediapipe, opencv, librosa, etc.) on top of Django. This
+is built on a temporary EC2 instance rather than a GitHub-hosted runner or a local machine.
 
-## 4. Deployment Steps
+## Before every deploy (mandatory)
 
-### 4.1. RDS Configuration
+On 2026-11-04 image 10.3 shipped two commits nobody had reviewed, because only the commits
+not yet pushed to `origin/deploy` were checked. One of them broke every feedback report
+(the transcript was read from a field nothing writes). Review **everything between what is
+running and what you are about to build**, not just what is unpushed:
 
-1. **Create an RDS Instance:**
-    * In the AWS Management Console, navigate to RDS.
-    * Create a new database instance with the appropriate configuration (e.g., database engine, instance type, storage).
-    * Ensure the RDS instance is in a VPC that allows access from the Elastic Beanstalk environment.
-2. **Security Group Configuration:**
-    * Configure the RDS security group to allow inbound traffic from the Elastic Beanstalk instance's security group.
+1. Find the commit the running image was built from. Each image carries it as a label
+   (`git-sha`, see step 4 below); older images are listed in `WORK_LOG.md`:
+   ```
+   aws ecs describe-services --cluster engageX --services engagex-service \
+     --query 'services[0].taskDefinition'
+   aws ecs describe-task-definition --task-definition <that-task-def> \
+     --query 'taskDefinition.containerDefinitions[0].image'
+   ```
+2. Read every commit and diff in that range, not just the titles:
+   ```
+   git log --stat <running-sha>..<sha-to-ship>
+   git diff <running-sha>..<sha-to-ship>
+   ```
+   For anything touching report generation, transcription or the WebSocket consumer, test
+   it against a real recent session's data before shipping.
+3. If the range adds migrations, confirm they're applied in production (the container
+   does not run `migrate` on start):
+   ```
+   SELECT name, applied FROM django_migrations WHERE app='<app>' ORDER BY id DESC LIMIT 5;
+   ```
 
-### 4.2. Elastic Beanstalk Setup
+## 3. Build & publish steps
 
-1. **Create an Elastic Beanstalk Environment:**
-    * In the AWS Management Console, navigate to Elastic Beanstalk.
-    * Create a new environment (e.g., "Python API Environment").
-    * Select the appropriate platform (e.g., Python).
-    * Configure environment settings (e.g., instance type, environment variables).
-2. **IAM Role Configuration:**
-    * During environment creation, Elastic Beanstalk will create an instance profile (IAM role).
-    * Modify the instance profile to grant the necessary permissions:
-        * **SES Permissions:** Attach a policy allowing the Elastic Beanstalk instance to send emails via SES.
-        * **S3 Permissions:** Attach a policy allowing the Elastic Beanstalk instance to access the specific S3 bucket.
-          Ensure the policy restricts access to the desired bucket and actions.
-        * **RDS Access:** Ensure that the security group of the RDS database allows the elastic beanstalk instances to
-          access the database.
-3. **Environment Variables:**
-    * In the Elastic Beanstalk environment configuration, set environment variables for:
-        * RDS database connection details (host, port, database name, username, password).
-        * SES credentials (if applicable).
-        * S3 bucket name.
-        * Any other sensitive data.
+1. **Push the code.** Commit and push to the `deploy` branch on
+   `github.com/AxelCyberEnterprises/EngageX-backend`.
 
-### 4.3. GitHub Actions CI/CD
+2. **Provision a temporary build instance.**
+   - Region: `us-west-1`, default VPC (`vpc-0d095d54d92bf9d34`), public subnet
+     (`subnet-0cffd27f3533622e6`, auto-assigns a public IP).
+   - AMI: latest Amazon Linux 2023 x86_64 (look it up fresh each time — don't hardcode an ID,
+     it goes stale).
+   - Instance type: `t3.large` (2 vCPU / 8GB — enough to build without being slow).
+   - A **throwaway key pair** and a **security group scoped to SSH from your current IP
+     only** — both created fresh and deleted at the end. Never reuse a long-lived key pair
+     or open SSH to `0.0.0.0/0`.
+   - User-data installs Docker (`dnf install -y docker && systemctl enable --now docker`).
+     Docker takes a minute or two after SSH comes up; wait for `systemctl is-active docker`.
+   - `ec2-user` is not in the `docker` group, so every docker command needs `sudo`.
+   - The instance has no IAM role, so the preinstalled AWS CLI has no credentials. Write the
+     `backend-dev-access` key to `/root/.aws/credentials` (root, because docker runs under
+     sudo) before the ECR login.
 
-1. **Create GitHub Actions Workflow:**
-    * In your GitHub repository, create a `.github/workflows` directory.
-    * Create a YAML file (e.g., `deploy.yml`) for your workflow.
-2. **Workflow Configuration:**
-    * Configure the workflow to:
-        * Trigger on pushes to the `deploy` branch.
-        * Set up a Python environment.
-        * Install dependencies.
-        * Create a source bundle for Elastic Beanstalk.
-        * Deploy the source bundle to Elastic Beanstalk using the `aws-elastic-beanstalk-deploy` action or the AWS CLI.
-    * **AWS Credentials:** Store your AWS credentials as GitHub secrets, and use them within the GitHub action.
+3. **Get the code onto the instance.** The instance has no GitHub credentials, so don't
+   `git clone` a private repo onto it. Ship the **exact reviewed commit**, never the working
+   tree (a working-tree tarball silently includes uncommitted edits):
+   ```
+   git archive --format=tar.gz <sha-to-ship> | ssh -i <key> ec2-user@<ip> \
+     'mkdir -p app && tar -xzf - -C app'
+   ```
 
-### 4.4. SES, S3, and RDS Integration
+4. **Build the image**, tagged with the next version and labelled with the commit:
+   ```
+   sudo docker build --platform linux/amd64 --label git-sha=<sha-to-ship> \
+     -t 266735827053.dkr.ecr.us-west-1.amazonaws.com/engagex:<next-tag> .
+   ```
+   Run this detached on the instance, logging to a file, so a dropped SSH session can't
+   kill a long build. Use `setsid nohup ... > build.log 2>&1 < /dev/null &` — plain
+   `nohup ... & disown` can keep the SSH command from returning. Poll the log with fresh SSH
+   connections.
 
-1. **Python API Code:**
-    * Implement code in your Python API to:
-        * Connect to the RDS database using the environment variables.
-        * Send emails using the `boto3` library and SES.
-        * Store and retrieve data from the S3 bucket using `boto3`.
-    * Ensure that the code utilizes the environment variables that are set in the Elastic Beanstalk environment.
-2. **Security:**
-    * Avoid hardcoding AWS credentials in your code.
-    * Use the IAM role associated with the Elastic Beanstalk instance for authentication.
+5. **Check the existing tags before picking the next one.** Tags in the `engagex` ECR repo
+   loosely follow `<major>.<minor>`, incrementing by 0.1 per build (e.g. `9.5` → `9.6` →
+   `9.7`), though the history isn't perfectly clean (there are gaps and one stray `8.91`).
+   Look at the actual latest pushed tag and increment from there — don't assume from the
+   version number alone:
+   ```
+   aws ecr describe-images --repository-name engagex \
+     --query 'sort_by(imageDetails, &imagePushedAt)[-1].[imagePushedAt,imageTags]'
+   ```
 
-### 4.5. AWS Budgets
+6. **Push to ECR**, also backgrounded on the instance:
+   ```
+   aws ecr get-login-password --region us-west-1 \
+     | docker login --username AWS --password-stdin 266735827053.dkr.ecr.us-west-1.amazonaws.com
+   docker push 266735827053.dkr.ecr.us-west-1.amazonaws.com/engagex:<tag>
+   ```
 
-1. **Create Budget Alerts:**
-    * In the AWS Management Console, navigate to AWS Budgets.
-    * Create a budget to monitor the cost of the deployed resources.
-    * Set up budget alerts to notify you when costs exceed predefined thresholds.
+7. **Tear down the build instance immediately after the push confirms.** It only exists for
+   the duration of one build:
+   ```
+   aws ec2 terminate-instances --instance-ids <id>
+   aws ec2 delete-key-pair --key-name <temp-key>
+   aws ec2 delete-security-group --group-id <temp-sg>
+   ```
+   Confirm nothing is left running/lingering afterward — check for stray instances, key
+   pairs, and security groups matching the temp naming pattern.
 
-## 5. Verification
+## 4. Rollout (not automated)
 
-* After deployment, access the API via the Elastic Beanstalk environment URL.
-* Test API endpoints that utilize RDS, SES, and S3 functionality.
-* Check the GitHub Actions workflow logs for any errors.
-* Verify the logs of the Elastic Beanstalk application for any errors.
-* Verify that the data is being stored and retrieved from the RDS database.
-* Verify budget alerts are configured.
+Pushing to ECR does **not** deploy anything. The `backend-dev-access` user can do the
+rollout itself (it has `ecs:RegisterTaskDefinition` and `ecs:UpdateService`):
 
-## 6. Security Considerations
+1. Copy the running task definition, swap only the image tag, and register it as a new
+   revision (strip `taskDefinitionArn`, `revision`, `status`, `requiresAttributes`,
+   `compatibilities`, `registeredAt`, `registeredBy` before registering).
+2. `aws ecs update-service --cluster engageX --service engagex-service --task-definition <family>:<new-rev>`
+3. Wait for the PRIMARY deployment's `rolloutState` to be `COMPLETED` and 1/1 running.
+4. Smoke test: a bad login to `https://api.engagexai.io/users/auth/login/` should return
+   404 "No account found with this email". If the change touched reports or transcription,
+   also check the next real session's report.
+5. Record in `WORK_LOG.md`: image tag, git SHA, task definition revision. Rollback is
+   `update-service` back to the previous revision.
 
-* Use IAM roles with the principle of least privilege.
-* Secure S3 buckets with appropriate bucket policies and access control lists (ACLs).
-* Encrypt sensitive data at rest and in transit.
-* Secure RDS with security groups and proper user permissions.
-* Regularly review and update security configurations.
+## 5. Account reference
 
-## 7. Future Production Improvements
+- AWS account: `266735827053`, region `us-west-1`
+- ECR repo: `266735827053.dkr.ecr.us-west-1.amazonaws.com/engagex`
+- Default VPC: `vpc-0d095d54d92bf9d34`
+- Public subnet used for builds: `subnet-0cffd27f3533622e6`
 
-1. **SES Production Access:**
-    * Submit a request to AWS to move your SES account out of the sandbox environment to enable sending emails to
-      non-verified addresses.
-2. **IAM Least Privilege:**
-    * Tighten IAM policies to grant only the necessary permissions to the Elastic Beanstalk instance, especially for S3
-      access.
-3. **Production Elastic Beanstalk Environment:**
-    * Configure a production-ready Elastic Beanstalk environment with:
-        * Multiple EC2 instances for high availability.
-        * A load balancer to distribute traffic across instances.
-        * Auto Scaling to automatically adjust the number of instances based on demand.
+## 6. Known stale/misleading artifacts in this repo
 
-## 8. Troubleshooting
-
-* Check Elastic Beanstalk environment logs for errors.
-* Review GitHub Actions workflow logs.
-* Verify IAM role permissions.
-* Ensure environment variables are correctly configured.
-* Check RDS connection logs.
-* Verify AWS budget alerts are triggered as expected.
+- `.github/workflows/deploy.yaml` — builds and pushes to Docker Hub on push to `deploy`.
+  Unused by production. Safe to ignore or remove.
+- Anything referencing Elastic Beanstalk (`.ebextensions/`, `.platform/`) — no active EB
+  environment exists. These files are dead weight unless EB is reinstated.
