@@ -425,7 +425,7 @@ class LiveSessionConsumer(AsyncWebsocketConsumer):
             # Create the task first, then add it to the dictionary to ensure it's registered
             # Pass the current chunk_counter to the background task
             chunk_save_task = asyncio.create_task(
-                self._complete_chunk_save_in_background(media_path, s3_upload_task, self.chunk_counter))
+                self._complete_chunk_save_in_background(media_path, s3_upload_task, self.chunk_counter, self.transcript_buffer.get(media_path)))
             print(f"WS: Created background chunk save task for {media_path}: {chunk_save_task}")
             self._running_tasks.append(chunk_save_task)
 
@@ -450,7 +450,7 @@ class LiveSessionConsumer(AsyncWebsocketConsumer):
             f"WS: process_media_chunk finished (background tasks initiated) for: {media_path} after {time.time() - start_time:.2f} seconds")
         # This function now returns sooner, allowing the next chunk's processing or analysis trigger to proceed.
 
-    async def _complete_chunk_save_in_background(self, media_path, s3_upload_task, chunk_number):
+    async def _complete_chunk_save_in_background(self, media_path, s3_upload_task, chunk_number, transcript):
         """Awaits S3 upload and then saves the SessionChunk data."""
         try:
             # Wait for S3 upload to complete in its thread
@@ -459,7 +459,7 @@ class LiveSessionConsumer(AsyncWebsocketConsumer):
             if s3_url:
                 print(f"WS: S3 upload complete for {media_path}. Attempting to save SessionChunk data in background.")
                 # Now call the database save method using the obtained S3 URL and the chunk_number
-                await self._save_chunk_data(media_path, s3_url, chunk_number)
+                await self._save_chunk_data(media_path, s3_url, chunk_number, transcript)
                 # The chunk ID will be added to self.media_path_to_chunk inside _save_chunk_data
 
             else:
@@ -530,7 +530,7 @@ class LiveSessionConsumer(AsyncWebsocketConsumer):
                     all_transcripts_found = False
                     window_transcripts_list.append("")
 
-            combined_transcript_text = "".join(window_transcripts_list)
+            combined_transcript_text = " ".join(t for t in window_transcripts_list if t)
             print(f"WS: Concatenated Transcript for window: '{combined_transcript_text}'")
 
             if not all_transcripts_found:
@@ -1006,7 +1006,7 @@ class LiveSessionConsumer(AsyncWebsocketConsumer):
 
     # Decorate with database_sync_to_async to run this synchronous DB method in a thread
     @database_sync_to_async
-    def _save_chunk_data(self, media_path, s3_url, chunk_number):
+    def _save_chunk_data(self, media_path, s3_url, chunk_number, transcript=None):
         """Saves the SessionChunk object and maps media path to chunk ID."""
         start_time = time.time()
         print(
@@ -1035,7 +1035,8 @@ class LiveSessionConsumer(AsyncWebsocketConsumer):
             session_chunk_data = {
                 'session': session.id,  # Link to the session using its ID
                 'chunk_number': chunk_number,  # Include the chunk number here
-                'video_file': s3_url  # Use the passed S3 URL
+                'video_file': s3_url,  # Use the passed S3 URL
+                'transcript': transcript  # Captured at transcription time, before the buffer can evict it
             }
             print(f"WS: SessionChunk data: {session_chunk_data}")
             session_chunk_serializer = SessionChunkSerializer(data=session_chunk_data)

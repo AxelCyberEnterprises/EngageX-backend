@@ -1896,6 +1896,32 @@ def _clean_avatar_question_punctuation(transcript_text):
     return re.sub(r"(AUDIENCE QUESTION: ')([^']*)(')", _clean_question, transcript_text)
 
 
+_MIN_WINDOW_OVERLAP = 15
+
+
+def _stitch_window_transcripts(window_texts):
+    """
+    Each window transcript is several consecutive chunk transcripts glued together, and
+    consecutive windows share chunks, so append only the part of each window not already
+    covered. Overlaps shorter than _MIN_WINDOW_OVERLAP are treated as coincidence (a gap
+    between windows), not shared text.
+    """
+    combined = ""
+    for text in window_texts:
+        if not text:
+            continue
+        if not combined:
+            combined = text
+            continue
+        overlap = 0
+        for size in range(min(len(combined), len(text)), _MIN_WINDOW_OVERLAP - 1, -1):
+            if combined.endswith(text[:size]):
+                overlap = size
+                break
+        combined += text[overlap:] if overlap else " " + text
+    return combined
+
+
 def _build_coach_prompt(preferred_name, ev, session_type, goals, session, transcript_text):
     session_description = _session_description_for(ev, session_type)
     goal_line = _goal_line_for(goals)
@@ -1959,10 +1985,25 @@ class SessionReportView(APIView):
                 "transcript", flat=True
             )
             transcripts = [t for t in chunk_transcripts_qs if t]
-            transcript_text = "\n\n".join(transcripts)
+            transcript_text = " ".join(transcripts)
         except Exception as e:
             print(f"[generate_full_summary] error fetching transcripts: {e}")
             transcript_text = ""
+
+        # Sessions recorded before chunk transcripts were persisted only have them inside
+        # the overlapping window analyses.
+        if not transcript_text:
+            try:
+                window_texts = ChunkSentimentAnalysis.objects.filter(chunk__session=session).order_by(
+                    "chunk_number"
+                ).values_list("chunk_transcript", flat=True)
+                transcript_text = _stitch_window_transcripts(window_texts)
+            except Exception as e:
+                print(f"[generate_full_summary] error fetching window transcripts: {e}")
+                transcript_text = ""
+
+        if not transcript_text:
+            logger.error(f"[generate_full_summary] session {session_id} has no transcript in chunks or window analyses")
 
 
         # -- Determine the correct "vertical" for this session --
