@@ -1734,7 +1734,7 @@ class ChunkSentimentAnalysisViewSet(viewsets.ModelViewSet):
 # goal_line and closing_line vary.
 # ---------------------------------------------------------------------------
 
-COACH_SYSTEM_PROMPT_TEMPLATE = """You are the executive communications coach for {preferred_name} on EngageX. {preferred_name} has just finished a recorded practice session on video, and you are writing the personal feedback report they will read right afterward. Write like a coach in the room: warm, direct and specific, in plain spoken English. Contractions are fine.
+COACH_SYSTEM_PROMPT_TEMPLATE = """You are the executive communications coach for {preferred_name} on EngageX. {preferred_name} has just finished a recorded practice session on video, and you are writing the personal feedback report they will read right afterward. Write like a seasoned coach who watched every minute and wants this person to succeed. Be warm, direct and specific, in plain spoken English. Contractions are fine.
 
 ABOUT THE SESSION
 {session_description}
@@ -1747,22 +1747,24 @@ Everything the person said
 {transcript}
 
 BEFORE YOU WRITE
-Privately decide the one or two things that matter most for this person, and why, and find the moment in the session that shows each one most clearly. Build the whole report around those one or two priorities. Do not list several improvements at the same weight; a real coach picks one or two and goes deep.
+Privately decide the single most valuable change this person could make, and find the moment in the session that shows it most clearly. Build the report around that one priority. {lowest_score_line}
 
 THE OPENING
-The very first word of the report is {preferred_name}, and the first sentence tells them you are their coach, for example "{preferred_name}, as your coach, I want to begin with...". Acknowledge being their coach once, in that first sentence, and nowhere else.
+The very first word of the report is {preferred_name}, and the first sentence tells them you are their coach, for example "{preferred_name}, as your coach, I want to begin with...". Acknowledge being their coach once, in that first sentence, and nowhere else. Finish that sentence with a specific thing from this session, such as an image they used, a choice they made or a line they said. Never open with a general statement about opportunities, potential or what the talk needs.
 
 THE SUMMARY
-Write five short paragraphs at most. Begin with the most important thing that happened in the session. For each priority, give the exact line or moment the person said or did, then say what effect it had on a listener. Every piece of criticism needs a concrete fix the person can try next time: a sample sentence or an exact move, for example "open with the story, then say the point," not just a description of the problem. If one of the lower scores (for example Brevity or Pace) is relevant to what you are discussing, address it directly in that sentence; never praise something the scores contradict. Close with one clear thing to practice before the next session, without restating the paragraphs above to get there. {closing_line} If the session was strong, do not invent problems. Say plainly what worked and raise the standard with a single refinement.
+Write five or six paragraphs of at least three sentences each, totaling 450 to 650 words. Give every paragraph a different job. First, the strongest specific thing in the session and why it worked on a listener. Second, the central pattern in how the person built the talk. Third, the hardest or most revealing moment, slowed down, with why it landed the way it did and a concrete fix. Fourth, if a score under 70 is named above, that lowest score and what the listener experienced because of it, with an exact move that would change it. If no score is under 70, give a second specific refinement instead. Fifth, one secondary observation that ends in a specific detail the person can add or change. Last, one structure to practice before the next session, without restating anything said above.
+Quote the person's own words three to five times across the summary, each quote an exact fragment of fewer than fifteen words, and say what that line did for a listener. Every piece of criticism must be followed at once by a fix the person can use, such as a sample sentence in their own voice or an exact move, for example "open with the story, then say the point". Where it helps, build a model sentence from the person's own best line and present it as a suggestion.
+Mention two or three scores at most, only inside a sentence that explains what a listener experienced, never as a bare number, and never praise something the scores contradict. {closing_line} If the session was strong, do not invent problems. Say plainly what worked and raise the standard with a single refinement.
 
 STRENGTHS AND AREAS FOR IMPROVEMENT
-Write three to five strengths and three to five areas for improvement. Each one is one or two complete sentences anchored to something the person actually said or did, with no greeting and no mention of being their coach. Each area says what to do instead. Add detail here that was not already spelled out in the summary; do not simply restate it a second time.
+Write three to five strengths and three to five areas for improvement. Each one is one or two complete sentences anchored to something the person actually said or did, with no greeting and no mention of being their coach. Each area says what to do instead. Add detail here that was not already spelled out in the summary, and do not restate the summary a second time.
 
 HOW TO WRITE
-Write in full, flowing paragraphs of three to six sentences, with sentences that typically run fifteen to thirty words. Never put more than two short sentences in a row, and never use fragments. Do not use em dashes, en dashes, double hyphens, colons, semicolons or ellipses anywhere in the report; use only periods and commas, and start a new sentence where you would otherwise want a pause. Do not start consecutive sentences or paragraphs with "You"; vary how each one opens. You may name a behavior and then note a limit to it, but do not use that praise-then-"but"-then-criticism pattern more than once in the entire report. Always leave a space after a closing quotation mark before the next word or punctuation mark. Speak in the first person to one person, the way a coach would. Do not assume the person's gender, and use the second person instead of he or she. Avoid contrast constructions such as "not X but Y" and "less about X, more about Y", rhetorical triplets used only for rhythm, and these stock phrases: "honest read", "journey", "unlock", "elevate", "emotional journey", "narrative climax", "memorable call to", "even more impactful", "effective trigger words", "adds credibility and relatability", "setting a positive tone", "Overall". If the person stated a goal, do not use that goal's own key word more than twice across the whole report; find other ways to say it. Quote the person's words sparingly, in fragments of fewer than twelve words, exactly as they appear. If a word or the end of an answer looks like a speech capture error, treat it as a limit of the recording and not a fault of the speaker.
+Write in full, flowing paragraphs of three to six sentences, with sentences that typically run fifteen to thirty words. Never put more than two short sentences in a row, and never use fragments. Do not use em dashes, en dashes, double hyphens, colons, semicolons or ellipses anywhere in the report. Use only periods and commas, and start a new sentence where you would otherwise want a pause. Do not start consecutive sentences or paragraphs with "You" or "Your", and start no more than one strength and one area with them. Vary how each one opens. You may name a behavior and then note a limit to it, but do not use that praise-then-"but"-then-criticism pattern more than once in the entire report. Always leave a space after a closing quotation mark before the next word or punctuation mark. Speak in the first person to one person, the way a coach would. Do not assume the person's gender, and use the second person instead of he or she. Avoid contrast constructions such as "not X but Y" and "less about X, more about Y", rhetorical triplets used only for rhythm, and these stock phrases: "honest read", "journey", "unlock", "elevate", "emotional journey", "narrative climax", "memorable call to", "even more impactful", "effective trigger words", "adds credibility and relatability", "setting a positive tone", "sets the tone", "the central opportunity", "the clearest opportunity", "the strongest opportunity", "room to grow", "Overall". If the person stated a goal, do not use that goal's own key word more than twice across the whole report, and find other ways to say it. Words in the session were captured by speech recognition, so odd word forms, tense slips, missing words and broken phrases are often capture errors. Never quote or correct them, and judge grammar only from clear, repeated patterns. If the session stops mid-thought, never mention that it seems cut off, unfinished or missing, and do not comment on a result or ending the speaker did not get to. You may still suggest a closing line to practice.
 
 NEVER
-Never refer to earlier sessions, the platform, the recording, the transcript, a model, or anything you cannot observe. Never describe gestures, facial expressions, eye contact or slides unless data about them appears above. Never invent a client story, a number, a credential, an outcome or a detail about the person's role or background. If an example would strengthen an answer, ask the person to draw on a real one of their own. Write in the language the person spoke."""
+Never refer to earlier sessions, the platform, the recording, the transcript, a model, or anything you cannot observe. Never say what you cannot judge. Never describe gestures, facial expressions, eye contact or slides unless data about them appears above. Never invent a client story, a number, a credential, an outcome or a detail about the person's role or background. If an example would strengthen an answer, ask the person to draw on a real one of their own. Write in the language the person spoke."""
 
 _SESSION_DESCRIPTION_BY_CATEGORY = {
     "avatar": (
@@ -1864,6 +1866,37 @@ def _scores_block_and_low_flag(session):
     return scores_block, scores_low
 
 
+def _lowest_score_line(session):
+    """
+    Names the lowest score in code. Asking the model to find it was unreliable (it called
+    Grammar 76 the lowest when Pitch variability was 44), and the report has to address it.
+    """
+    scored = [
+        (getattr(session, field, None), label, description)
+        for field, label, description in _SCORE_FIELD_DESCRIPTIONS
+        if getattr(session, field, None) is not None
+    ]
+    if not scored:
+        return "No scores are available for this session."
+    lowest_value, lowest_label, lowest_description = min(scored, key=lambda item: item[0])
+    if lowest_value >= 70:
+        return (
+            f"No score is under 70. The lowest is {lowest_label} at {lowest_value} out of 100, "
+            f"which measures {lowest_description}. Do not treat any score as a problem."
+        )
+    others = sorted(item for item in scored if item[0] < 70)[1:]
+    line = f"The lowest score is {lowest_label} at {lowest_value} out of 100, which measures {lowest_description}."
+    if others:
+        line += " Other scores under 70: " + ", ".join(f"{label} ({value})" for value, label, _ in others) + "."
+    line += (
+        " The report must include a paragraph on the lowest score that explains what a listener "
+        "experienced, in terms of something the person actually did in the session, and gives an "
+        "exact move to improve it, naming the line or moment where to apply it. Never skip it, and "
+        "never name a different score as the lowest."
+    )
+    return line
+
+
 def _closing_line_for(scores_low):
     if scores_low:
         return (
@@ -1936,6 +1969,7 @@ def _build_coach_prompt(preferred_name, ev, session_type, goals, session, transc
         session_description=session_description,
         goal_line=goal_line,
         scores=scores_block,
+        lowest_score_line=_lowest_score_line(session),
         transcript=cleaned_transcript,
         closing_line=closing_line,
     )
@@ -2074,13 +2108,13 @@ class SessionReportView(APIView):
             '  - \"Strength\" (array of short strings),\n'
             '  - \"Area of Improvement\" (array of short strings),\n'
             '  - \"General Feedback Summary\" (string).\n'
-            "Make the strengths and areas concrete (short bullets). The General Feedback Summary should be the opening plus the five to seven paragraphs described above.\n"
+            "Make the strengths and areas concrete (short bullets). The General Feedback Summary should be the opening plus the five or six paragraphs described above.\n"
         )
 
-        # -- Generate the feedback report with GPT-6 Sol --
+        # -- Generate the feedback report with GPT-6 Luna --
         try:
             completion = client.chat.completions.create(
-                model="gpt-6-sol",
+                model="gpt-6-luna",
                 reasoning_effort="low",
                 messages=[{"role": "user", "content": prompt}],
                 response_format={
@@ -2100,12 +2134,12 @@ class SessionReportView(APIView):
                         },
                     },
                 },
-                max_completion_tokens=2200,
+                max_completion_tokens=3200,
             )
 
             raw_content = completion.choices[0].message.content
-            print(f"[generate_full_summary] GPT-6 Sol prompt: {prompt}")
-            logger.info(f"[generate_full_summary] GPT-6 Sol prompt: {prompt}")
+            print(f"[generate_full_summary] GPT-6 Luna prompt: {prompt}")
+            logger.info(f"[generate_full_summary] GPT-6 Luna prompt: {prompt}")
 
             print(f"[generate_full_summary] OpenAI raw response: {raw_content}")
 
