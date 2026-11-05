@@ -62,7 +62,9 @@ running and what you are about to build**, not just what is unpushed:
    - Region: `us-west-1`, default VPC (`vpc-0d095d54d92bf9d34`), public subnet
      (`subnet-0cffd27f3533622e6`, auto-assigns a public IP).
    - AMI: latest Amazon Linux 2023 x86_64 (look it up fresh each time — don't hardcode an ID,
-     it goes stale).
+     it goes stale). `backend-dev-access` cannot read the SSM public AMI parameter, so use
+     `aws ec2 describe-images --owners amazon --filters 'Name=name,Values=al2023-ami-2023.*-x86_64'
+     --query 'sort_by(Images,&CreationDate)[-1].ImageId'`.
    - Instance type: `t3.large` (2 vCPU / 8GB — enough to build without being slow).
    - A **throwaway key pair** and a **security group scoped to SSH from your current IP
      only** — both created fresh and deleted at the end. Never reuse a long-lived key pair
@@ -104,9 +106,9 @@ running and what you are about to build**, not just what is unpushed:
 
 6. **Push to ECR**, also backgrounded on the instance:
    ```
-   aws ecr get-login-password --region us-west-1 \
-     | docker login --username AWS --password-stdin 266735827053.dkr.ecr.us-west-1.amazonaws.com
-   docker push 266735827053.dkr.ecr.us-west-1.amazonaws.com/engagex:<tag>
+   sudo aws ecr get-login-password --region us-west-1 \
+     | sudo docker login --username AWS --password-stdin 266735827053.dkr.ecr.us-west-1.amazonaws.com
+   sudo docker push 266735827053.dkr.ecr.us-west-1.amazonaws.com/engagex:<tag>
    ```
 
 7. **Tear down the build instance immediately after the push confirms.** It only exists for
