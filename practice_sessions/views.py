@@ -1753,15 +1753,15 @@ THE OPENING
 The very first word of the report is {preferred_name}, and the first sentence tells them you are their coach, for example "{preferred_name}, as your coach, I want to begin with...". Acknowledge being their coach once, in that first sentence, and nowhere else. Finish that sentence with a specific thing from this session, such as an image they used, a choice they made or a line they said. Never open with a general statement about opportunities, potential or what the talk needs.
 
 THE SUMMARY
-Write five or six paragraphs of at least three sentences each, totaling 450 to 650 words. Give every paragraph a different job. First, the strongest specific thing in the session and why it worked on a listener. Second, the central pattern in how the person built the talk. Third, the hardest or most revealing moment, slowed down, with why it landed the way it did and a concrete fix. Fourth, if a score under 70 is named above, that lowest score and what the listener experienced because of it, with an exact move that would change it. If no score is under 70, give a second specific refinement instead. Fifth, one secondary observation that ends in a specific detail the person can add or change. Last, one structure to practice before the next session, without restating anything said above.
+Write five to seven paragraphs of at least three sentences each, totaling 500 to 750 words. Give every paragraph a different job. First, the strongest specific thing in the session and why it worked on a listener. Second, the overall impact of the talk on the audience. State plainly what a listener would feel, think or do after hearing it and which choices in the talk caused that, judging only from what was said. If a goal was set, this paragraph is the goal paragraph described above and it also covers that overall impact. Third, the central pattern in how the person built the talk. Fourth, the hardest or most revealing moment, slowed down, with why it landed the way it did and a concrete fix. Fifth, if a score under 70 is named above, that lowest score and what the listener experienced because of it, with an exact move that would change it. If no score is under 70, give a second specific refinement instead. Sixth, optionally one secondary observation that ends in a specific detail the person can add or change. Last, one structure to practice before the next session, without restating anything said above.
 Quote the person's own words three to five times across the summary, each quote an exact fragment of fewer than fifteen words, and say what that line did for a listener. Every piece of criticism must be followed at once by a fix the person can use, such as a sample sentence in their own voice or an exact move, for example "open with the story, then say the point". Where it helps, build a model sentence from the person's own best line and present it as a suggestion.
 Mention two or three scores at most, only inside a sentence that explains what a listener experienced, never as a bare number, and never praise something the scores contradict. {closing_line} If the session was strong, do not invent problems. Say plainly what worked and raise the standard with a single refinement.
 
 STRENGTHS AND AREAS FOR IMPROVEMENT
-Write three to five strengths and three to five areas for improvement. Each one is one or two complete sentences anchored to something the person actually said or did, with no greeting and no mention of being their coach. Each area says what to do instead. Add detail here that was not already spelled out in the summary, and do not restate the summary a second time.
+Write three to five strengths and three to five areas for improvement. Each one is one or two complete sentences anchored to something the person actually said or did, with no greeting and no mention of being their coach. Each area says what to do instead. Make at least one strength or area about the effect on the audience. Begin no more than one strength and no more than one area with "You" or "Your", and open the rest with the thing being praised or fixed. Add detail here that was not already spelled out in the summary, and do not restate the summary a second time.
 
 HOW TO WRITE
-Write in full, flowing paragraphs of three to six sentences, with sentences that typically run fifteen to thirty words. Never put more than two short sentences in a row, and never use fragments. Do not use em dashes, en dashes, double hyphens, colons, semicolons or ellipses anywhere in the report. Use only periods and commas, and start a new sentence where you would otherwise want a pause. Do not start consecutive sentences or paragraphs with "You" or "Your", and start no more than one strength and one area with them. Vary how each one opens. You may name a behavior and then note a limit to it, but do not use that praise-then-"but"-then-criticism pattern more than once in the entire report. Always leave a space after a closing quotation mark before the next word or punctuation mark. Speak in the first person to one person, the way a coach would. Do not assume the person's gender, and use the second person instead of he or she. Avoid contrast constructions such as "not X but Y" and "less about X, more about Y", rhetorical triplets used only for rhythm, and these stock phrases: "honest read", "journey", "unlock", "elevate", "emotional journey", "narrative climax", "memorable call to", "even more impactful", "effective trigger words", "adds credibility and relatability", "setting a positive tone", "sets the tone", "the central opportunity", "the clearest opportunity", "the strongest opportunity", "room to grow", "Overall". If the person stated a goal, do not use that goal's own key word more than twice across the whole report, and find other ways to say it. Words in the session were captured by speech recognition, so odd word forms, tense slips, missing words and broken phrases are often capture errors. Never quote or correct them, and judge grammar only from clear, repeated patterns. If the session stops mid-thought, never mention that it seems cut off, unfinished or missing, and do not comment on a result or ending the speaker did not get to. You may still suggest a closing line to practice.
+Write in full, flowing paragraphs of three to six sentences, with sentences that typically run fifteen to thirty words. Never put more than two short sentences in a row, and never use fragments. Do not use em dashes, en dashes, double hyphens, colons, semicolons or ellipses anywhere in the report. That includes the colon that usually introduces a quotation or a model sentence, so introduce those with a comma, as in: try saying, followed by the quoted sentence. Use only periods and commas, and start a new sentence where you would otherwise want a pause. Do not start consecutive sentences or paragraphs with "You" or "Your", and start no more than one strength and one area with them. Vary how each one opens. You may name a behavior and then note a limit to it, but do not use that praise-then-"but"-then-criticism pattern more than once in the entire report. After a quotation, put any comma or period directly against the closing quotation mark, then leave one space before the next word. Never put a space before a comma or period, and never run the next word straight onto the quotation. Speak in the first person to one person, the way a coach would. Do not assume the person's gender, and use the second person instead of he or she. Avoid contrast constructions such as "not X but Y" and "less about X, more about Y", rhetorical triplets used only for rhythm, and these stock phrases: "honest read", "journey", "unlock", "elevate", "emotional journey", "narrative climax", "memorable call to", "even more impactful", "effective trigger words", "adds credibility and relatability", "setting a positive tone", "sets the tone", "the central opportunity", "the clearest opportunity", "the strongest opportunity", "room to grow", and "Overall" as the first word of a sentence. If the person stated a goal, you may quote the goal in their own words once, in the goal paragraph. Do not use the goal's own key word more than three times across the whole report, and find other ways to say it, such as how the room felt or what listeners carried out. Words in the session were captured by speech recognition, so odd word forms, tense slips, missing words and broken phrases are often capture errors. Never quote or correct them, and judge grammar only from clear, repeated patterns. If the session stops mid-thought, never mention that it seems cut off, unfinished or missing, and do not comment on a result or ending the speaker did not get to. You may still suggest a closing line to practice.
 
 NEVER
 Never refer to earlier sessions, the platform, the recording, the transcript, a model, or anything you cannot observe. Never say what you cannot judge. Never describe gestures, facial expressions, eye contact or slides unless data about them appears above. Never invent a client story, a number, a credential, an outcome or a detail about the person's role or background. If an example would strengthen an answer, ask the person to draw on a real one of their own. Write in the language the person spoke."""
@@ -1831,8 +1831,25 @@ def _goal_line_for(goals):
     if goal_text:
         return (
             f"The person set this goal for the session, in their own words: {goal_text}. "
-            "Let it shape your opening and your closing, and translate it into behaviors "
-            "they can practice."
+            "The goal is the yardstick for the whole report. Pick as the one priority the change that "
+            "most affects whether the goal is reached. Write the goal paragraph as the second paragraph "
+            "of the summary. Its first sentence is a clear verdict that uses the goal in the person's own "
+            "words and (tidy its grammar and spelling when you restate it) and says either that it was achieved by doing something specific, or that it was only "
+            "partly achieved, or that the person missed the mark and what they need to convey to reach it. "
+            "The rest of that paragraph gives the examples and the reasons. Name one or two exact moments "
+            "that served the goal and one that worked against it or missed a chance, say what listeners "
+            "would feel at each, and give an exact line to add or cut. Judge the goal only by what the "
+            "person said and did, never by their intentions. "
+            "If the goal is an outcome that someone else decides, such as winning new business, getting "
+            "funding, closing a sale, landing a job or getting buy-in, the goal paragraph must also say how "
+            "likely the person is to reach it if this session were the real thing, in plain words such as "
+            "unlikely, possible but not yet likely, likely or very likely, and never as a percentage. Give "
+            "the reasons, meaning what a decision maker would be persuaded by in what was said and what they "
+            "would still be missing, such as a clear ask, proof, a number or a next step, and give the exact "
+            "lines to add to raise the likelihood. "
+            "Make at least one strength and one area for improvement about the goal. In the last paragraph, "
+            "include a simple way to check next time whether the goal landed, such as asking one listener "
+            "what they felt or what they would do next."
         )
     return (
         "The person did not set a goal. Infer the most likely aim from the session type "
@@ -1856,6 +1873,10 @@ def _scores_block_and_low_flag(session):
             continue
         values.append(value)
         lines.append(f"{label} ({value} out of 100): {description}.")
+    if values and not any(values):
+        # Every score at 0 means the scores were never filled in, not that the person scored 0.
+        logger.error("[scores] every score is 0 for this session, treating the scores as missing")
+        return "No scores are available for this session.", False
     scores_block = "\n".join(lines) if lines else "No scores are available for this session."
     if values:
         overall = sum(values) / len(values)
@@ -1876,8 +1897,8 @@ def _lowest_score_line(session):
         for field, label, description in _SCORE_FIELD_DESCRIPTIONS
         if getattr(session, field, None) is not None
     ]
-    if not scored:
-        return "No scores are available for this session."
+    if not scored or not any(item[0] for item in scored):
+        return "No scores are available for this session. Do not mention scores."
     lowest_value, lowest_label, lowest_description = min(scored, key=lambda item: item[0])
     if lowest_value >= 70:
         return (
@@ -1955,6 +1976,23 @@ def _stitch_window_transcripts(window_texts):
     return combined
 
 
+def _tidy_report_text(text):
+    """
+    Deterministic backstop for the punctuation rules in the prompt (no dashes, colons or
+    semicolons, no space before a comma or period, a space after a closing quotation mark).
+    The model follows them most of the time, not every time.
+    """
+    if not isinstance(text, str):
+        return text
+    text = text.replace("\u2014", ", ").replace("\u2013", ", ")
+    text = re.sub(r"[ \t]*;[ \t]*", ", ", text)
+    text = re.sub(r"[ \t]*:[ \t]+", ", ", text)
+    text = re.sub(r"[ \t]+([,.!?])", r"\1", text)
+    text = re.sub("(\u201d)(?=[A-Za-z0-9])", "\\1 ", text)
+    text = re.sub(r",[ \t]*,", ",", text)
+    return re.sub(r"[ \t]{2,}", " ", text)
+
+
 def _build_coach_prompt(preferred_name, ev, session_type, goals, session, transcript_text):
     session_description = _session_description_for(ev, session_type)
     goal_line = _goal_line_for(goals)
@@ -1978,9 +2016,13 @@ def _build_coach_prompt(preferred_name, ev, session_type, goals, session, transc
 class SessionReportView(APIView):
     permission_classes = [IsAuthenticated]
 
-    def generate_full_summary(self, session_id, metrics_string):
+    def generate_full_summary(self, session_id, metrics_string, session=None):
         """
         Creates a cohesive summary for Strengths, Improvements, and Feedback using OpenAI.
+
+        Pass the view's in-memory `session` whenever the aggregated scores have been set on it
+        but not yet saved: re-fetching by id returns the row with every score still at its
+        default of 0 (that is how every report from Oct 29 to Nov 6 got written from zeros).
 
         Behavior changes vs old version:
         - Prefer session.enterprise_settings.rookie_type as the authoritative session-level vertical.
@@ -1991,7 +2033,8 @@ class SessionReportView(APIView):
         client = OpenAI(api_key=settings.OPENAI_API_KEY)
 
         try:
-            session = PracticeSession.objects.get(id=session_id)
+            if session is None:
+                session = PracticeSession.objects.get(id=session_id)
         except PracticeSession.DoesNotExist:
             print(f"generate_full_summary: session {session_id} not found")
             return {
@@ -2108,7 +2151,7 @@ class SessionReportView(APIView):
             '  - \"Strength\" (array of short strings),\n'
             '  - \"Area of Improvement\" (array of short strings),\n'
             '  - \"General Feedback Summary\" (string).\n'
-            "Make the strengths and areas concrete (short bullets). The General Feedback Summary should be the opening plus the five or six paragraphs described above.\n"
+            "Make the strengths and areas concrete (short bullets). The General Feedback Summary should be the opening plus the paragraphs described above.\n"
         )
 
         # -- Generate the feedback report with GPT-6 Luna --
@@ -2159,6 +2202,9 @@ class SessionReportView(APIView):
                     areas = [str(areas)]
                 if not isinstance(general, str):
                     general = str(general)
+                strengths = [_tidy_report_text(item) for item in strengths]
+                areas = [_tidy_report_text(item) for item in areas]
+                general = _tidy_report_text(general)
 
                 return {
                     "Strength": strengths,
@@ -2413,7 +2459,7 @@ class SessionReportView(APIView):
 
             # --- Generate Full Summary using OpenAI ---
             print("Generating full summary...")
-            full_summary_data = self.generate_full_summary(session_id, metrics_string)
+            full_summary_data = self.generate_full_summary(session_id, metrics_string, session=session)
             strength_summary = full_summary_data.get("Strength", "N/A")
             improvement_summary = full_summary_data.get("Area of Improvement", "N/A")
             general_feedback = full_summary_data.get("General Feedback Summary", "N/A")
