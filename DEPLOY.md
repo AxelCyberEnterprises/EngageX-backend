@@ -67,7 +67,8 @@ running and what you are about to build**, not just what is unpushed:
      --query 'sort_by(Images,&CreationDate)[-1].ImageId'`.
    - Instance type: `t3.large` (2 vCPU / 8GB — enough to build without being slow).
    - A **throwaway key pair** and a **security group scoped to SSH from your current IP
-     only** — both created fresh and deleted at the end. Never reuse a long-lived key pair
+     only** (if your ISP rotates between a few egress IPs, as 41.215.247.83/.84 do, allow each
+     of those /32s, otherwise ssh times out at random) — both created fresh and deleted at the end. Never reuse a long-lived key pair
      or open SSH to `0.0.0.0/0`.
    - User-data installs Docker (`dnf install -y docker && systemctl enable --now docker`).
      Docker takes a minute or two after SSH comes up; wait for `systemctl is-active docker`.
