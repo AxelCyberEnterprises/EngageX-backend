@@ -1760,7 +1760,7 @@ If a goal was set, the goal verdict described above also appears, in the same vo
 Show how the person engaged the audience. Name the specific engagement moves they actually used, such as speaking to the audience directly, asking a question, telling a story, using an image or example, humor, or an invitation, quoting the exact words, and name the ones that were missing. In a question and answer session, engagement means how each answer connected with the person asking. Then say how to raise their impact on the audience, with two or three concrete moves tied to moments in the session, and a model sentence in the person's own voice for at least one of them.
 Slow down on one moment that mattered, explain why it landed the way it did, and give a concrete fix. Choose the moment that fits this session, and describe it in your own words, not with a stock label.
 If a score under 70 is named above and it is not Impact, Trigger response or Transformative potential, give that lowest score a passage that says what the audience experienced because of it, with an exact move that would change it. If the lowest score is one of those three audience-effect scores, you have already covered it, so spend this passage on the next lowest score under 70, or on a second specific refinement if there is none.
-Finish with one thing to practice before the next session, without restating anything said above. {closing_line}
+Finish with one thing to practice before the next session, in the last paragraph only, without restating anything said above. There is exactly one practice passage in the whole summary, so do not add a second paragraph of drills or listener checks. {closing_line}
 Quote the person's own words three to five times across the summary, each quote an exact fragment of fewer than fifteen words, and say what that line did for the audience. Every piece of criticism must be followed at once by a fix the person can use, such as a sample sentence in their own voice or an exact move. Where it helps, build a model sentence from the person's own best line and present it as a suggestion. Mention two or three scores at most, only inside a sentence that explains what the audience experienced, never as a bare number, and never praise something the scores contradict. If the session was strong, do not invent problems. Say plainly what worked and raise the standard with a single refinement.
 
 STRENGTHS AND AREAS FOR IMPROVEMENT
@@ -1827,41 +1827,49 @@ _ROOM_PROFILES = {
     },
     "pitch": {
         "scene": (
-            "This was a pitch delivered without questions. Refer to the problem, the ask, the "
-            "proof and what makes the offer different. Never refer to questions."
+            "This was a pitch by an entrepreneur or business professional who is testing the waters on "
+            "gaining buy-in for an idea, product or service from the audience. Refer to the problem, the "
+            "ask, the proof and what makes the offer different. Never refer to questions."
         ),
         "seat": (
-            "The person with the power to say yes, such as a buyer, an investor, a funding "
-            "committee or a judge who can give buy-in, funding, placement or the win. After the "
-            "opening sentence, give the audience impact and the goal verdict as that decision maker, "
-            "in the first person. Say what was heard, whether you would back it, what you would "
-            "still need before saying yes, and what you would do next. The coaching advice that "
-            "follows goes back to the coach's voice."
+            "The audience whose buy-in is being sought, meaning the potential customers, partners, "
+            "backers or colleagues in the room. After the opening sentence, give the audience impact "
+            "and the goal verdict as that audience, in the first person. Say what you heard, whether "
+            "you are buying in, what you would still need to hear before you did, and what you would do "
+            "next, such as try it, sign up, back it or tell others. The coaching advice that follows "
+            "goes back to the coach's voice."
         ),
         "impact": (
-            "Whether the decision maker is moved toward yes, and how close they are, measured "
-            "against what the pitch asks for."
+            "How far the audience's buy-in moved, and how close they are to yes, measured against what "
+            "the pitch asks for."
         ),
         "win": (
-            "A goal is met when the decision maker would give the buy-in, funding, placement or win "
-            "the pitch asks for. Say how close that yes is and what is still missing."
+            "A goal is met when the audience would buy in to the idea, product or service by doing what "
+            "the pitch asks, such as buying, joining a pilot, funding, partnering or backing it. Say how "
+            "close that buy-in is and what is still missing."
         ),
     },
     "coaching": {
-        "scene": _AVATAR_SCENE,
+        "scene": (
+            "This was a conversation for practicing executive presence and interviewing, at any level of "
+            "a career, in which the platform's avatar asked questions and the person answered. Refer to "
+            "the questions and to how each answer opened and closed."
+        ),
         "seat": (
-            "An executive speech coach or career coach advising a professional. The whole report is "
-            "that adviser's counsel on how these answers would land with the clients, executives "
-            "and decision makers who shape this person's career, and what those people would walk "
-            "away believing about the person."
+            "An executive coach or an HR professional, such as a hiring leader or recruiter, sitting "
+            "across from the person. The whole report is that adviser's assessment of the answers. The "
+            "audience impact is what that executive coach or HR professional would conclude about the "
+            "person's executive presence, credibility and fit, and whether they would move this person "
+            "forward. Judge at the career level the answers suggest."
         ),
         "impact": (
-            "What the people asking, and the executives or clients behind them, would conclude "
-            "about this person's credibility, clarity and value."
+            "What an executive coach or HR professional would conclude about this person's executive "
+            "presence, credibility and fit, and whether they would advance them."
         ),
         "win": (
-            "A goal is met when the answers would leave those people with the belief or the action "
-            "the goal names."
+            "A goal is met when an executive coach or HR professional would say the answers show the "
+            "presence, credibility and readiness the goal names, such as being hire-ready or "
+            "promotion-ready."
         ),
     },
     "media_training": {
@@ -1877,9 +1885,12 @@ _ROOM_PROFILES = {
     "coach": {
         "scene": _AVATAR_SCENE,
         "seat": (
-            "An experienced coach hearing a player open up. The report is the coach's counsel, and "
-            "the audience impact is what the coach would conclude about this player after the "
-            "conversation, such as their honesty, maturity, trustworthiness and coachability."
+            "The coach on the other side of this conversation, hearing a player open up. After the "
+            "opening sentence, give the audience impact and the goal verdict as that coach, in the first "
+            "person. Say what you heard, what you concluded about this player's honesty, maturity, "
+            "trustworthiness and coachability, and what you would do next. Refer to the person you are "
+            "talking to as you, never as the player or the athlete in the third person. The coaching "
+            "advice that follows goes back to the coach's voice."
         ),
         "impact": "What the coach would conclude about the player's honesty, maturity and coachability.",
         "win": "A goal is met when the coach would come away believing or feeling what the goal names.",
@@ -1887,9 +1898,12 @@ _ROOM_PROFILES = {
     "gm": {
         "scene": _AVATAR_SCENE,
         "seat": (
-            "A general manager hearing a player or staff member make their case. The report is the "
-            "general manager's counsel, and the audience impact is what the general manager would "
-            "conclude about this person's professionalism, judgment and readiness."
+            "The general manager on the other side of this conversation, hearing a player or staff "
+            "member make their case. After the opening sentence, give the audience impact and the goal "
+            "verdict as that general manager, in the first person. Say what you heard, what you "
+            "concluded about this person's professionalism, judgment and readiness, and what you would "
+            "do next. Refer to the person you are talking to as you. The coaching advice that follows "
+            "goes back to the coach's voice."
         ),
         "impact": "What the general manager would conclude about the person's professionalism and judgment.",
         "win": "A goal is met when the general manager would come away believing or deciding what the goal names.",
@@ -1987,11 +2001,16 @@ def _goal_line_for(goals):
             f"The person set this goal for the session, in their own words: {goal_text}. "
             "The goal is the yardstick for the whole report. Pick as the one priority the change that "
             "most affects whether the goal is reached. Give the goal its own paragraph with a clear "
-            "verdict, in the voice described under \"Who is speaking\". The verdict says either that the "
+            "verdict, in the voice described under \"Who is speaking\". State the verdict in one plain sentence that says outright whether the goal was met or missed, or which half was met, and never describe it only as a gap. The verdict says either that the "
             "goal was achieved by doing something specific, or that the person missed the mark and what "
             "they need to convey to reach it. Restate the goal in tidy grammar and spelling. Commit to the "
-            "verdict the evidence supports. A middle verdict is only for evidence that is truly split, and "
-            "then say exactly which half was met and which was not. Give the examples and the reasons, "
+            "verdict the evidence supports. Let the Impact, Trigger response and Transformative potential "
+            "scores calibrate it. When all three are 70 or above, the goal was usually met or mostly met "
+            "unless what was said clearly failed to deliver it, and a strong session deserves a plain "
+            "statement that the goal was met. When two or more are below 60, the goal was usually missed. "
+            "Do not call a goal missed only because the talk could have been stronger. A middle verdict "
+            "is only for evidence that is truly split, and then say exactly which half was met and which "
+            "was not. Give the examples and the reasons, "
             "naming one or two exact moments that served the goal and one that worked against it or missed "
             "a chance, what the audience felt at each, and an exact line to add or cut. Judge the goal only "
             "by what the person said and did, never by their intentions. "
@@ -2001,9 +2020,9 @@ def _goal_line_for(goals):
             "plain words and in the voice of the room, never as a percentage, with the reasons, meaning "
             "what persuaded and what is still missing, such as a clear ask, proof, a number or a next "
             "step, and the exact lines that would raise the likelihood. "
-            "Make at least one strength and one area for improvement about the goal. Include a simple way "
+            "Make at least one strength and one area for improvement about the goal. Fold a simple way "
             "to check next time whether the goal landed, such as asking one listener what they felt or "
-            "what they would do next."
+            "what they would do next, into the final practice passage, and do not write a separate paragraph for it."
         )
     return (
         "The person did not set a goal. Infer the most likely aim from the session type "
