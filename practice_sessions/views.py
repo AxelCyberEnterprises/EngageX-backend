@@ -3,6 +3,7 @@ import concurrent.futures
 import openai
 import os
 import json
+import random
 import re
 from enterprise.models import Enterprise, TrainingGoal
 import traceback
@@ -1747,45 +1748,154 @@ Everything the person said
 {transcript}
 
 BEFORE YOU WRITE
-Privately decide the single most valuable change this person could make, and find the moment in the session that shows it most clearly. Build the report around that one priority. {lowest_score_line}
+Privately answer these in the voice described above under "Who is speaking". What impact did this session have on its audience? How far did it move them toward the goal, or toward the aim you infer? What single change would raise that impact the most? Commit to the answer the evidence supports, flattering or not, and never settle on a middle answer out of habit. {lowest_score_line}
 
 THE OPENING
-The very first word of the report is {preferred_name}, and the first sentence tells them you are their coach, for example "{preferred_name}, as your coach, I want to begin with...". Acknowledge being their coach once, in that first sentence, and nowhere else. Finish that sentence with a specific thing from this session, such as an image they used, a choice they made or a line they said. Never open with a general statement about opportunities, potential or what the talk needs.
+The very first word of the report is {preferred_name}, and the first sentence tells them you are their coach, for example "{preferred_name}, as your coach, I want to begin with...". Acknowledge being their coach once, in that first sentence, and nowhere else. Finish that sentence with a specific thing from this session, such as an image they used, a choice they made or a line they said. Never open with a general statement about opportunities, potential or what the talk needs. The opening sentence stays in the coach's voice even in rooms where later paragraphs speak as the audience. The opening sentence is the first sentence of the first paragraph and is followed by at least two more sentences in that same paragraph, so the first paragraph is never a single sentence.
 
-THE SUMMARY
-Write six or seven paragraphs of at least three sentences each, totaling 550 to 800 words. Give every paragraph a different job. First, the strongest specific thing in the session and why it worked on a listener. Second, only if a goal was set, the goal paragraph described above. Next, in every report and in every kind of session, including a short, rough or unprepared one and one with low scores, the audience engagement and impact paragraph described below. Then the central pattern in how the person built the talk. Then the hardest or most revealing moment, slowed down, with why it landed the way it did and a concrete fix. Then, if a score under 70 is named above and it is not Impact, Trigger response or Transformative potential, that lowest score and what the listener experienced because of it, with an exact move that would change it. If the lowest score is one of those three audience-effect scores, you have already covered it in the engagement and impact paragraph, so use this paragraph for the next lowest score under 70, or for a second specific refinement if there is none. Last, one structure to practice before the next session, without restating anything said above.
-The audience engagement and impact paragraph is mandatory and has three parts. Part one is how the person engaged the audience. Name the specific engagement moves they actually used, such as speaking to the audience directly, asking a question, telling a story, using an image or example, humor, or an invitation, quoting the exact words, and name the ones that were missing. In a question and answer session, engagement means how each answer connected with the person asking and what a room would take from it. Part two is the impact they made. Say plainly what a listener would feel, think or do afterward and how strong that effect would be, and when Impact, Trigger response or Transformative potential is under 70, explain what that score meant for a listener in terms of something the person said or did. Be candid but constructive when the impact was low, and say what was already working. Part three is how to raise their impact on the audience. Give two or three concrete moves, each tied to a moment in the session, with a model sentence in the person's own voice for at least one of them.
-Quote the person's own words three to five times across the summary, each quote an exact fragment of fewer than fifteen words, and say what that line did for a listener. Every piece of criticism must be followed at once by a fix the person can use, such as a sample sentence in their own voice or an exact move, for example "open with the story, then say the point". Where it helps, build a model sentence from the person's own best line and present it as a suggestion.
-Mention two or three scores at most, only inside a sentence that explains what a listener experienced, never as a bare number, and never praise something the scores contradict. {closing_line} If the session was strong, do not invent problems. Say plainly what worked and raise the standard with a single refinement.
+WHAT THE SUMMARY MUST CONTAIN
+Write six or seven paragraphs of at least three sentences each, including the first and the last, totaling 550 to 800 words. Every item below must appear, and you choose the order and the wording that fit this session. Two reports should never read as if they came from the same outline. {variety_notes}
+The audience impact is the heart of the report and must appear within the first three paragraphs. State plainly, in the voice described under "Who is speaking", what impact this session had on its audience. Say what they felt, came to believe and would do or say afterward because of it, and how strong that effect was, measured against the goal when one was set. Do not hedge with "would likely" or "may" or "could". Ground each claim in a line the person actually said or in a score, but state your conclusion with confidence, as the reaction you are reporting. When Impact, Trigger response or Transformative potential is under 70, say what that score meant for this audience in terms of something the person said or did, and say what was already working.
+If a goal was set, the goal verdict described above also appears, in the same voice, tied to that audience impact.
+Show how the person engaged the audience. Name the specific engagement moves they actually used, such as speaking to the audience directly, asking a question, telling a story, using an image or example, humor, or an invitation, quoting the exact words, and name the ones that were missing. In a question and answer session, engagement means how each answer connected with the person asking. Then say how to raise their impact on the audience, with two or three concrete moves tied to moments in the session, and a model sentence in the person's own voice for at least one of them.
+Slow down on one moment that mattered, explain why it landed the way it did, and give a concrete fix. Choose the moment that fits this session, and describe it in your own words, not with a stock label.
+If a score under 70 is named above and it is not Impact, Trigger response or Transformative potential, give that lowest score a passage that says what the audience experienced because of it, with an exact move that would change it. If the lowest score is one of those three audience-effect scores, you have already covered it, so spend this passage on the next lowest score under 70, or on a second specific refinement if there is none.
+Finish with one thing to practice before the next session, without restating anything said above. {closing_line}
+Quote the person's own words three to five times across the summary, each quote an exact fragment of fewer than fifteen words, and say what that line did for the audience. Every piece of criticism must be followed at once by a fix the person can use, such as a sample sentence in their own voice or an exact move. Where it helps, build a model sentence from the person's own best line and present it as a suggestion. Mention two or three scores at most, only inside a sentence that explains what the audience experienced, never as a bare number, and never praise something the scores contradict. If the session was strong, do not invent problems. Say plainly what worked and raise the standard with a single refinement.
 
 STRENGTHS AND AREAS FOR IMPROVEMENT
 Write three to five strengths and three to five areas for improvement. Each one is one or two complete sentences anchored to something the person actually said or did, with no greeting and no mention of being their coach. Each area says what to do instead. Make at least one strength about how the person engaged the audience, and at least one area that says how to raise their impact on the audience. Begin no more than one strength and no more than one area with "You" or "Your", and open the rest with the thing being praised or fixed. Add detail here that was not already spelled out in the summary, and do not restate the summary a second time.
 
 HOW TO WRITE
-Write in full, flowing paragraphs of three to six sentences, with sentences that typically run fifteen to thirty words. Never put more than two short sentences in a row, and never use fragments. Do not use em dashes, en dashes, double hyphens, colons, semicolons or ellipses anywhere in the report. That includes the colon that usually introduces a quotation or a model sentence, so introduce those with a comma, as in: try saying, followed by the quoted sentence. Use only periods and commas, and start a new sentence where you would otherwise want a pause. Do not start consecutive sentences or paragraphs with "You" or "Your", and start no more than one strength and one area with them. Vary how each one opens. You may name a behavior and then note a limit to it, but do not use that praise-then-"but"-then-criticism pattern more than once in the entire report. After a quotation, put any comma or period directly against the closing quotation mark, then leave one space before the next word. Never put a space before a comma or period, and never run the next word straight onto the quotation. Speak in the first person to one person, the way a coach would. Do not assume the person's gender, and use the second person instead of he or she. Avoid contrast constructions such as "not X but Y" and "less about X, more about Y", rhetorical triplets used only for rhythm, and these stock phrases: "honest read", "journey", "unlock", "elevate", "emotional journey", "narrative climax", "memorable call to", "even more impactful", "effective trigger words", "adds credibility and relatability", "setting a positive tone", "sets the tone", "the central opportunity", "the clearest opportunity", "the strongest opportunity", "room to grow", and "Overall" as the first word of a sentence. If the person stated a goal, you may quote the goal in their own words once, in the goal paragraph. Do not use the goal's own key word more than three times across the whole report, and find other ways to say it, such as how the room felt or what listeners carried out. Words in the session were captured by speech recognition, so odd word forms, tense slips, missing words and broken phrases are often capture errors. Never quote or correct them, and judge grammar only from clear, repeated patterns. If the session stops mid-thought, never mention that it seems cut off, unfinished or missing, and do not comment on a result or ending the speaker did not get to. You may still suggest a closing line to practice.
+Write in full, flowing paragraphs of three to six sentences, with sentences that typically run fifteen to thirty words. Never put more than two short sentences in a row, and never use fragments. Do not use em dashes, en dashes, double hyphens, colons, semicolons or ellipses anywhere in the report. That includes the colon that usually introduces a quotation or a model sentence, so introduce those with a comma, as in: try saying, followed by the quoted sentence. Use only periods and commas, and start a new sentence where you would otherwise want a pause. Do not start consecutive sentences or paragraphs with "You" or "Your", and start no more than one strength and one area with them. Vary how each one opens. You may name a behavior and then note a limit to it, but do not use that praise-then-"but"-then-criticism pattern more than once in the entire report. After a quotation, put any comma or period directly against the closing quotation mark, then leave one space before the next word. Never put a space before a comma or period, and never run the next word straight onto the quotation. Do not assume the person's gender, and use the second person instead of he or she. Avoid contrast constructions such as "not X but Y" and "less about X, more about Y", and rhetorical triplets used only for rhythm.
+These phrases appear in too many reports, so never use them or close variants of them: "partly achieved", "partially achieved", "only partly", "possible but not yet likely", "the most revealing moment", "the moment that needs the most careful editing", "You engaged" in any form, "A listener would likely", "simple three-part structure", "quickest way to watch the scores move", "honest read", "journey", "unlock", "elevate", "emotional journey", "narrative climax", "memorable call to", "even more impactful", "effective trigger words", "adds credibility and relatability", "setting a positive tone", "sets the tone", "the central opportunity", "the clearest opportunity", "the strongest opportunity", "room to grow", and "Overall" as the first word of a sentence. Find fresh, specific words for this session every time.
+If the person stated a goal, you may quote the goal in their own words once. Do not use the goal's own key word more than three times across the whole report, and find other ways to say it, such as how the room felt or what the audience carried out. Words in the session were captured by speech recognition, so odd word forms, tense slips, missing words and broken phrases are often capture errors. Never quote or correct them, and judge grammar only from clear, repeated patterns. If the session stops mid-thought, never mention that it seems cut off, unfinished or missing, and do not comment on a result or ending the speaker did not get to. You may still suggest a closing line to practice.
 
 NEVER
 Never refer to earlier sessions, the platform, the recording, the transcript, a model, or anything you cannot observe. Never say what you cannot judge. Never describe gestures, facial expressions, eye contact or slides unless data about them appears above. Never invent a client story, a number, a credential, an outcome or a detail about the person's role or background. If an example would strengthen an answer, ask the person to draw on a real one of their own. Write in the language the person spoke."""
 
-_SESSION_DESCRIPTION_BY_CATEGORY = {
-    "avatar": (
-        "This was a conversation in which the platform's avatar asked questions and the "
-        "person answered. Refer to the questions and to how each answer opened and closed."
-    ),
-    "speech": (
-        "This was a speech or talk delivered without questions. Refer to the opening, the "
-        "structure, the key message and the close. Never refer to questions."
-    ),
-    "pitch": (
-        "This was a pitch delivered without questions. Refer to the problem, the ask, the "
-        "proof and what makes the offer different. Never refer to questions."
-    ),
-    "presentation": (
-        "This was a presentation delivered without questions. Refer to the flow of ideas, "
-        "the key messages and the transitions. Never comment on slides, because their "
-        "content has not been supplied."
-    ),
+_AVATAR_SCENE = (
+    "This was a conversation in which the platform's avatar asked questions and the "
+    "person answered. Refer to the questions and to how each answer opened and closed."
+)
+
+# One profile per room. "seat" says who the report speaks as, so the feedback reads the way
+# that room's real audience or adviser would give it, instead of one generic coach analysis.
+_ROOM_PROFILES = {
+    "speech": {
+        "scene": (
+            "This was a speech or talk delivered to an audience, without questions. Refer to the "
+            "opening, the structure, the key message and the close. Never refer to questions."
+        ),
+        "seat": (
+            "The audience in the seats. Their reaction is the heart of this report. After the "
+            "opening sentence, give the audience impact and the goal verdict as that audience "
+            "speaking in the first person, using I and we, as people who just sat through this talk "
+            "and are being asked honestly what it did to them and what they would say to the person "
+            "beside them afterward. The coaching advice that follows goes back to the coach's voice."
+        ),
+        "impact": (
+            "What the audience felt, came to believe and would do or say afterward because of the "
+            "talk, measured against the goal."
+        ),
+        "win": (
+            "A goal is met when the audience says it would have felt, believed or done what the "
+            "goal names, such as being inspired, persuaded or moved to buy."
+        ),
+    },
+    "presentation": {
+        "scene": (
+            "This was a presentation delivered without questions. Refer to the flow of ideas, the "
+            "key messages and the transitions. Never comment on slides, because their content has "
+            "not been supplied."
+        ),
+        "seat": (
+            "A listener following the content closely in a meeting or briefing. After the opening "
+            "sentence, give the audience impact and the goal verdict as that engaged listener, in "
+            "the first person. Say whether the content held attention, whether it changed how "
+            "the listener thinks about the topic, and whether the listener now sees it the way the "
+            "presenter wants. The coaching advice that follows goes back to the coach's voice."
+        ),
+        "impact": (
+            "Whether listeners were engaged by the content, inspired to think differently, and "
+            "brought into alignment with the presenter's point."
+        ),
+        "win": (
+            "A goal is met when listeners think differently about the topic or agree to align with "
+            "the idea."
+        ),
+    },
+    "pitch": {
+        "scene": (
+            "This was a pitch delivered without questions. Refer to the problem, the ask, the "
+            "proof and what makes the offer different. Never refer to questions."
+        ),
+        "seat": (
+            "The person with the power to say yes, such as a buyer, an investor, a funding "
+            "committee or a judge who can give buy-in, funding, placement or the win. After the "
+            "opening sentence, give the audience impact and the goal verdict as that decision maker, "
+            "in the first person. Say what was heard, whether you would back it, what you would "
+            "still need before saying yes, and what you would do next. The coaching advice that "
+            "follows goes back to the coach's voice."
+        ),
+        "impact": (
+            "Whether the decision maker is moved toward yes, and how close they are, measured "
+            "against what the pitch asks for."
+        ),
+        "win": (
+            "A goal is met when the decision maker would give the buy-in, funding, placement or win "
+            "the pitch asks for. Say how close that yes is and what is still missing."
+        ),
+    },
+    "coaching": {
+        "scene": _AVATAR_SCENE,
+        "seat": (
+            "An executive speech coach or career coach advising a professional. The whole report is "
+            "that adviser's counsel on how these answers would land with the clients, executives "
+            "and decision makers who shape this person's career, and what those people would walk "
+            "away believing about the person."
+        ),
+        "impact": (
+            "What the people asking, and the executives or clients behind them, would conclude "
+            "about this person's credibility, clarity and value."
+        ),
+        "win": (
+            "A goal is met when the answers would leave those people with the belief or the action "
+            "the goal names."
+        ),
+    },
+    "media_training": {
+        "scene": _AVATAR_SCENE,
+        "seat": (
+            "A media trainer who also thinks like the reporter in the room. The report is that "
+            "trainer's counsel, and the audience impact is what a reporter and the public would "
+            "take away and quote from these answers, and whether the person stayed on message."
+        ),
+        "impact": "What a reporter and the public would take away, quote and remember from these answers.",
+        "win": "A goal is met when the answers would leave the reporter and the public with the message the goal names.",
+    },
+    "coach": {
+        "scene": _AVATAR_SCENE,
+        "seat": (
+            "An experienced coach hearing a player open up. The report is the coach's counsel, and "
+            "the audience impact is what the coach would conclude about this player after the "
+            "conversation, such as their honesty, maturity, trustworthiness and coachability."
+        ),
+        "impact": "What the coach would conclude about the player's honesty, maturity and coachability.",
+        "win": "A goal is met when the coach would come away believing or feeling what the goal names.",
+    },
+    "gm": {
+        "scene": _AVATAR_SCENE,
+        "seat": (
+            "A general manager hearing a player or staff member make their case. The report is the "
+            "general manager's counsel, and the audience impact is what the general manager would "
+            "conclude about this person's professionalism, judgment and readiness."
+        ),
+        "impact": "What the general manager would conclude about the person's professionalism and judgment.",
+        "win": "A goal is met when the general manager would come away believing or deciding what the goal names.",
+    },
 }
+
 
 # (model field, display label, what it measures)
 _SCORE_FIELD_DESCRIPTIONS = [
@@ -1804,20 +1914,63 @@ _SCORE_FIELD_DESCRIPTIONS = [
 ]
 
 
-def _session_description_for(ev, session_type):
-    """Map EngageX's actual vertical/session_type onto Jacqui's four session categories."""
-    avatar_verticals = (
-        "coach", "gm", "general_manager", "general-manager", "coaching",
-        "media_training", "media-training", "media training",
-    )
-    if ev in avatar_verticals or session_type == "enterprise":
-        return _SESSION_DESCRIPTION_BY_CATEGORY["avatar"]
+def _room_profile_key(ev, session_type):
+    """Map EngageX's actual vertical/session_type onto a room profile."""
+    if ev in ("media_training", "media-training", "media training"):
+        return "media_training"
+    if ev == "coach":
+        return "coach"
+    if ev in ("gm", "general_manager", "general-manager"):
+        return "gm"
+    if ev == "coaching" or session_type == "enterprise":
+        return "coaching"
     if session_type in ("pitch", "Pitch Practice"):
-        return _SESSION_DESCRIPTION_BY_CATEGORY["pitch"]
+        return "pitch"
     if session_type == "public":
-        return _SESSION_DESCRIPTION_BY_CATEGORY["speech"]
+        return "speech"
     # "presentation" and any unrecognized session_type fall back to the presentation framing.
-    return _SESSION_DESCRIPTION_BY_CATEGORY["presentation"]
+    return "presentation"
+
+
+def _session_description_for(ev, session_type):
+    profile = _ROOM_PROFILES[_room_profile_key(ev, session_type)]
+    return (
+        f"{profile['scene']}\n"
+        f"Who is speaking. {profile['seat']}\n"
+        f"What impact means in this room. {profile['impact']}\n"
+        f"How to judge a goal in this room. {profile['win']}"
+    )
+
+
+_LEAD_ANGLES = [
+    "After the opening sentence, lead with the audience impact, then move to the goal verdict if there is one.",
+    "After the opening sentence, lead with the goal verdict if there is one, and let the audience impact grow out of it.",
+    "After the opening sentence, lead with the one moment that mattered most, then widen to the audience impact.",
+    "After the opening sentence, lead with how the person engaged the audience, then give the audience impact.",
+]
+_VERDICT_STYLES = [
+    "Deliver the verdict as an outcome for the audience, what they now believe, feel or will do, and then say what in the session caused it.",
+    "Deliver the verdict by describing what happened in the room at one exact line, and then say plainly where that leaves the goal.",
+    "Deliver the verdict by naming the gap between this session and the goal first, and then credit what already works.",
+    "Deliver the verdict by starting from the end result the goal describes and working back to what the person said or did that helped or hurt.",
+]
+_PRACTICE_STYLES = [
+    "For the practice, give one short drill to run aloud right now, built on a single line from the session.",
+    "For the practice, give a rewrite exercise, such as rewriting the first two sentences or the last two using the model line.",
+    "For the practice, give a listener check, where a real person hears one minute and answers one question.",
+    "For the practice, give a before-and-after, saying the weakest line, then the improved line, and noticing the difference.",
+    "For the practice, give a rehearsal of only the one passage that matters, not the whole talk.",
+]
+
+
+def _variety_notes(has_goal):
+    """Rotated per report so two reports do not share one skeleton."""
+    lead = random.choice(_LEAD_ANGLES)
+    practice = random.choice(_PRACTICE_STYLES)
+    if has_goal:
+        verdict = random.choice(_VERDICT_STYLES)
+        return f"For this report, {lead[0].lower() + lead[1:]} {verdict} {practice}"
+    return f"For this report, {lead[0].lower() + lead[1:]} {practice}"
 
 
 def _format_goal_text(goals):
@@ -1833,24 +1986,24 @@ def _goal_line_for(goals):
         return (
             f"The person set this goal for the session, in their own words: {goal_text}. "
             "The goal is the yardstick for the whole report. Pick as the one priority the change that "
-            "most affects whether the goal is reached. Write the goal paragraph as the second paragraph "
-            "of the summary. Its first sentence is a clear verdict that uses the goal in the person's own "
-            "words and (tidy its grammar and spelling when you restate it) and says either that it was achieved by doing something specific, or that it was only "
-            "partly achieved, or that the person missed the mark and what they need to convey to reach it. "
-            "The rest of that paragraph gives the examples and the reasons. Name one or two exact moments "
-            "that served the goal and one that worked against it or missed a chance, say what listeners "
-            "would feel at each, and give an exact line to add or cut. Judge the goal only by what the "
-            "person said and did, never by their intentions. "
+            "most affects whether the goal is reached. Give the goal its own paragraph with a clear "
+            "verdict, in the voice described under \"Who is speaking\". The verdict says either that the "
+            "goal was achieved by doing something specific, or that the person missed the mark and what "
+            "they need to convey to reach it. Restate the goal in tidy grammar and spelling. Commit to the "
+            "verdict the evidence supports. A middle verdict is only for evidence that is truly split, and "
+            "then say exactly which half was met and which was not. Give the examples and the reasons, "
+            "naming one or two exact moments that served the goal and one that worked against it or missed "
+            "a chance, what the audience felt at each, and an exact line to add or cut. Judge the goal only "
+            "by what the person said and did, never by their intentions. "
             "If the goal is an outcome that someone else decides, such as winning new business, getting "
-            "funding, closing a sale, landing a job or getting buy-in, the goal paragraph must also say how "
-            "likely the person is to reach it if this session were the real thing, in plain words such as "
-            "unlikely, possible but not yet likely, likely or very likely, and never as a percentage. Give "
-            "the reasons, meaning what a decision maker would be persuaded by in what was said and what they "
-            "would still be missing, such as a clear ask, proof, a number or a next step, and give the exact "
-            "lines to add to raise the likelihood. "
-            "Make at least one strength and one area for improvement about the goal. In the last paragraph, "
-            "include a simple way to check next time whether the goal landed, such as asking one listener "
-            "what they felt or what they would do next."
+            "funding, closing a sale, making a purchase, landing a job or getting buy-in, the goal "
+            "paragraph must also say how likely that outcome is if this session were the real thing, in "
+            "plain words and in the voice of the room, never as a percentage, with the reasons, meaning "
+            "what persuaded and what is still missing, such as a clear ask, proof, a number or a next "
+            "step, and the exact lines that would raise the likelihood. "
+            "Make at least one strength and one area for improvement about the goal. Include a simple way "
+            "to check next time whether the goal landed, such as asking one listener what they felt or "
+            "what they would do next."
         )
     return (
         "The person did not set a goal. Infer the most likely aim from the session type "
@@ -1922,10 +2075,9 @@ def _lowest_score_line(session):
 def _closing_line_for(scores_low):
     if scores_low:
         return (
-            "Because this session's scores leave real room to grow, end the closing "
-            "paragraph with a warm invitation to take this same session again after "
-            "practicing the structure you have just given, presenting the retake as the "
-            "quickest way to watch the scores move."
+            "Because this session's scores leave real room to grow, end with a warm invitation, in "
+            "fresh words of your own, to take this same session again after practicing. Do not say "
+            "that scores will move."
         )
     return (
         "Do not suggest retaking the session. Close with what to practice next and return "
@@ -1986,6 +2138,8 @@ def _tidy_report_text(text):
     if not isinstance(text, str):
         return text
     text = text.replace("\u2014", ", ").replace("\u2013", ", ")
+    text = re.sub(r"[ \t]*(?:\.{3,}|\u2026)[ \t]*", ". ", text)
+    text = re.sub(r"\.[ \t]*\.", ".", text)
     text = re.sub(r"[ \t]*;[ \t]+([a-z])", lambda match: ". " + match.group(1).upper(), text)
     text = re.sub(r"[ \t]*;[ \t]*", ", ", text)
     text = re.sub(r"[ \t]*:[ \t]+", ", ", text)
@@ -2012,6 +2166,7 @@ def _build_coach_prompt(preferred_name, ev, session_type, goals, session, transc
         lowest_score_line=_lowest_score_line(session),
         transcript=cleaned_transcript,
         closing_line=closing_line,
+        variety_notes=_variety_notes(bool(_format_goal_text(goals))),
     )
 
 
